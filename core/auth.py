@@ -48,10 +48,12 @@ def get_account_identifier(account: dict) -> str:
 def get_queue_status() -> dict:
     """获取账号队列状态（用于监控）"""
     with _queue_lock:
+        # total 应该是配置中的账号总数，而非队列相加（避免状态不一致导致重复计数）
+        total_accounts = len(CONFIG.get("accounts", []))
         return {
             "available": len(account_queue),
             "in_use": len(in_use_accounts),
-            "total": len(account_queue) + len(in_use_accounts),
+            "total": total_accounts,
             "available_accounts": [get_account_identifier(a) for a in account_queue],
             "in_use_accounts": list(in_use_accounts.keys()),
         }

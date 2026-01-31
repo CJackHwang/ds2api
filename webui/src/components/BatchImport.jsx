@@ -51,10 +51,13 @@ const TEMPLATES = {
     }
 }
 
-export default function BatchImport({ onRefresh, onMessage }) {
+export default function BatchImport({ onRefresh, onMessage, authFetch }) {
     const [jsonInput, setJsonInput] = useState('')
     const [loading, setLoading] = useState(false)
     const [result, setResult] = useState(null)
+
+    // 使用 authFetch 或回退到普通 fetch
+    const apiFetch = authFetch || fetch
 
     const handleImport = async () => {
         if (!jsonInput.trim()) {
@@ -73,7 +76,7 @@ export default function BatchImport({ onRefresh, onMessage }) {
         setLoading(true)
         setResult(null)
         try {
-            const res = await fetch('/admin/import', {
+            const res = await apiFetch('/admin/import', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(config),
@@ -103,7 +106,7 @@ export default function BatchImport({ onRefresh, onMessage }) {
 
     const handleExport = async () => {
         try {
-            const res = await fetch('/admin/export')
+            const res = await apiFetch('/admin/export')
             if (res.ok) {
                 const data = await res.json()
                 setJsonInput(JSON.stringify(JSON.parse(data.json), null, 2))
@@ -116,7 +119,7 @@ export default function BatchImport({ onRefresh, onMessage }) {
 
     const copyBase64 = async () => {
         try {
-            const res = await fetch('/admin/export')
+            const res = await apiFetch('/admin/export')
             if (res.ok) {
                 const data = await res.json()
                 await navigator.clipboard.writeText(data.base64)

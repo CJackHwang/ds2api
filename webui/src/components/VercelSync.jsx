@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 
-export default function VercelSync({ onMessage }) {
+export default function VercelSync({ onMessage, authFetch }) {
     const [vercelToken, setVercelToken] = useState('')
     const [projectId, setProjectId] = useState('')
     const [teamId, setTeamId] = useState('')
@@ -8,11 +8,14 @@ export default function VercelSync({ onMessage }) {
     const [result, setResult] = useState(null)
     const [preconfig, setPreconfig] = useState(null)
 
+    // 使用 authFetch 或回退到普通 fetch
+    const apiFetch = authFetch || fetch
+
     // 自动加载预配置的 Vercel 信息
     useEffect(() => {
         const loadPreconfig = async () => {
             try {
-                const res = await fetch('/admin/vercel/config')
+                const res = await apiFetch('/admin/vercel/config')
                 if (res.ok) {
                     const data = await res.json()
                     setPreconfig(data)
@@ -42,7 +45,7 @@ export default function VercelSync({ onMessage }) {
         setLoading(true)
         setResult(null)
         try {
-            const res = await fetch('/admin/vercel/sync', {
+            const res = await apiFetch('/admin/vercel/sync', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

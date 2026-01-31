@@ -7,13 +7,16 @@ const MODELS = [
     { id: 'deepseek-reasoner-search', name: 'deepseek-reasoner-search' },
 ]
 
-export default function ApiTester({ config, onMessage }) {
+export default function ApiTester({ config, onMessage, authFetch }) {
     const [model, setModel] = useState('deepseek-chat')
     const [message, setMessage] = useState('你好，请用一句话介绍你自己。')
     const [apiKey, setApiKey] = useState('')
     const [selectedAccount, setSelectedAccount] = useState('')  // 空为随机
     const [response, setResponse] = useState(null)
     const [loading, setLoading] = useState(false)
+
+    // 使用 authFetch 或回退到普通 fetch（admin API 用 authFetch，OpenAI 兼容 API 用普通 fetch）
+    const apiFetch = authFetch || fetch
 
     // 获取账号列表
     const accounts = config.accounts || []
@@ -22,7 +25,7 @@ export default function ApiTester({ config, onMessage }) {
         setLoading(true)
         setResponse(null)
         try {
-            const res = await fetch('/admin/test', {
+            const res = await apiFetch('/admin/test', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -96,7 +99,7 @@ export default function ApiTester({ config, onMessage }) {
         // 如果选择了指定账号，使用账号测试接口
         if (selectedAccount) {
             try {
-                const res = await fetch('/admin/accounts/test', {
+                const res = await apiFetch('/admin/accounts/test', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 
-export default function AccountManager({ config, onRefresh, onMessage }) {
+export default function AccountManager({ config, onRefresh, onMessage, authFetch }) {
     const [showAddKey, setShowAddKey] = useState(false)
     const [showAddAccount, setShowAddAccount] = useState(false)
     const [newKey, setNewKey] = useState('')
@@ -13,10 +13,13 @@ export default function AccountManager({ config, onRefresh, onMessage }) {
     const [batchProgress, setBatchProgress] = useState({ current: 0, total: 0, results: [] })
     const [queueStatus, setQueueStatus] = useState(null)
 
+    // 使用 authFetch 或回退到普通 fetch
+    const apiFetch = authFetch || fetch
+
     // 获取队列状态
     const fetchQueueStatus = async () => {
         try {
-            const res = await fetch('/admin/queue/status')
+            const res = await apiFetch('/admin/queue/status')
             if (res.ok) {
                 const data = await res.json()
                 setQueueStatus(data)
@@ -36,7 +39,7 @@ export default function AccountManager({ config, onRefresh, onMessage }) {
         if (!newKey.trim()) return
         setLoading(true)
         try {
-            const res = await fetch('/admin/keys', {
+            const res = await apiFetch('/admin/keys', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ key: newKey.trim() }),
@@ -60,7 +63,7 @@ export default function AccountManager({ config, onRefresh, onMessage }) {
     const deleteKey = async (key) => {
         if (!confirm('确定删除此 API Key？')) return
         try {
-            const res = await fetch(`/admin/keys/${encodeURIComponent(key)}`, { method: 'DELETE' })
+            const res = await apiFetch(`/admin/keys/${encodeURIComponent(key)}`, { method: 'DELETE' })
             if (res.ok) {
                 onMessage('success', '删除成功')
                 onRefresh()
@@ -79,7 +82,7 @@ export default function AccountManager({ config, onRefresh, onMessage }) {
         }
         setLoading(true)
         try {
-            const res = await fetch('/admin/accounts', {
+            const res = await apiFetch('/admin/accounts', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(newAccount),
@@ -103,7 +106,7 @@ export default function AccountManager({ config, onRefresh, onMessage }) {
     const deleteAccount = async (id) => {
         if (!confirm('确定删除此账号？')) return
         try {
-            const res = await fetch(`/admin/accounts/${encodeURIComponent(id)}`, { method: 'DELETE' })
+            const res = await apiFetch(`/admin/accounts/${encodeURIComponent(id)}`, { method: 'DELETE' })
             if (res.ok) {
                 onMessage('success', '删除成功')
                 onRefresh()
@@ -119,7 +122,7 @@ export default function AccountManager({ config, onRefresh, onMessage }) {
     const validateAccount = async (identifier) => {
         setValidating(prev => ({ ...prev, [identifier]: true }))
         try {
-            const res = await fetch('/admin/accounts/validate', {
+            const res = await apiFetch('/admin/accounts/validate', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ identifier }),
@@ -155,7 +158,7 @@ export default function AccountManager({ config, onRefresh, onMessage }) {
             const id = acc.email || acc.mobile
 
             try {
-                const res = await fetch('/admin/accounts/validate', {
+                const res = await apiFetch('/admin/accounts/validate', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ identifier: id }),
@@ -179,7 +182,7 @@ export default function AccountManager({ config, onRefresh, onMessage }) {
     const testAccount = async (identifier) => {
         setTesting(prev => ({ ...prev, [identifier]: true }))
         try {
-            const res = await fetch('/admin/accounts/test', {
+            const res = await apiFetch('/admin/accounts/test', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ identifier }),
@@ -215,7 +218,7 @@ export default function AccountManager({ config, onRefresh, onMessage }) {
             const id = acc.email || acc.mobile
 
             try {
-                const res = await fetch('/admin/accounts/test', {
+                const res = await apiFetch('/admin/accounts/test', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ identifier: id }),
