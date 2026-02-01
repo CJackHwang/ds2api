@@ -2,6 +2,7 @@
 """OpenAI 兼容路由"""
 import json
 import queue
+import random
 import re
 import threading
 import time
@@ -29,6 +30,7 @@ from core.sse_parser import (
     extract_content_from_chunk,
     extract_content_recursive,
     should_filter_citation,
+    parse_tool_calls,
 )
 from core.constants import (
     KEEP_ALIVE_TIMEOUT,
@@ -83,6 +85,59 @@ async def chat_completions(request: Request):
                 status_code=400, detail="Request must include 'model' and 'messages'."
             )
         
+        # 解析工具调用参数（OpenAI 格式）
+        tools_requested = req_data.get("tools") or []
+        has_tools = len(tools_requested) > 0
+        
+        # 如果有工具定义，构建工具提示并注入到消息中
+        messages_with_tools = messages.copy()
+        if has_tools:
+            tool_schemas = []
+            for tool in tools_requested:
+                # OpenAI 格式: {"type": "function", "function": {"name": ..., "description": ..., "parameters": ...}}
+                func = tool.get("function", tool)  # 兼容简化格式
+                tool_name = func.get("name", "unknown")
+                tool_desc = func.get("description", "No description available")
+                schema = func.get("parameters", {})
+                
+                tool_info = f"Tool: {tool_name}\nDescription: {tool_desc}"
+                if "properties" in schema:
+                    props = []
+                    required = schema.get("required", [])
+                    for prop_name, prop_info in schema["properties"].items():
+                        prop_type = prop_info.get("type", "string")
+                        is_req = " (required)" if prop_name in required else ""
+                        props.append(f"  - {prop_name}: {prop_type}{is_req}")
+                    if props:
+                        tool_info += f"\nParameters:\n" + "\n".join(props)
+                tool_schemas.append(tool_info)
+            
+            # 检查是否已有系统消息
+            has_system = any(m.get("role") == "system" for m in messages_with_tools)
+            tool_prompt = f"""You have access to these tools:
+
+{chr(10).join(tool_schemas)}
+
+When you need to use tools, output ONLY this JSON format (no other text):
+{{"tool_calls": [
+  {{"name": "tool_name", "input": {{"param": "value"}}}}
+]}}
+
+IMPORTANT: If calling tools, output ONLY the JSON. The response must start with {{ and end with }}"""
+            
+            if has_system:
+                # 追加到现有系统消息
+                for i, m in enumerate(messages_with_tools):
+                    if m.get("role") == "system":
+                        messages_with_tools[i] = {
+                            "role": "system",
+                            "content": m.get("content", "") + "\n\n" + tool_prompt
+                        }
+                        break
+            else:
+                # 添加新的系统消息
+                messages_with_tools.insert(0, {"role": "system", "content": tool_prompt})
+        
         # 使用会话管理器获取模型配置
         thinking_enabled, search_enabled = get_model_config(model)
         if thinking_enabled is None:
@@ -90,8 +145,8 @@ async def chat_completions(request: Request):
                 status_code=503, detail=f"Model '{model}' is not available."
             )
         
-        # 使用 messages_prepare 函数构造最终 prompt
-        final_prompt = messages_prepare(messages)
+        # 使用 messages_prepare 函数构造最终 prompt（使用带工具提示的消息）
+        final_prompt = messages_prepare(messages_with_tools)
         session_id = create_session(request)
         if not session_id:
             raise HTTPException(status_code=401, detail="invalid token.")
@@ -255,12 +310,42 @@ async def chat_completions(request: Request):
                                     "total_tokens": prompt_tokens + thinking_tokens + completion_tokens,
                                     "completion_tokens_details": {"reasoning_tokens": thinking_tokens},
                                 }
+                                
+                                # 检测工具调用
+                                detected_tools = []
+                                finish_reason = "stop"
+                                if has_tools:
+                                    detected_tools = parse_tool_calls(final_text, [{"name": t.get("function", t).get("name")} for t in tools_requested])
+                                    if detected_tools:
+                                        finish_reason = "tool_calls"
+                                
+                                if detected_tools:
+                                    # 发送工具调用响应
+                                    tool_calls_data = []
+                                    for idx, tool_info in enumerate(detected_tools):
+                                        tool_calls_data.append({
+                                            "id": f"call_{int(time.time())}_{random.randint(1000,9999)}_{idx}",
+                                            "type": "function",
+                                            "function": {
+                                                "name": tool_info["name"],
+                                                "arguments": json.dumps(tool_info["input"], ensure_ascii=False)
+                                            }
+                                        })
+                                    tool_chunk = {
+                                        "id": completion_id,
+                                        "object": "chat.completion.chunk",
+                                        "created": created_time,
+                                        "model": model,
+                                        "choices": [{"delta": {"tool_calls": tool_calls_data}, "index": 0}],
+                                    }
+                                    yield f"data: {json.dumps(tool_chunk, ensure_ascii=False)}\n\n"
+                                
                                 finish_chunk = {
                                     "id": completion_id,
                                     "object": "chat.completion.chunk",
                                     "created": created_time,
                                     "model": model,
-                                    "choices": [{"delta": {}, "index": 0, "finish_reason": "stop"}],
+                                    "choices": [{"delta": {}, "index": 0, "finish_reason": finish_reason}],
                                     "usage": usage,
                                 }
                                 yield f"data: {json.dumps(finish_chunk, ensure_ascii=False)}\n\n"
@@ -325,12 +410,41 @@ async def chat_completions(request: Request):
                             "total_tokens": prompt_tokens + thinking_tokens + completion_tokens,
                             "completion_tokens_details": {"reasoning_tokens": thinking_tokens},
                         }
+                        
+                        # 检测工具调用
+                        detected_tools = []
+                        finish_reason = "stop"
+                        if has_tools:
+                            detected_tools = parse_tool_calls(final_text, [{"name": t.get("function", t).get("name")} for t in tools_requested])
+                            if detected_tools:
+                                finish_reason = "tool_calls"
+                        
+                        if detected_tools:
+                            tool_calls_data = []
+                            for idx, tool_info in enumerate(detected_tools):
+                                tool_calls_data.append({
+                                    "id": f"call_{int(time.time())}_{random.randint(1000,9999)}_{idx}",
+                                    "type": "function",
+                                    "function": {
+                                        "name": tool_info["name"],
+                                        "arguments": json.dumps(tool_info["input"], ensure_ascii=False)
+                                    }
+                                })
+                            tool_chunk = {
+                                "id": completion_id,
+                                "object": "chat.completion.chunk",
+                                "created": created_time,
+                                "model": model,
+                                "choices": [{"delta": {"tool_calls": tool_calls_data}, "index": 0}],
+                            }
+                            yield f"data: {json.dumps(tool_chunk, ensure_ascii=False)}\n\n"
+                        
                         finish_chunk = {
                             "id": completion_id,
                             "object": "chat.completion.chunk",
                             "created": created_time,
                             "model": model,
-                            "choices": [{"delta": {}, "index": 0, "finish_reason": "stop"}],
+                            "choices": [{"delta": {}, "index": 0, "finish_reason": finish_reason}],
                             "usage": usage,
                         }
                         yield f"data: {json.dumps(finish_chunk, ensure_ascii=False)}\n\n"
@@ -401,14 +515,37 @@ async def chat_completions(request: Request):
                                                 prompt_tokens = len(final_prompt) // 4
                                                 reasoning_tokens = len(final_reasoning) // 4
                                                 completion_tokens = len(final_content) // 4
+                                                
+                                                # 检测工具调用
+                                                detected_tools = []
+                                                finish_reason = "stop"
+                                                if has_tools:
+                                                    detected_tools = parse_tool_calls(final_content, [{"name": t.get("function", t).get("name")} for t in tools_requested])
+                                                    if detected_tools:
+                                                        finish_reason = "tool_calls"
+                                                
                                                 # 构建 message 对象
                                                 message_obj = {
                                                     "role": "assistant",
-                                                    "content": final_content,
+                                                    "content": final_content if not detected_tools else None,
                                                 }
                                                 # 只有启用思考模式时才包含 reasoning_content
                                                 if thinking_enabled and final_reasoning:
                                                     message_obj["reasoning_content"] = final_reasoning
+                                                # 添加工具调用
+                                                if detected_tools:
+                                                    tool_calls_data = []
+                                                    for idx, tool_info in enumerate(detected_tools):
+                                                        tool_calls_data.append({
+                                                            "id": f"call_{int(time.time())}_{random.randint(1000,9999)}_{idx}",
+                                                            "type": "function",
+                                                            "function": {
+                                                                "name": tool_info["name"],
+                                                                "arguments": json.dumps(tool_info["input"], ensure_ascii=False)
+                                                            }
+                                                        })
+                                                    message_obj["tool_calls"] = tool_calls_data
+                                                    message_obj["content"] = None
                                                 
                                                 result = {
                                                     "id": completion_id,
@@ -418,7 +555,7 @@ async def chat_completions(request: Request):
                                                     "choices": [{
                                                         "index": 0,
                                                         "message": message_obj,
-                                                        "finish_reason": "stop",
+                                                        "finish_reason": finish_reason,
                                                     }],
                                                     "usage": {
                                                         "prompt_tokens": prompt_tokens,
@@ -452,14 +589,37 @@ async def chat_completions(request: Request):
                         prompt_tokens = len(final_prompt) // 4
                         reasoning_tokens = len(final_reasoning) // 4
                         completion_tokens = len(final_content) // 4
+                        
+                        # 检测工具调用
+                        detected_tools = []
+                        finish_reason = "stop"
+                        if has_tools:
+                            detected_tools = parse_tool_calls(final_content, [{"name": t.get("function", t).get("name")} for t in tools_requested])
+                            if detected_tools:
+                                finish_reason = "tool_calls"
+                        
                         # 构建 message 对象
                         message_obj = {
                             "role": "assistant",
-                            "content": final_content,
+                            "content": final_content if not detected_tools else None,
                         }
                         # 只有启用思考模式时才包含 reasoning_content
                         if thinking_enabled and final_reasoning:
                             message_obj["reasoning_content"] = final_reasoning
+                        # 添加工具调用
+                        if detected_tools:
+                            tool_calls_data = []
+                            for idx, tool_info in enumerate(detected_tools):
+                                tool_calls_data.append({
+                                    "id": f"call_{int(time.time())}_{random.randint(1000,9999)}_{idx}",
+                                    "type": "function",
+                                    "function": {
+                                        "name": tool_info["name"],
+                                        "arguments": json.dumps(tool_info["input"], ensure_ascii=False)
+                                    }
+                                })
+                            message_obj["tool_calls"] = tool_calls_data
+                            message_obj["content"] = None
                         
                         result = {
                             "id": completion_id,
@@ -469,7 +629,7 @@ async def chat_completions(request: Request):
                             "choices": [{
                                 "index": 0,
                                 "message": message_obj,
-                                "finish_reason": "stop",
+                                "finish_reason": finish_reason,
                             }],
                             "usage": {
                                 "prompt_tokens": prompt_tokens,
