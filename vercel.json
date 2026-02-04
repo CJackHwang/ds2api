@@ -1,15 +1,10 @@
 {
   "version": 2,
-  "builds": [
+  "buildCommand": "bash scripts/build-webui.sh",
+  "rewrites": [
     {
-      "src": "app.py",
-      "use": "@vercel/python"
-    }
-  ],
-  "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "app.py"
+      "source": "/(.*)",
+      "destination": "/app.py"
     }
   ]
 }
