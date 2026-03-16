@@ -1,6 +1,8 @@
 # Line gate targets for large-file decoupling refactor.
-# Default limit: 300 lines
+# Backend default limit: 300 lines
+# Frontend (webui/) default limit: 500 lines
 # Entry/facade limit: 120 lines (enforced in script)
+# Test files are ignored by the gate script.
 
 internal/config/config.go
 internal/config/logger.go
