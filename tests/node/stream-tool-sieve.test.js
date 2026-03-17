@@ -259,28 +259,28 @@ test('sieve emits final tool_calls for split arguments payload without increment
   assert.deepEqual(finalCalls[0].input, { path: 'README.MD', mode: 'head' });
 });
 
-test('sieve keeps tool json as text when leading prose exists (strict mode)', () => {
+test('sieve still intercepts tool json when leading prose exists (strict mode)', () => {
   const events = runSieve(
     ['我将调用工具。', '{"tool_calls":[{"name":"read_file","input":{"path":"README.MD"}}]}'],
     ['read_file'],
   );
   const hasTool = events.some((evt) => (evt.type === 'tool_calls' && evt.calls?.length > 0) || (evt.type === 'tool_call_deltas' && evt.deltas?.length > 0));
   const leakedText = collectText(events);
-  assert.equal(hasTool, false);
+  assert.equal(hasTool, true);
   assert.equal(leakedText.includes('我将调用工具。'), true);
-  assert.equal(leakedText.toLowerCase().includes('tool_calls'), true);
+  assert.equal(leakedText.toLowerCase().includes('tool_calls'), false);
 });
 
-test('sieve keeps same-chunk trailing prose payload as text in strict mode', () => {
+test('sieve intercepts same-chunk payload and drops trailing prose in strict mode', () => {
   const events = runSieve(
     ['{"tool_calls":[{"name":"read_file","input":{"path":"README.MD"}}]}然后继续解释。'],
     ['read_file'],
   );
   const hasTool = events.some((evt) => (evt.type === 'tool_calls' && evt.calls?.length > 0) || (evt.type === 'tool_call_deltas' && evt.deltas?.length > 0));
   const leakedText = collectText(events);
-  assert.equal(hasTool, false);
-  assert.equal(leakedText.includes('然后继续解释。'), true);
-  assert.equal(leakedText.toLowerCase().includes('tool_calls'), true);
+  assert.equal(hasTool, true);
+  assert.equal(leakedText.includes('然后继续解释。'), false);
+  assert.equal(leakedText.toLowerCase().includes('tool_calls'), false);
 });
 
 test('formatOpenAIStreamToolCalls reuses ids with the same idStore', () => {

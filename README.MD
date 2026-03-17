@@ -363,6 +363,8 @@ cp opencode.json.example opencode.json
 3. 未在 `tools` 声明中的工具名会被严格拒绝，不会下发为有效 tool call
 4. `responses` 支持并执行 `tool_choice`（`auto`/`none`/`required`/强制函数）；`required` 违规时非流式返回 `422`，流式返回 `response.failed`
 5. 仅在通过策略校验后才会发出有效工具调用事件，避免错误工具名进入客户端执行链
+6. strict 模式下只要片段中形成可解析的完整 tool JSON（即使前后混有 prose），仍会拦截并输出 tool_calls；仅保留前后自然语言文本。
+7. 对工具参数中的路径字段（如 `path`/`file`/`cwd`）采用保守反斜杠修复，避免 `C:\new\tmp` 被污染为换行/Tab，同时非路径文本字段保持原始 `\n` 语义。
 
 ## 本地开发抓包工具
 

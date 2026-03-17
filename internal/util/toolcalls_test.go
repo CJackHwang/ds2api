@@ -412,6 +412,7 @@ func TestParseToolCallsWithMixedWindowsPaths(t *testing.T) {
 		t.Fatalf("expected 1 tool call from mixed text with paths, got %d", len(parsed))
 	}
 
+	t.Logf("parsed input: %#v", parsed[0].Input)
 	path, _ := parsed[0].Input["path"].(string)
 	// 在解析后的 Go map 中，反斜杠应该被还原
 	if !strings.Contains(path, "D:\\git_codes") && !strings.Contains(path, "D:/git_codes") {
@@ -494,5 +495,51 @@ func TestRepairLooseJSONWithNestedObjects(t *testing.T) {
 		if got != tt.expected {
 			t.Errorf("[%s] RepairLooseJSON with nested objects:\n  input:    %s\n  got:      %s\n  expected: %s", tt.name, tt.input, got, tt.expected)
 		}
+	}
+}
+
+func TestParseToolCallsPreservesWindowsPathLiteralBackslashes(t *testing.T) {
+	text := `{"name":"write_file","input":"{\"path\":\"C:\new\tmp\"}"}`
+	parsed := ParseToolCalls(text, []string{"write_file"})
+	if len(parsed) != 1 {
+		t.Fatalf("expected 1 tool call, got %d", len(parsed))
+	}
+	path, _ := parsed[0].Input["path"].(string)
+	if strings.ContainsAny(path, "\n\r\t") {
+		t.Fatalf("expected path without control chars, got %q", path)
+	}
+	if strings.ReplaceAll(path, `\\`, `\`) != `C:\new\tmp` {
+		t.Fatalf("expected literal windows path, got %q", path)
+	}
+}
+
+func TestParseToolCallsMixedContentPathAndNewline(t *testing.T) {
+	text := `{"name":"write_file","input":"{\"content\":\"line1\\nline2\",\"path\":\"D:\tmp\a.txt\"}"}`
+	parsed := ParseToolCalls(text, []string{"write_file"})
+	if len(parsed) != 1 {
+		t.Fatalf("expected 1 tool call, got %d", len(parsed))
+	}
+	content, _ := parsed[0].Input["content"].(string)
+	if content != "line1\nline2" {
+		t.Fatalf("expected newline semantics for content, got %q", content)
+	}
+	path, _ := parsed[0].Input["path"].(string)
+	if strings.ContainsAny(path, "\n\r\t") {
+		t.Fatalf("expected path without control chars, got %q", path)
+	}
+	if strings.ReplaceAll(path, `\\`, `\`) != `D:\tmp\a.txt` {
+		t.Fatalf("expected literal windows path for path field, got %q", path)
+	}
+}
+
+func TestParseToolCallsDoesNotOverEscapeNonPathFields(t *testing.T) {
+	text := `{"name":"write_file","input":"{\"content\":\"line1\\nline2\"}"}`
+	parsed := ParseToolCalls(text, []string{"write_file"})
+	if len(parsed) != 1 {
+		t.Fatalf("expected 1 tool call, got %d", len(parsed))
+	}
+	content, _ := parsed[0].Input["content"].(string)
+	if content != "line1\nline2" {
+		t.Fatalf("expected content newline to remain escaped newline, got %q", content)
 	}
 }

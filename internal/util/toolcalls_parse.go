@@ -1,10 +1,6 @@
 package util
 
-import (
-	"encoding/json"
-	"regexp"
-	"strings"
-)
+import "strings"
 
 type ParsedToolCall struct {
 	Name  string         `json:"name"`
@@ -84,8 +80,7 @@ func ParseStandaloneToolCallsDetailed(text string, availableToolNames []string) 
 		return result
 	}
 	result.SawToolCallSyntax = looksLikeToolCallSyntax(trimmed)
-	candidates := []string{trimmed}
-	for _, candidate := range candidates {
+	for _, candidate := range []string{trimmed} {
 		candidate = strings.TrimSpace(candidate)
 		if candidate == "" {
 			continue
@@ -110,6 +105,15 @@ func ParseStandaloneToolCallsDetailed(text string, availableToolNames []string) 
 		}
 	}
 	return result
+}
+
+func looksLikeToolCallSyntax(text string) bool {
+	lower := strings.ToLower(text)
+	return strings.Contains(lower, "tool_calls") ||
+		strings.Contains(lower, "<tool_call") ||
+		strings.Contains(lower, "<function_call") ||
+		strings.Contains(lower, "<invoke") ||
+		strings.Contains(lower, "function.name:")
 }
 
 func filterToolCallsDetailed(parsed []ParsedToolCall, availableToolNames []string) ([]ParsedToolCall, []string) {
@@ -167,207 +171,4 @@ func filterToolCallsDetailed(parsed []ParsedToolCall, availableToolNames []strin
 
 func resolveAllowedToolName(name string, allowed map[string]struct{}, allowedCanonical map[string]string) string {
 	return resolveAllowedToolNameWithLooseMatch(name, allowed, allowedCanonical)
-}
-
-func parseToolCallsPayload(payload string) []ParsedToolCall {
-	var decoded any
-	if err := json.Unmarshal([]byte(payload), &decoded); err != nil {
-		// Try to repair backslashes first! Because LLMs often mix these two problems.
-		repaired := repairInvalidJSONBackslashes(payload)
-		// Try loose repair on top of that
-		repaired = RepairLooseJSON(repaired)
-		if err := json.Unmarshal([]byte(repaired), &decoded); err != nil {
-			return nil
-		}
-	}
-	switch v := decoded.(type) {
-	case map[string]any:
-		if tc, ok := v["tool_calls"]; ok {
-			return parseToolCallList(tc)
-		}
-		if parsed, ok := parseToolCallItem(v); ok {
-			return []ParsedToolCall{parsed}
-		}
-	case []any:
-		return parseToolCallList(v)
-	}
-	return nil
-}
-
-func looksLikeToolCallSyntax(text string) bool {
-	lower := strings.ToLower(text)
-	return strings.Contains(lower, "tool_calls") ||
-		strings.Contains(lower, "<tool_call") ||
-		strings.Contains(lower, "<function_call") ||
-		strings.Contains(lower, "<invoke") ||
-		strings.Contains(lower, "function.name:")
-}
-
-func parseToolCallList(v any) []ParsedToolCall {
-	items, ok := v.([]any)
-	if !ok {
-		return nil
-	}
-	out := make([]ParsedToolCall, 0, len(items))
-	for _, item := range items {
-		m, ok := item.(map[string]any)
-		if !ok {
-			continue
-		}
-		if tc, ok := parseToolCallItem(m); ok {
-			out = append(out, tc)
-		}
-	}
-	if len(out) == 0 {
-		return nil
-	}
-	return out
-}
-
-func parseToolCallItem(m map[string]any) (ParsedToolCall, bool) {
-	name, _ := m["name"].(string)
-	inputRaw, hasInput := m["input"]
-	if fn, ok := m["function"].(map[string]any); ok {
-		if name == "" {
-			name, _ = fn["name"].(string)
-		}
-		if !hasInput {
-			if v, ok := fn["arguments"]; ok {
-				inputRaw = v
-				hasInput = true
-			}
-		}
-	}
-	if !hasInput {
-		for _, key := range []string{"arguments", "args", "parameters", "params"} {
-			if v, ok := m[key]; ok {
-				inputRaw = v
-				hasInput = true
-				break
-			}
-		}
-	}
-	if strings.TrimSpace(name) == "" {
-		return ParsedToolCall{}, false
-	}
-	return ParsedToolCall{
-		Name:  strings.TrimSpace(name),
-		Input: parseToolCallInput(inputRaw),
-	}, true
-}
-
-func parseToolCallInput(v any) map[string]any {
-	switch x := v.(type) {
-	case nil:
-		return map[string]any{}
-	case map[string]any:
-		return x
-	case string:
-		raw := strings.TrimSpace(x)
-		if raw == "" {
-			return map[string]any{}
-		}
-		var parsed map[string]any
-		if err := json.Unmarshal([]byte(raw), &parsed); err == nil && parsed != nil {
-			return parsed
-		}
-		// Try to repair invalid backslashes (common in Windows paths output by models)
-		repaired := repairInvalidJSONBackslashes(raw)
-		if repaired != raw {
-			if err := json.Unmarshal([]byte(repaired), &parsed); err == nil && parsed != nil {
-				return parsed
-			}
-		}
-		// Try to repair loose JSON in string argument as well
-		repairedLoose := RepairLooseJSON(raw)
-		if repairedLoose != raw {
-			if err := json.Unmarshal([]byte(repairedLoose), &parsed); err == nil && parsed != nil {
-				return parsed
-			}
-		}
-		return map[string]any{"_raw": raw}
-	default:
-		b, err := json.Marshal(x)
-		if err != nil {
-			return map[string]any{}
-		}
-		var parsed map[string]any
-		if err := json.Unmarshal(b, &parsed); err == nil && parsed != nil {
-			return parsed
-		}
-		return map[string]any{}
-	}
-}
-
-func repairInvalidJSONBackslashes(s string) string {
-	if !strings.Contains(s, "\\") {
-		return s
-	}
-	var out strings.Builder
-	out.Grow(len(s) + 10)
-	runes := []rune(s)
-	for i := 0; i < len(runes); i++ {
-		if runes[i] == '\\' {
-			if i+1 < len(runes) {
-				next := runes[i+1]
-				switch next {
-				case '"', '\\', '/', 'b', 'f', 'n', 'r', 't':
-					out.WriteRune('\\')
-					out.WriteRune(next)
-					i++
-					continue
-				case 'u':
-					if i+5 < len(runes) {
-						isHex := true
-						for j := 1; j <= 4; j++ {
-							r := runes[i+1+j]
-							if !((r >= '0' && r <= '9') || (r >= 'a' && r <= 'f') || (r >= 'A' && r <= 'F')) {
-								isHex = false
-								break
-							}
-						}
-						if isHex {
-							out.WriteRune('\\')
-							out.WriteRune('u')
-							for j := 1; j <= 4; j++ {
-								out.WriteRune(runes[i+1+j])
-							}
-							i += 5
-							continue
-						}
-					}
-				}
-			}
-			// Not a valid escape sequence, double it
-			out.WriteString("\\\\")
-		} else {
-			out.WriteRune(runes[i])
-		}
-	}
-	return out.String()
-}
-
-var unquotedKeyPattern = regexp.MustCompile(`([{,]\s*)([a-zA-Z_][a-zA-Z0-9_]*)\s*:`)
-
-// missingArrayBracketsPattern identifies a sequence of two or more JSON objects separated by commas
-// that immediately follow a colon, which indicates a missing array bracket `[` `]`.
-// E.g., "key": {"a": 1}, {"b": 2} -> "key": [{"a": 1}, {"b": 2}]
-// NOTE: The pattern uses (?:[^{}]|\{[^{}]*\})* to support single-level nested {} objects,
-// which handles cases like {"content": "x", "input": {"q": "y"}}
-var missingArrayBracketsPattern = regexp.MustCompile(`(:\s*)(\{(?:[^{}]|\{[^{}]*\})*\}(?:\s*,\s*\{(?:[^{}]|\{[^{}]*\})*\})+)`)
-
-func RepairLooseJSON(s string) string {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return s
-	}
-	// 1. Replace unquoted keys: {key: -> {"key":
-	s = unquotedKeyPattern.ReplaceAllString(s, `$1"$2":`)
-
-	// 2. Heuristic: Fix missing array brackets for list of objects
-	// e.g., : {obj1}, {obj2} -> : [{obj1}, {obj2}]
-	// This specifically addresses DeepSeek's "list hallucination"
-	s = missingArrayBracketsPattern.ReplaceAllString(s, `$1[$2]`)
-
-	return s
 }

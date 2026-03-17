@@ -205,6 +205,9 @@ go test -v -run TestParseToolCallsWithDeepSeekHallucination ./internal/util/ 2>&
 # - TestParseToolCallsWithDeepSeekHallucination: DeepSeek 典型幻觉输出
 # - TestRepairLooseJSONWithNestedObjects: 嵌套对象的方括号修复
 # - TestParseToolCallsWithMixedWindowsPaths: Windows 路径处理
+# - TestParseToolCallsPreservesWindowsPathLiteralBackslashes: 路径字段防止 `\n/\t` 语义污染
+# - TestParseToolCallsMixedContentPathAndNewline: 路径字段与正文换行语义并存
+# - tests/node/stream-tool-sieve.test.js strict 场景：mixed prose + tool JSON 仍拦截 tool call
 ```
 
 ### 运行 Node.js 测试
