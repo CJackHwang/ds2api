@@ -73,7 +73,7 @@ func (c *Client) CreateSession(ctx context.Context, a *auth.RequestAuth, maxAtte
 		}
 		config.Logger.Warn("[create_session] failed", "status", status, "code", code, "biz_code", bizCode, "msg", msg, "biz_msg", bizMsg, "use_config_token", a.UseConfigToken, "account", a.AccountID)
 		if a.UseConfigToken {
-			if isTokenInvalid(status, code, bizCode, msg, bizMsg) && !refreshed {
+			if !refreshed && shouldAttemptRefresh(status, code, bizCode, msg, bizMsg) {
 				if c.Auth.RefreshToken(ctx, a) {
 					refreshed = true
 					continue
@@ -118,7 +118,7 @@ func (c *Client) GetPow(ctx context.Context, a *auth.RequestAuth, maxAttempts in
 		}
 		config.Logger.Warn("[get_pow] failed", "status", status, "code", code, "biz_code", bizCode, "msg", msg, "biz_msg", bizMsg, "use_config_token", a.UseConfigToken, "account", a.AccountID)
 		if a.UseConfigToken {
-			if isTokenInvalid(status, code, bizCode, msg, bizMsg) && !refreshed {
+			if !refreshed && shouldAttemptRefresh(status, code, bizCode, msg, bizMsg) {
 				if c.Auth.RefreshToken(ctx, a) {
 					refreshed = true
 					continue
@@ -158,6 +158,15 @@ func isTokenInvalid(status int, code int, bizCode int, msg string, bizMsg string
 		strings.Contains(msg, "not login") ||
 		strings.Contains(msg, "login required") ||
 		strings.Contains(msg, "invalid jwt")
+}
+
+func shouldAttemptRefresh(status int, code int, bizCode int, msg string, bizMsg string) bool {
+	if isTokenInvalid(status, code, bizCode, msg, bizMsg) {
+		return true
+	}
+	// Some DeepSeek failures come back as HTTP 200/code=0 but with non-zero biz_code.
+	// In managed-account mode this is commonly stale login state, so try one refresh.
+	return status == http.StatusOK && code == 0 && bizCode != 0
 }
 
 func extractResponseStatus(resp map[string]any) (code int, bizCode int, msg string, bizMsg string) {
