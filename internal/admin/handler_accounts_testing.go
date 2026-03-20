@@ -89,7 +89,15 @@ func runAccountTestsConcurrently(accounts []config.Account, maxConcurrency int, 
 func (h *Handler) testAccount(ctx context.Context, acc config.Account, model, message string) map[string]any {
 	start := time.Now()
 	identifier := acc.Identifier()
-	result := map[string]any{"account": identifier, "success": false, "response_time": 0, "message": "", "model": model, "session_count": 0}
+	result := map[string]any{
+		"account":         identifier,
+		"success":         false,
+		"response_time":   0,
+		"message":         "",
+		"model":           model,
+		"session_count":   0,
+		"config_writable": !h.Store.IsEnvBacked(),
+	}
 	defer func() {
 		status := "failed"
 		if ok, _ := result["success"].(bool); ok {
@@ -105,7 +113,10 @@ func (h *Handler) testAccount(ctx context.Context, acc config.Account, model, me
 			return result
 		}
 		token = newToken
-		_ = h.Store.UpdateAccountToken(acc.Identifier(), token)
+		if err := h.Store.UpdateAccountToken(acc.Identifier(), token); err != nil {
+			result["message"] = "登录成功但写入配置失败: " + err.Error()
+			return result
+		}
 	}
 	authCtx := &authn.RequestAuth{UseConfigToken: false, DeepSeekToken: token}
 	sessionID, err := h.DS.CreateSession(ctx, authCtx, 1)
@@ -117,7 +128,10 @@ func (h *Handler) testAccount(ctx context.Context, acc config.Account, model, me
 		}
 		token = newToken
 		authCtx.DeepSeekToken = token
-		_ = h.Store.UpdateAccountToken(acc.Identifier(), token)
+		if err := h.Store.UpdateAccountToken(acc.Identifier(), token); err != nil {
+			result["message"] = "刷新 token 成功但写入配置失败: " + err.Error()
+			return result
+		}
 		sessionID, err = h.DS.CreateSession(ctx, authCtx, 1)
 		if err != nil {
 			result["message"] = "创建会话失败: " + err.Error()
