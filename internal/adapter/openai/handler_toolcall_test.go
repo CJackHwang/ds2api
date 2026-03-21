@@ -651,6 +651,12 @@ func TestHandleStreamFencedToolCallSnippetPromotesToolCall(t *testing.T) {
 	if strings.Contains(strings.ToLower(got), "tool_calls") {
 		t.Fatalf("expected raw fenced tool_calls snippet stripped from content, got=%q", got)
 	}
+	if strings.Contains(got, "```") {
+		t.Fatalf("expected empty fenced markdown block stripped from content, got=%q", got)
+	}
+	if !strings.Contains(got, "下面是调用示例：") {
+		t.Fatalf("expected non-json prose prefix around fenced snippet to remain, got=%q", got)
+	}
 	if streamFinishReason(frames) != "tool_calls" {
 		t.Fatalf("expected finish_reason=tool_calls, body=%s", rec.Body.String())
 	}

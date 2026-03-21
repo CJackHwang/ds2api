@@ -77,6 +77,9 @@ func TestBuildOpenAIFinalPrompt_VercelPreparePathKeepsFinalAnswerInstruction(t *
 	if !strings.Contains(finalPrompt, "Only call another tool when the previous result is missing required data or returned an error.") {
 		t.Fatalf("vercel prepare finalPrompt missing retry guard instruction: %q", finalPrompt)
 	}
+	if !strings.Contains(finalPrompt, "Never output [TOOL_CALL_HISTORY] or [TOOL_RESULT_HISTORY] tags in your response") {
+		t.Fatalf("vercel prepare finalPrompt missing history-tag output guard instruction: %q", finalPrompt)
+	}
 	if !strings.Contains(finalPrompt, "[TOOL_RESULT_HISTORY]") {
 		t.Fatalf("vercel prepare finalPrompt missing history marker instruction: %q", finalPrompt)
 	}

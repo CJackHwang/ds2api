@@ -63,6 +63,9 @@ func processToolSieveChunk(state *toolStreamSieveState, chunk string, toolNames 
 		start := findToolSegmentStart(pending)
 		if start >= 0 {
 			prefix := pending[:start]
+			if cleaned, hadFence := stripTrailingFenceOpen(prefix); hadFence {
+				prefix = cleaned
+			}
 			if prefix != "" {
 				state.noteText(prefix)
 				events = append(events, toolStreamEvent{Content: prefix})
@@ -226,5 +229,43 @@ func consumeToolCapture(state *toolStreamSieveState, toolNames []string) (prefix
 		// For now, keep the original logic but rely on loose JSON repair.
 		return captured, nil, "", true
 	}
+	prefixPart, suffixPart = stripSurroundingFencesForToolJSON(prefixPart, suffixPart)
 	return prefixPart, parsed.Calls, suffixPart, true
+}
+
+func stripSurroundingFencesForToolJSON(prefix, suffix string) (string, string) {
+	trimmedPrefix, hadFenceOpen := stripTrailingFenceOpen(prefix)
+	if !hadFenceOpen {
+		return prefix, suffix
+	}
+	return trimmedPrefix, stripLeadingFenceClose(suffix)
+}
+
+func stripTrailingFenceOpen(prefix string) (string, bool) {
+	lower := strings.ToLower(prefix)
+	if idx := strings.LastIndex(lower, "```json"); idx >= 0 {
+		if strings.TrimSpace(prefix[idx+len("```json"):]) == "" {
+			return strings.TrimRight(prefix[:idx], " \t\r\n"), true
+		}
+	}
+	if idx := strings.LastIndex(prefix, "```"); idx >= 0 {
+		if strings.TrimSpace(prefix[idx+len("```"):]) == "" {
+			return strings.TrimRight(prefix[:idx], " \t\r\n"), true
+		}
+	}
+	return prefix, false
+}
+
+func stripLeadingFenceClose(suffix string) string {
+	trimmed := strings.TrimLeft(suffix, " \t")
+	if !strings.HasPrefix(trimmed, "```") {
+		return suffix
+	}
+	trimmed = strings.TrimPrefix(trimmed, "```")
+	if strings.HasPrefix(trimmed, "\r\n") {
+		trimmed = trimmed[2:]
+	} else if strings.HasPrefix(trimmed, "\n") {
+		trimmed = trimmed[1:]
+	}
+	return strings.TrimLeft(trimmed, " \t")
 }
