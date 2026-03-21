@@ -318,6 +318,32 @@ func TestHandleStreamToolCallInterceptsWithoutRawContentLeak(t *testing.T) {
 	}
 }
 
+func TestHandleStreamToolCallWithoutDeclaredToolsDoesNotLeakRawJSON(t *testing.T) {
+	h := &Handler{}
+	resp := makeSSEHTTPResponse(
+		`data: {"p":"response/content","v":"{\"tool_calls\":[{\"name\":\"search_web\",\"input\":{\"query\":\"test\"}}]}"}`,
+		`data: [DONE]`,
+	)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+
+	h.handleStream(rec, req, resp, "cid3-no-tools", "deepseek-chat", "prompt", false, false, nil)
+
+	frames, done := parseSSEDataFrames(t, rec.Body.String())
+	if !done {
+		t.Fatalf("expected [DONE], body=%s", rec.Body.String())
+	}
+	if streamHasToolCallsDelta(frames) {
+		t.Fatalf("did not expect tool_calls delta when request has no declared tools, body=%s", rec.Body.String())
+	}
+	if streamHasRawToolJSONContent(frames) {
+		t.Fatalf("raw tool_calls JSON leaked in content delta: %s", rec.Body.String())
+	}
+	if streamFinishReason(frames) != "stop" {
+		t.Fatalf("expected finish_reason=stop when no tools declared, body=%s", rec.Body.String())
+	}
+}
+
 func TestHandleStreamToolCallLargeArgumentsStillIntercepted(t *testing.T) {
 	h := &Handler{}
 	large := strings.Repeat("a", 9000)

@@ -13,7 +13,7 @@ function resolveToolcallPolicy(prepBody, payloadTools) {
   const emitEarlyToolDeltas = boolDefaultTrue(prepBody && prepBody.toolcall_early_emit_high);
   return {
     toolNames,
-    toolSieveEnabled: toolNames.length > 0 && featureMatchEnabled,
+    toolSieveEnabled: featureMatchEnabled,
     emitEarlyToolDeltas,
   };
 }
