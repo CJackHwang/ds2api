@@ -16,6 +16,7 @@ spec:
     - Admin panel: `/admin`
     - Health check: `/healthz`
     - Config is persisted at `/data/config.json` (mounted volume)
+    - `BUILD_VERSION` is optional; when omitted, Docker build falls back to the repo `VERSION` file automatically
 
     ## First-time setup
     1. Open your service URL, then visit `/admin`

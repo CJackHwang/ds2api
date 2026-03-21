@@ -178,6 +178,8 @@ docker-compose logs -f
 2. 部署完成后访问 `/admin`，使用 Zeabur 环境变量/模板指引中的 `DS2API_ADMIN_KEY` 登录。
 3. 在管理台导入/编辑配置（会写入并持久化到 `/data/config.json`）。
 
+说明：Zeabur 使用仓库内 `Dockerfile` 直接构建时，不需要额外传入 `BUILD_VERSION`；镜像会优先读取该构建参数，未提供时自动回退到仓库根目录的 `VERSION` 文件。
+
 ### 方式三：Vercel 部署
 
 1. Fork 仓库到自己的 GitHub

@@ -178,6 +178,8 @@ Rebuild after updates: `docker-compose up -d --build`
 2. After deployment, open `/admin` and login with `DS2API_ADMIN_KEY` shown in Zeabur env/template instructions.
 3. Import / edit config in Admin UI (it will be written and persisted to `/data/config.json`).
 
+Note: when Zeabur builds directly from the repo `Dockerfile`, you do not need to pass `BUILD_VERSION`. The image prefers that build arg when provided, and automatically falls back to the repo-root `VERSION` file when it is absent.
+
 ### Option 3: Vercel
 
 1. Fork this repo to your GitHub account

@@ -181,6 +181,7 @@ healthcheck:
 
 - **端口**：服务默认监听 `5001`，模板会固定设置 `PORT=5001`。
 - **配置持久化**：模板挂载卷 `/data`，并设置 `DS2API_CONFIG_PATH=/data/config.json`；在管理台导入配置后，会写入并持久化到该路径。
+- **构建版本号**：Zeabur / 普通 `docker build` 默认不需要传 `BUILD_VERSION`；镜像会优先使用该构建参数，未提供时自动回退到仓库根目录的 `VERSION` 文件。
 - **首次登录**：部署完成后访问 `/admin`，使用 Zeabur 环境变量/模板指引中的 `DS2API_ADMIN_KEY` 登录（建议首次登录后自行更换为强密码）。
 
 ---
