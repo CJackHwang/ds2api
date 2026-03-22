@@ -38,6 +38,9 @@ func normalizeClaudeRequest(store ConfigReader, req map[string]any) (claudeNorma
 	}
 	finalPrompt := deepseek.MessagesPrepare(toMessageMaps(dsPayload["messages"]))
 	toolNames := extractClaudeToolNames(toolsRequested)
+	if len(toolNames) == 0 && len(toolsRequested) > 0 {
+		toolNames = []string{"__any_tool__"}
+	}
 
 	return claudeNormalizedRequest{
 		Standard: util.StandardRequest{

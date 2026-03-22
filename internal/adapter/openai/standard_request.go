@@ -25,6 +25,7 @@ func normalizeOpenAIChatRequest(store ConfigReader, req map[string]any, traceID 
 	}
 	toolPolicy := util.DefaultToolChoicePolicy()
 	finalPrompt, toolNames := buildOpenAIFinalPromptWithPolicy(messagesRaw, req["tools"], traceID, toolPolicy)
+	toolNames = ensureToolDetectionEnabled(toolNames, req["tools"])
 	passThrough := collectOpenAIChatPassThrough(req)
 
 	return util.StandardRequest{
@@ -74,10 +75,8 @@ func normalizeOpenAIResponsesRequest(store ConfigReader, req map[string]any, tra
 		return util.StandardRequest{}, err
 	}
 	finalPrompt, toolNames := buildOpenAIFinalPromptWithPolicy(messagesRaw, req["tools"], traceID, toolPolicy)
-	if toolPolicy.IsNone() {
-		toolNames = nil
-		toolPolicy.Allowed = nil
-	} else {
+	toolNames = ensureToolDetectionEnabled(toolNames, req["tools"])
+	if !toolPolicy.IsNone() {
 		toolPolicy.Allowed = namesToSet(toolNames)
 	}
 	passThrough := collectOpenAIChatPassThrough(req)
@@ -96,6 +95,20 @@ func normalizeOpenAIResponsesRequest(store ConfigReader, req map[string]any, tra
 		Search:         searchEnabled,
 		PassThrough:    passThrough,
 	}, nil
+}
+
+func ensureToolDetectionEnabled(toolNames []string, toolsRaw any) []string {
+	if len(toolNames) > 0 {
+		return toolNames
+	}
+	tools, _ := toolsRaw.([]any)
+	if len(tools) == 0 {
+		return toolNames
+	}
+	// Keep stream sieve/tool buffering enabled even when client tool schemas
+	// are malformed or lack explicit names; parsed tool payload names are no
+	// longer filtered by this list.
+	return []string{"__any_tool__"}
 }
 
 func collectOpenAIChatPassThrough(req map[string]any) map[string]any {

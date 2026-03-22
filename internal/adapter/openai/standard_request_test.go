@@ -152,7 +152,7 @@ func TestNormalizeOpenAIResponsesRequestToolChoiceForcedUndeclaredFails(t *testi
 	}
 }
 
-func TestNormalizeOpenAIResponsesRequestToolChoiceNoneDisablesTools(t *testing.T) {
+func TestNormalizeOpenAIResponsesRequestToolChoiceNoneKeepsToolDetectionEnabled(t *testing.T) {
 	store := newEmptyStoreForNormalizeTest(t)
 	req := map[string]any{
 		"model": "gpt-4o",
@@ -174,7 +174,7 @@ func TestNormalizeOpenAIResponsesRequestToolChoiceNoneDisablesTools(t *testing.T
 	if n.ToolChoice.Mode != util.ToolChoiceNone {
 		t.Fatalf("expected tool choice mode none, got %q", n.ToolChoice.Mode)
 	}
-	if len(n.ToolNames) != 0 {
-		t.Fatalf("expected no tool names when tool_choice=none, got %#v", n.ToolNames)
+	if len(n.ToolNames) == 0 {
+		t.Fatalf("expected tool detection sentinel when tool_choice=none, got %#v", n.ToolNames)
 	}
 }
