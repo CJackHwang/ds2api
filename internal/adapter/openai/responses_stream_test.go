@@ -354,7 +354,7 @@ func TestHandleResponsesStreamThinkingAndMixedToolExampleEmitsFunctionCall(t *te
 	}
 }
 
-func TestHandleResponsesStreamToolChoiceNoneRejectsFunctionCall(t *testing.T) {
+func TestHandleResponsesStreamToolChoiceNoneStillAllowsFunctionCall(t *testing.T) {
 	h := &Handler{}
 	req := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
 	rec := httptest.NewRecorder()
@@ -376,8 +376,8 @@ func TestHandleResponsesStreamToolChoiceNoneRejectsFunctionCall(t *testing.T) {
 
 	h.handleResponsesStream(rec, req, resp, "owner-a", "resp_test", "deepseek-chat", "prompt", false, false, nil, policy, "")
 	body := rec.Body.String()
-	if strings.Contains(body, "event: response.function_call_arguments.done") {
-		t.Fatalf("did not expect function_call events for tool_choice=none, body=%s", body)
+	if !strings.Contains(body, "event: response.function_call_arguments.done") {
+		t.Fatalf("expected function_call events for tool_choice=none, body=%s", body)
 	}
 }
 
@@ -518,7 +518,7 @@ func TestHandleResponsesStreamRequiredMalformedToolPayloadFails(t *testing.T) {
 	}
 }
 
-func TestHandleResponsesStreamRejectsUnknownToolName(t *testing.T) {
+func TestHandleResponsesStreamAllowsUnknownToolName(t *testing.T) {
 	h := &Handler{}
 	req := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
 	rec := httptest.NewRecorder()
@@ -539,8 +539,8 @@ func TestHandleResponsesStreamRejectsUnknownToolName(t *testing.T) {
 
 	h.handleResponsesStream(rec, req, resp, "owner-a", "resp_test", "deepseek-chat", "prompt", false, false, []string{"read_file"}, util.DefaultToolChoicePolicy(), "")
 	body := rec.Body.String()
-	if strings.Contains(body, "event: response.function_call_arguments.done") {
-		t.Fatalf("did not expect function_call events for unknown tool, body=%s", body)
+	if !strings.Contains(body, "event: response.function_call_arguments.done") {
+		t.Fatalf("expected function_call events for unknown tool, body=%s", body)
 	}
 }
 
@@ -597,7 +597,7 @@ func TestHandleResponsesNonStreamRequiredToolChoiceIgnoresThinkingToolPayload(t 
 	}
 }
 
-func TestHandleResponsesNonStreamToolChoiceNoneRejectsFunctionCall(t *testing.T) {
+func TestHandleResponsesNonStreamToolChoiceNoneStillAllowsFunctionCall(t *testing.T) {
 	h := &Handler{}
 	rec := httptest.NewRecorder()
 	resp := &http.Response{
@@ -611,15 +611,19 @@ func TestHandleResponsesNonStreamToolChoiceNoneRejectsFunctionCall(t *testing.T)
 
 	h.handleResponsesNonStream(rec, resp, "owner-a", "resp_test", "deepseek-chat", "prompt", false, nil, policy, "")
 	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200 for tool_choice=none passthrough text, got %d body=%s", rec.Code, rec.Body.String())
+		t.Fatalf("expected 200 for tool_choice=none handling, got %d body=%s", rec.Code, rec.Body.String())
 	}
 	out := decodeJSONBody(t, rec.Body.String())
 	output, _ := out["output"].([]any)
+	foundFunctionCall := false
 	for _, item := range output {
 		m, _ := item.(map[string]any)
 		if m != nil && m["type"] == "function_call" {
-			t.Fatalf("did not expect function_call output item for tool_choice=none, got %#v", output)
+			foundFunctionCall = true
 		}
+	}
+	if !foundFunctionCall {
+		t.Fatalf("expected function_call output item for tool_choice=none, got %#v", output)
 	}
 }
 

@@ -55,33 +55,34 @@ test('parseToolCalls keeps non-object argument strings as _raw (Go parity)', () 
   ]);
 });
 
-test('parseToolCalls drops unknown schema names when toolNames is provided', () => {
+test('parseToolCalls keeps unknown schema names when toolNames is provided', () => {
   const payload = JSON.stringify({
     tool_calls: [{ name: 'not_in_schema', input: { q: 'go' } }],
   });
   const calls = parseToolCalls(payload, ['search']);
-  assert.equal(calls.length, 0);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].name, 'not_in_schema');
 });
 
-test('parseToolCalls matches tool name case-insensitively and canonicalizes', () => {
+test('parseToolCalls keeps original tool name casing', () => {
   const payload = JSON.stringify({
     tool_calls: [{ name: 'Read_File', input: { path: 'README.MD' } }],
   });
   const calls = parseToolCalls(payload, ['read_file']);
-  assert.deepEqual(calls, [{ name: 'read_file', input: { path: 'README.MD' } }]);
+  assert.deepEqual(calls, [{ name: 'Read_File', input: { path: 'README.MD' } }]);
 });
 
-test('parseToolCalls rejects all names when toolNames is empty (Go strict parity)', () => {
+test('parseToolCalls accepts all names when toolNames is empty', () => {
   const payload = JSON.stringify({
     tool_calls: [{ name: 'not_in_schema', input: { q: 'go' } }],
   });
   const calls = parseToolCalls(payload, []);
-  assert.equal(calls.length, 0);
+  assert.equal(calls.length, 1);
 
   const detailed = parseToolCallsDetailed(payload, []);
   assert.equal(detailed.sawToolCallSyntax, true);
-  assert.equal(detailed.rejectedByPolicy, true);
-  assert.deepEqual(detailed.rejectedToolNames, ['not_in_schema']);
+  assert.equal(detailed.rejectedByPolicy, false);
+  assert.deepEqual(detailed.rejectedToolNames, []);
 });
 
 test('parseToolCalls ignores tool_call payloads that exist only inside fenced code blocks', () => {
@@ -287,7 +288,7 @@ test('sieve preserves text spacing when TOOL_RESULT_HISTORY spans chunks', () =>
   assert.equal(leakedText, 'Hello world');
 });
 
-test('sieve intercepts rejected unknown tool payload (no args) without raw leak', () => {
+test('sieve emits unknown tool payload (no args) as executable tool call', () => {
   const events = runSieve(
     ['{"tool_calls":[{"name":"not_in_schema"}]}', '后置正文G。'],
     ['read_file'],
@@ -295,8 +296,7 @@ test('sieve intercepts rejected unknown tool payload (no args) without raw leak'
   const leakedText = collectText(events);
   const hasToolCall = events.some((evt) => evt.type === 'tool_calls' && Array.isArray(evt.calls) && evt.calls.length > 0);
   const hasToolDelta = events.some((evt) => evt.type === 'tool_call_deltas' && Array.isArray(evt.deltas) && evt.deltas.length > 0);
-  assert.equal(hasToolCall, false);
-  assert.equal(hasToolDelta, false);
+  assert.equal(hasToolCall || hasToolDelta, true);
   assert.equal(leakedText.toLowerCase().includes('tool_calls'), false);
   assert.equal(leakedText.includes('后置正文G。'), true);
 });

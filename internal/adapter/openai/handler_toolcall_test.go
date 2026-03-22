@@ -182,7 +182,7 @@ func TestHandleNonStreamToolCallInterceptsReasonerModel(t *testing.T) {
 	}
 }
 
-func TestHandleNonStreamUnknownToolNotIntercepted(t *testing.T) {
+func TestHandleNonStreamUnknownToolIntercepted(t *testing.T) {
 	h := &Handler{}
 	resp := makeSSEHTTPResponse(
 		`data: {"p":"response/content","v":"{\"tool_calls\":[{\"name\":\"not_in_schema\",\"input\":{\"q\":\"go\"}}]}"}`,
@@ -198,16 +198,13 @@ func TestHandleNonStreamUnknownToolNotIntercepted(t *testing.T) {
 	out := decodeJSONBody(t, rec.Body.String())
 	choices, _ := out["choices"].([]any)
 	choice, _ := choices[0].(map[string]any)
-	if choice["finish_reason"] != "stop" {
-		t.Fatalf("expected finish_reason=stop, got %#v", choice["finish_reason"])
+	if choice["finish_reason"] != "tool_calls" {
+		t.Fatalf("expected finish_reason=tool_calls, got %#v", choice["finish_reason"])
 	}
 	msg, _ := choice["message"].(map[string]any)
-	if _, ok := msg["tool_calls"]; ok {
-		t.Fatalf("did not expect tool_calls for unknown schema name, got %#v", msg["tool_calls"])
-	}
-	content, _ := msg["content"].(string)
-	if !strings.Contains(content, `"tool_calls"`) {
-		t.Fatalf("expected unknown tool json to pass through as text, got %#v", content)
+	toolCalls, _ := msg["tool_calls"].([]any)
+	if len(toolCalls) != 1 {
+		t.Fatalf("expected tool_calls for unknown schema name, got %#v", msg["tool_calls"])
 	}
 }
 
@@ -413,7 +410,7 @@ func TestHandleStreamReasonerToolCallInterceptsWithoutRawContentLeak(t *testing.
 	}
 }
 
-func TestHandleStreamUnknownToolDoesNotLeakRawPayload(t *testing.T) {
+func TestHandleStreamUnknownToolEmitsToolCall(t *testing.T) {
 	h := &Handler{}
 	resp := makeSSEHTTPResponse(
 		`data: {"p":"response/content","v":"{\"tool_calls\":[{\"name\":\"not_in_schema\",\"input\":{\"q\":\"go\"}}]}"}`,
@@ -428,18 +425,18 @@ func TestHandleStreamUnknownToolDoesNotLeakRawPayload(t *testing.T) {
 	if !done {
 		t.Fatalf("expected [DONE], body=%s", rec.Body.String())
 	}
-	if streamHasToolCallsDelta(frames) {
-		t.Fatalf("did not expect tool_calls delta for unknown schema name, body=%s", rec.Body.String())
+	if !streamHasToolCallsDelta(frames) {
+		t.Fatalf("expected tool_calls delta for unknown schema name, body=%s", rec.Body.String())
 	}
 	if streamHasRawToolJSONContent(frames) {
 		t.Fatalf("did not expect raw tool_calls json leak for unknown schema name: %s", rec.Body.String())
 	}
-	if streamFinishReason(frames) != "stop" {
-		t.Fatalf("expected finish_reason=stop, body=%s", rec.Body.String())
+	if streamFinishReason(frames) != "tool_calls" {
+		t.Fatalf("expected finish_reason=tool_calls, body=%s", rec.Body.String())
 	}
 }
 
-func TestHandleStreamUnknownToolNoArgsDoesNotLeakRawPayload(t *testing.T) {
+func TestHandleStreamUnknownToolNoArgsEmitsToolCall(t *testing.T) {
 	h := &Handler{}
 	resp := makeSSEHTTPResponse(
 		`data: {"p":"response/content","v":"{\"tool_calls\":[{\"name\":\"not_in_schema\"}]}"}`,
@@ -454,14 +451,14 @@ func TestHandleStreamUnknownToolNoArgsDoesNotLeakRawPayload(t *testing.T) {
 	if !done {
 		t.Fatalf("expected [DONE], body=%s", rec.Body.String())
 	}
-	if streamHasToolCallsDelta(frames) {
-		t.Fatalf("did not expect tool_calls delta for unknown schema name (no args), body=%s", rec.Body.String())
+	if !streamHasToolCallsDelta(frames) {
+		t.Fatalf("expected tool_calls delta for unknown schema name (no args), body=%s", rec.Body.String())
 	}
 	if streamHasRawToolJSONContent(frames) {
 		t.Fatalf("did not expect raw tool_calls json leak for unknown schema name (no args): %s", rec.Body.String())
 	}
-	if streamFinishReason(frames) != "stop" {
-		t.Fatalf("expected finish_reason=stop, body=%s", rec.Body.String())
+	if streamFinishReason(frames) != "tool_calls" {
+		t.Fatalf("expected finish_reason=tool_calls, body=%s", rec.Body.String())
 	}
 }
 

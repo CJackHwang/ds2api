@@ -16,6 +16,7 @@ type ToolCallParseResult struct {
 	RejectedByPolicy  bool
 	RejectedToolNames []string
 }
+
 func ParseToolCalls(text string, availableToolNames []string) []ParsedToolCall {
 	return ParseToolCallsDetailed(text, availableToolNames).Calls
 }
@@ -119,56 +120,17 @@ func ParseStandaloneToolCallsDetailed(text string, availableToolNames []string) 
 }
 
 func filterToolCallsDetailed(parsed []ParsedToolCall, availableToolNames []string) ([]ParsedToolCall, []string) {
-	allowed := map[string]struct{}{}
-	allowedCanonical := map[string]string{}
-	for _, name := range availableToolNames {
-		trimmed := strings.TrimSpace(name)
-		if trimmed == "" {
-			continue
-		}
-		allowed[trimmed] = struct{}{}
-		lower := strings.ToLower(trimmed)
-		if _, exists := allowedCanonical[lower]; !exists {
-			allowedCanonical[lower] = trimmed
-		}
-	}
-	if len(allowed) == 0 {
-		rejectedSet := map[string]struct{}{}
-		rejected := make([]string, 0, len(parsed))
-		for _, tc := range parsed {
-			if tc.Name == "" {
-				continue
-			}
-			if _, ok := rejectedSet[tc.Name]; ok {
-				continue
-			}
-			rejectedSet[tc.Name] = struct{}{}
-			rejected = append(rejected, tc.Name)
-		}
-		return nil, rejected
-	}
 	out := make([]ParsedToolCall, 0, len(parsed))
-	rejectedSet := map[string]struct{}{}
-	rejected := make([]string, 0)
 	for _, tc := range parsed {
 		if tc.Name == "" {
 			continue
 		}
-		matchedName := resolveAllowedToolName(tc.Name, allowed, allowedCanonical)
-		if matchedName == "" {
-			if _, ok := rejectedSet[tc.Name]; !ok {
-				rejectedSet[tc.Name] = struct{}{}
-				rejected = append(rejected, tc.Name)
-			}
-			continue
-		}
-		tc.Name = matchedName
 		if tc.Input == nil {
 			tc.Input = map[string]any{}
 		}
 		out = append(out, tc)
 	}
-	return out, rejected
+	return out, nil
 }
 
 func resolveAllowedToolName(name string, allowed map[string]struct{}, allowedCanonical map[string]string) string {

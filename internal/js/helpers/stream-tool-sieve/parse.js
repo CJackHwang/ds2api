@@ -140,63 +140,17 @@ function emptyParseResult() {
 }
 
 function filterToolCallsDetailed(parsed, toolNames) {
-  const sourceNames = Array.isArray(toolNames) ? toolNames : [];
-  const allowed = new Set();
-  const allowedCanonical = new Map();
-  for (const item of sourceNames) {
-    const name = toStringSafe(item);
-    if (!name) {
-      continue;
-    }
-    allowed.add(name);
-    const lower = name.toLowerCase();
-    if (!allowedCanonical.has(lower)) {
-      allowedCanonical.set(lower, name);
-    }
-  }
-
-  if (allowed.size === 0) {
-    const rejected = [];
-    const seen = new Set();
-    for (const tc of parsed) {
-      if (!tc || !tc.name) {
-        continue;
-      }
-      if (seen.has(tc.name)) {
-        continue;
-      }
-      seen.add(tc.name);
-      rejected.push(tc.name);
-    }
-    return { calls: [], rejectedToolNames: rejected };
-  }
-
   const calls = [];
-  const rejected = [];
-  const seenRejected = new Set();
   for (const tc of parsed) {
     if (!tc || !tc.name) {
       continue;
     }
-    let matchedName = '';
-    if (allowed.has(tc.name)) {
-      matchedName = tc.name;
-    } else {
-      matchedName = resolveAllowedToolName(tc.name, allowed, allowedCanonical);
-    }
-    if (!matchedName) {
-      if (!seenRejected.has(tc.name)) {
-        seenRejected.add(tc.name);
-        rejected.push(tc.name);
-      }
-      continue;
-    }
     calls.push({
-      name: matchedName,
+      name: tc.name,
       input: tc.input && typeof tc.input === 'object' && !Array.isArray(tc.input) ? tc.input : {},
     });
   }
-  return { calls, rejectedToolNames: rejected };
+  return { calls, rejectedToolNames: [] };
 }
 
 function resolveAllowedToolName(name, allowed, allowedCanonical) {

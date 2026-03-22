@@ -111,28 +111,21 @@ func filterIncrementalToolCallDeltasByAllowed(deltas []toolCallDelta, allowedNam
 	if len(deltas) == 0 {
 		return nil
 	}
-	allowed := namesToSet(allowedNames)
-	if len(allowed) == 0 {
-		for _, d := range deltas {
-			if d.Name != "" {
-				seenNames[d.Index] = "__blocked__"
-			}
-		}
-		return nil
-	}
 	out := make([]toolCallDelta, 0, len(deltas))
 	for _, d := range deltas {
 		if d.Name != "" {
-			if _, ok := allowed[d.Name]; !ok {
-				seenNames[d.Index] = "__blocked__"
-				continue
+			if seenNames != nil {
+				seenNames[d.Index] = d.Name
 			}
-			seenNames[d.Index] = d.Name
+			out = append(out, d)
+			continue
+		}
+		if seenNames == nil {
 			out = append(out, d)
 			continue
 		}
 		name := strings.TrimSpace(seenNames[d.Index])
-		if name == "" || name == "__blocked__" {
+		if name == "" {
 			continue
 		}
 		out = append(out, d)

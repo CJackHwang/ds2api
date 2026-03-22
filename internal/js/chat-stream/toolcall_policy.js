@@ -76,17 +76,6 @@ function filterIncrementalToolCallDeltasByAllowed(deltas, allowedNames, seenName
     return [];
   }
   const seen = seenNames instanceof Map ? seenNames : new Map();
-  const allowed = new Set((allowedNames || []).filter((name) => asString(name) !== ''));
-  if (allowed.size === 0) {
-    for (const d of deltas) {
-      if (d && typeof d === 'object' && asString(d.name)) {
-        const index = Number.isInteger(d.index) ? d.index : 0;
-        seen.set(index, '__blocked__');
-      }
-    }
-    return [];
-  }
-
   const out = [];
   for (const d of deltas) {
     if (!d || typeof d !== 'object') {
@@ -95,16 +84,12 @@ function filterIncrementalToolCallDeltasByAllowed(deltas, allowedNames, seenName
     const index = Number.isInteger(d.index) ? d.index : 0;
     const name = asString(d.name);
     if (name) {
-      if (!allowed.has(name)) {
-        seen.set(index, '__blocked__');
-        continue;
-      }
       seen.set(index, name);
       out.push(d);
       continue;
     }
     const existing = asString(seen.get(index));
-    if (!existing || existing === '__blocked__') {
+    if (!existing) {
       continue;
     }
     out.push(d);

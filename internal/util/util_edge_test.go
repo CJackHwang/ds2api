@@ -364,8 +364,8 @@ func TestFormatOpenAIStreamToolCalls(t *testing.T) {
 func TestParseToolCallsNoToolNames(t *testing.T) {
 	text := `{"tool_calls":[{"name":"search","input":{"q":"go"}}]}`
 	calls := ParseToolCalls(text, nil)
-	if len(calls) != 0 {
-		t.Fatalf("expected 0 call with nil tool names, got %d", len(calls))
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 call with nil tool names, got %d", len(calls))
 	}
 }
 
