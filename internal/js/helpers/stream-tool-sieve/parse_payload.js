@@ -318,6 +318,9 @@ function parseToolCallItem(m) {
       hasInput = true;
     }
   }
+  if (!name && typeof m.function === 'string') {
+    name = toStringSafe(m.function);
+  }
 
   if (!hasInput) {
     for (const k of ['arguments', 'args', 'parameters', 'params']) {

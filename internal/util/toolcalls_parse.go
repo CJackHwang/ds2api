@@ -231,6 +231,11 @@ func parseToolCallItem(m map[string]any) (ParsedToolCall, bool) {
 			}
 		}
 	}
+	if strings.TrimSpace(name) == "" {
+		if fnName, ok := m["function"].(string); ok {
+			name = fnName
+		}
+	}
 	if !hasInput {
 		for _, key := range []string{"arguments", "args", "parameters", "params"} {
 			if v, ok := m[key]; ok {

@@ -169,6 +169,17 @@ func TestHandleClaudeStreamRealtimeToolSafety(t *testing.T) {
 	if !foundToolUse {
 		t.Fatalf("expected tool_use block in stream, body=%s", rec.Body.String())
 	}
+	foundInputDelta := false
+	for _, f := range findClaudeFrames(frames, "content_block_delta") {
+		delta, _ := f.Payload["delta"].(map[string]any)
+		if delta["type"] == "input_json_delta" && strings.Contains(asString(delta["partial_json"]), `"q":"go"`) {
+			foundInputDelta = true
+			break
+		}
+	}
+	if !foundInputDelta {
+		t.Fatalf("expected input_json_delta with tool arguments, body=%s", rec.Body.String())
+	}
 
 	foundToolUseStop := false
 	for _, f := range findClaudeFrames(frames, "message_delta") {

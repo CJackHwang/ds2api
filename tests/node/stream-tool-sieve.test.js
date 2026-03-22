@@ -55,6 +55,16 @@ test('parseToolCalls keeps non-object argument strings as _raw (Go parity)', () 
   ]);
 });
 
+test('parseToolCalls supports function string + arguments object payload', () => {
+  const payload = JSON.stringify({
+    tool_calls: [{ function: 'Write', arguments: { file_path: 'tmp/a.md', content: 'ok' } }],
+  });
+  const calls = parseToolCalls(payload, []);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].name, 'Write');
+  assert.equal(calls[0].input.file_path, 'tmp/a.md');
+});
+
 test('parseToolCalls keeps unknown schema names when toolNames is provided', () => {
   const payload = JSON.stringify({
     tool_calls: [{ name: 'not_in_schema', input: { q: 'go' } }],

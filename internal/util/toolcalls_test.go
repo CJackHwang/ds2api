@@ -41,6 +41,20 @@ func TestParseToolCallsWithFunctionArgumentsString(t *testing.T) {
 	}
 }
 
+func TestParseToolCallsWithFunctionStringAndArgumentsObject(t *testing.T) {
+	text := `{"tool_calls":[{"function":"Write","arguments":{"file_path":"tmp/a.md","content":"ok"}}]}`
+	calls := ParseToolCalls(text, nil)
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 call, got %d", len(calls))
+	}
+	if calls[0].Name != "Write" {
+		t.Fatalf("unexpected tool name: %s", calls[0].Name)
+	}
+	if calls[0].Input["file_path"] != "tmp/a.md" {
+		t.Fatalf("unexpected args: %#v", calls[0].Input)
+	}
+}
+
 func TestParseToolCallsKeepsUnknownToolName(t *testing.T) {
 	text := `{"tool_calls":[{"name":"unknown","input":{}}]}`
 	calls := ParseToolCalls(text, []string{"search"})
