@@ -34,10 +34,10 @@ test('resolveToolcallPolicy defaults to feature-match + early emit when prepare 
   assert.equal(policy.emitEarlyToolDeltas, true);
 });
 
-test('resolveToolcallPolicy enables sieve even without declared tools to avoid raw tool json leaks', () => {
+test('resolveToolcallPolicy disables sieve when no tools are declared', () => {
   const policy = resolveToolcallPolicy({}, undefined);
   assert.deepEqual(policy.toolNames, []);
-  assert.equal(policy.toolSieveEnabled, true);
+  assert.equal(policy.toolSieveEnabled, false);
   assert.equal(policy.emitEarlyToolDeltas, true);
 });
 

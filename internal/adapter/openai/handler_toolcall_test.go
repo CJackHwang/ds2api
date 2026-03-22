@@ -318,7 +318,7 @@ func TestHandleStreamToolCallInterceptsWithoutRawContentLeak(t *testing.T) {
 	}
 }
 
-func TestHandleStreamToolCallWithoutDeclaredToolsDoesNotLeakRawJSON(t *testing.T) {
+func TestHandleStreamToolCallWithoutDeclaredToolsBypassesToolSieve(t *testing.T) {
 	h := &Handler{}
 	resp := makeSSEHTTPResponse(
 		`data: {"p":"response/content","v":"{\"tool_calls\":[{\"name\":\"search_web\",\"input\":{\"query\":\"test\"}}]}"}`,
@@ -336,8 +336,8 @@ func TestHandleStreamToolCallWithoutDeclaredToolsDoesNotLeakRawJSON(t *testing.T
 	if streamHasToolCallsDelta(frames) {
 		t.Fatalf("did not expect tool_calls delta when request has no declared tools, body=%s", rec.Body.String())
 	}
-	if streamHasRawToolJSONContent(frames) {
-		t.Fatalf("raw tool_calls JSON leaked in content delta: %s", rec.Body.String())
+	if !streamHasRawToolJSONContent(frames) {
+		t.Fatalf("expected raw tool_calls JSON content when tool sieve is bypassed: %s", rec.Body.String())
 	}
 	if streamFinishReason(frames) != "stop" {
 		t.Fatalf("expected finish_reason=stop when no tools declared, body=%s", rec.Body.String())

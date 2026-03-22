@@ -146,7 +146,7 @@ func (h *Handler) handleResponsesStream(w http.ResponseWriter, r *http.Request, 
 	if thinkingEnabled {
 		initialType = "thinking"
 	}
-	bufferToolContent := h.toolcallFeatureMatchEnabled()
+	bufferToolContent := h.toolcallFeatureMatchEnabled() && len(toolNames) > 0
 	emitEarlyToolDeltas := h.toolcallEarlyEmitHighConfidence()
 
 	streamRuntime := newResponsesStreamRuntime(

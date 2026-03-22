@@ -128,7 +128,7 @@ func (h *Handler) handleStream(w http.ResponseWriter, r *http.Request, resp *htt
 	}
 
 	created := time.Now().Unix()
-	bufferToolContent := h.toolcallFeatureMatchEnabled()
+	bufferToolContent := h.toolcallFeatureMatchEnabled() && len(toolNames) > 0
 	emitEarlyToolDeltas := h.toolcallEarlyEmitHighConfidence()
 	initialType := "text"
 	if thinkingEnabled {
