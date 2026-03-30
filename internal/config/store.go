@@ -41,6 +41,17 @@ func loadConfig() (Config, bool, error) {
 	if rawCfg != "" {
 		cfg, err := parseConfigString(rawCfg)
 		if err != nil {
+			if IsVercel() || !envWritebackEnabled() {
+				return cfg, true, err
+			}
+			content, fileErr := os.ReadFile(ConfigPath())
+			if fileErr == nil {
+				var fileCfg Config
+				if unmarshalErr := json.Unmarshal(content, &fileCfg); unmarshalErr == nil {
+					fileCfg.DropInvalidAccounts()
+					return fileCfg, false, err
+				}
+			}
 			return cfg, true, err
 		}
 		cfg.ClearAccountTokens()

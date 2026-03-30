@@ -154,6 +154,39 @@ func TestEnvBackedStoreWritebackDoesNotBootstrapOnInvalidEnvJSON(t *testing.T) {
 	}
 }
 
+func TestEnvBackedStoreWritebackFallsBackToPersistedFileWhenEnvMalformed(t *testing.T) {
+	tmp, err := os.CreateTemp(t.TempDir(), "config-*.json")
+	if err != nil {
+		t.Fatalf("create temp config: %v", err)
+	}
+	path := tmp.Name()
+	_ = tmp.Close()
+
+	seed := `{"keys":["file-k"],"accounts":[{"email":"file@example.com","password":"p"}]}`
+	if err := os.WriteFile(path, []byte(seed), 0o644); err != nil {
+		t.Fatalf("write seed config: %v", err)
+	}
+
+	t.Setenv("DS2API_CONFIG_JSON", "{invalid-json")
+	t.Setenv("CONFIG_JSON", "")
+	t.Setenv("DS2API_CONFIG_PATH", path)
+	t.Setenv("DS2API_ENV_WRITEBACK", "1")
+
+	cfg, fromEnv, loadErr := loadConfig()
+	if loadErr == nil {
+		t.Fatalf("expected loadConfig error for invalid env json")
+	}
+	if fromEnv {
+		t.Fatalf("expected fromEnv=false when persisted config file fallback succeeds")
+	}
+	if len(cfg.Keys) != 1 || cfg.Keys[0] != "file-k" {
+		t.Fatalf("expected keys from persisted file, got %#v", cfg.Keys)
+	}
+	if len(cfg.Accounts) != 1 || cfg.Accounts[0].Email != "file@example.com" {
+		t.Fatalf("expected accounts from persisted file, got %#v", cfg.Accounts)
+	}
+}
+
 func TestRuntimeTokenRefreshIntervalHoursDefaultsToSix(t *testing.T) {
 	t.Setenv("DS2API_CONFIG_JSON", `{
 		"keys":["k1"],

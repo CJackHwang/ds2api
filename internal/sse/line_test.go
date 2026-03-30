@@ -55,3 +55,13 @@ func TestParseDeepSeekContentLineDropsPureLeakedContentFilterChunk(t *testing.T)
 		t.Fatalf("expected empty parts, got %#v", res.Parts)
 	}
 }
+
+func TestParseDeepSeekContentLineKeepsLegitContentFilterMentions(t *testing.T) {
+	res := ParseDeepSeekContentLine([]byte(`data: {"p":"response/content","v":"字符串 CONTENT_FILTER 用于说明上游审核信号"}`), false, "text")
+	if !res.Parsed || res.Stop {
+		t.Fatalf("expected parsed non-stop result: %#v", res)
+	}
+	if len(res.Parts) != 1 || res.Parts[0].Text != "字符串 CONTENT_FILTER 用于说明上游审核信号" {
+		t.Fatalf("unexpected parts for legit mention: %#v", res.Parts)
+	}
+}
