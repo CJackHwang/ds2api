@@ -139,13 +139,7 @@ func (h *Handler) proxyViaOpenAI(w http.ResponseWriter, r *http.Request, stream 
 	defer res.Body.Close()
 	body, _ := io.ReadAll(res.Body)
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		for k, vv := range res.Header {
-			for _, v := range vv {
-				w.Header().Add(k, v)
-			}
-		}
-		w.WriteHeader(res.StatusCode)
-		_, _ = w.Write(body)
+		writeGeminiError(w, res.StatusCode, extractProxyErrorMessage(body))
 		return true
 	}
 	if isVercelPrepare {
@@ -163,6 +157,23 @@ func (h *Handler) proxyViaOpenAI(w http.ResponseWriter, r *http.Request, stream 
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(converted)
 	return true
+}
+
+func extractProxyErrorMessage(body []byte) string {
+	trimmed := strings.TrimSpace(string(body))
+	if trimmed == "" {
+		return "Request failed."
+	}
+	var parsed map[string]any
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return trimmed
+	}
+	errObj, _ := parsed["error"].(map[string]any)
+	message, _ := errObj["message"].(string)
+	if strings.TrimSpace(message) != "" {
+		return strings.TrimSpace(message)
+	}
+	return trimmed
 }
 
 func (h *Handler) handleNonStreamGenerateContent(w http.ResponseWriter, resp *http.Response, model, finalPrompt string, thinkingEnabled bool, toolNames []string) {

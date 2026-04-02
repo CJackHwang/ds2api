@@ -111,6 +111,13 @@ func (h *Handler) proxyViaOpenAI(w http.ResponseWriter, r *http.Request) bool {
 	}
 	model, _ := req["model"].(string)
 	stream := util.ToBool(req["stream"])
+	if norm, normErr := normalizeClaudeRequest(h.Store, req); normErr == nil {
+		model = norm.Standard.ResolvedModel
+		req["model"] = model
+		if encoded, encodeErr := json.Marshal(req); encodeErr == nil {
+			raw = encoded
+		}
+	}
 	translatedReq := translatorcliproxy.ToOpenAI(sdktranslator.FormatClaude, model, raw, stream)
 
 	isVercelPrepare := strings.TrimSpace(r.URL.Query().Get("__stream_prepare")) == "1"

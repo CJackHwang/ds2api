@@ -40,3 +40,26 @@ func TestGeminiProxyViaOpenAIVercelReleasePassthrough(t *testing.T) {
 		t.Fatalf("expected success=true passthrough, got=%v", out)
 	}
 }
+
+func TestGeminiProxyViaOpenAIConvertsErrorEnvelope(t *testing.T) {
+	h := &Handler{OpenAI: openAIProxyStub{status: http.StatusUnauthorized, body: `{"error":{"message":"invalid api key"}}`}}
+	req := httptest.NewRequest(http.MethodPost, "/v1beta/models/gemini-2.5-pro:generateContent", strings.NewReader(`{"contents":[{"role":"user","parts":[{"text":"hi"}]}]}`))
+	rec := httptest.NewRecorder()
+
+	h.GenerateContent(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("unexpected status: %d body=%s", rec.Code, rec.Body.String())
+	}
+	var out map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatalf("expected json response, got err=%v body=%s", err, rec.Body.String())
+	}
+	errMap, _ := out["error"].(map[string]any)
+	if got, _ := errMap["status"].(string); got != "UNAUTHENTICATED" {
+		t.Fatalf("expected gemini-style status, got %q response=%v", got, out)
+	}
+	if got, _ := errMap["message"].(string); got != "invalid api key" {
+		t.Fatalf("expected extracted error message, got %q response=%v", got, out)
+	}
+}
