@@ -176,6 +176,21 @@ func TestParseToolCallsSupportsCanonicalXMLParametersJSON(t *testing.T) {
 	}
 }
 
+func TestParseToolCallsSupportsXMLParametersJSONWithRawAmpersand(t *testing.T) {
+	text := `<tool_calls><tool_call><tool_name>execute_command</tool_name><parameters>{"command":"sshpass -p 'xxx' ssh -o StrictHostKeyChecking=no -p 1111 root@111.111.111.111 'cd /root && git clone https://github.com/ericc-ch/copilot-api.git'","cwd":null,"timeout":null}</parameters></tool_call></tool_calls>`
+	calls := ParseToolCalls(text, []string{"execute_command"})
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 call, got %#v", calls)
+	}
+	if calls[0].Name != "execute_command" {
+		t.Fatalf("expected tool name execute_command, got %q", calls[0].Name)
+	}
+	cmd, _ := calls[0].Input["command"].(string)
+	if !strings.Contains(cmd, "&& git clone https://github.com/ericc-ch/copilot-api.git") {
+		t.Fatalf("expected command preserved, got %#v", calls[0].Input["command"])
+	}
+}
+
 func TestParseToolCallsPrefersJSONPayloadOverIncidentalXMLInString(t *testing.T) {
 	text := `{"tool_calls":[{"name":"search","input":{"q":"latest <tool_call><tool_name>wrong</tool_name><parameters>{\"x\":1}</parameters></tool_call>"}}]}`
 	calls := ParseToolCallsDetailed(text, []string{"search"}).Calls

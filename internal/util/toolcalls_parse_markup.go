@@ -19,6 +19,12 @@ var toolUseFunctionPattern = regexp.MustCompile(`(?is)<tool_use>\s*<function\s+n
 var toolUseNameParametersPattern = regexp.MustCompile(`(?is)<tool_use>\s*<tool_name>\s*([^<]+?)\s*</tool_name>\s*<parameters>\s*(.*?)\s*</parameters>\s*</tool_use>`)
 var toolUseFunctionNameParametersPattern = regexp.MustCompile(`(?is)<tool_use>\s*<function_name>\s*([^<]+?)\s*</function_name>\s*<parameters>\s*(.*?)\s*</parameters>\s*</tool_use>`)
 var toolUseToolNameBodyPattern = regexp.MustCompile(`(?is)<tool_use>\s*<tool_name>\s*([^<]+?)\s*</tool_name>\s*(.*?)\s*</tool_use>`)
+var xmlToolCallNameTagNames = []string{"tool_name", "function_name", "name"}
+var xmlToolCallNamePatternByTag = map[string]*regexp.Regexp{
+	"tool_name":     regexp.MustCompile(`(?is)<(?:[a-z0-9_:-]+:)?tool_name\b[^>]*>(.*?)</(?:[a-z0-9_:-]+:)?tool_name>`),
+	"function_name": regexp.MustCompile(`(?is)<(?:[a-z0-9_:-]+:)?function_name\b[^>]*>(.*?)</(?:[a-z0-9_:-]+:)?function_name>`),
+	"name":          regexp.MustCompile(`(?is)<(?:[a-z0-9_:-]+:)?name\b[^>]*>(.*?)</(?:[a-z0-9_:-]+:)?name>`),
+}
 
 func parseXMLToolCalls(text string) []ParsedToolCall {
 	matches := xmlToolCallPattern.FindAllString(text, -1)
@@ -81,6 +87,22 @@ func parseSingleXMLToolCall(block string) (ParsedToolCall, bool) {
 		}
 	}
 
+	// First try regex-based extraction for <tool_name>/<parameters>.
+	// This is resilient to non-XML-safe characters (e.g. raw '&' in shell commands).
+	nameFromTags := findMarkupTagValue(inner, xmlToolCallNameTagNames, xmlToolCallNamePatternByTag)
+	if strings.TrimSpace(nameFromTags) != "" {
+		if argsRaw := findMarkupTagValue(inner, toolCallMarkupArgsTagNames, toolCallMarkupArgsPatternByTag); strings.TrimSpace(argsRaw) != "" {
+			if parsed := parseToolCallInput(argsRaw); len(parsed) > 0 {
+				if !(len(parsed) == 1 && parsed["_raw"] != nil) {
+					return ParsedToolCall{
+						Name:  strings.TrimSpace(nameFromTags),
+						Input: parsed,
+					}, true
+				}
+			}
+		}
+	}
+
 	dec := xml.NewDecoder(strings.NewReader(block))
 	name := ""
 	params := map[string]any{}
@@ -113,6 +135,12 @@ func parseSingleXMLToolCall(block string) (ParsedToolCall, bool) {
 						if parsed := parseToolCallInput(inner); len(parsed) > 0 {
 							if len(parsed) == 1 {
 								if _, onlyRaw := parsed["_raw"]; onlyRaw {
+									if kv := parseXMLChildKV(inner); len(kv) > 0 {
+										for k, vv := range kv {
+											params[k] = vv
+										}
+										break
+									}
 									if kv := parseMarkupKVObject(inner); len(kv) > 0 {
 										for k, vv := range kv {
 											params[k] = vv

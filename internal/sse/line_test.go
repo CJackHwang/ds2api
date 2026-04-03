@@ -102,3 +102,23 @@ func TestParseDeepSeekContentLineContentTextEqualContentFilterDoesNotStop(t *tes
 		t.Fatalf("did not expect content-filter stop for content text: %#v", res)
 	}
 }
+
+func TestParseDeepSeekContentLinePreservesTrailingNewlineBeforeLeakedContentFilter(t *testing.T) {
+	res := ParseDeepSeekContentLine([]byte("data: {\"p\":\"response/content\",\"v\":\"line1\\nCONTENT_FILTERblocked\"}"), false, "text")
+	if !res.Parsed || res.Stop {
+		t.Fatalf("expected parsed non-stop result: %#v", res)
+	}
+	if len(res.Parts) != 1 || res.Parts[0].Text != "line1\n" {
+		t.Fatalf("expected trailing newline preserved, got %#v", res.Parts)
+	}
+}
+
+func TestParseDeepSeekContentLineKeepsNewlineOnlyChunkBeforeLeakedContentFilter(t *testing.T) {
+	res := ParseDeepSeekContentLine([]byte("data: {\"p\":\"response/content\",\"v\":\"\\nCONTENT_FILTERblocked\"}"), false, "text")
+	if !res.Parsed || res.Stop {
+		t.Fatalf("expected parsed non-stop result: %#v", res)
+	}
+	if len(res.Parts) != 1 || res.Parts[0].Text != "\n" {
+		t.Fatalf("expected newline-only chunk preserved, got %#v", res.Parts)
+	}
+}

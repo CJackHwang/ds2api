@@ -9,7 +9,7 @@ func filterLeakedContentFilterParts(parts []ContentPart) []ContentPart {
 	out := make([]ContentPart, 0, len(parts))
 	for _, p := range parts {
 		cleaned := stripLeakedContentFilterSuffix(p.Text)
-		if strings.TrimSpace(cleaned) == "" {
+		if shouldDropCleanedLeakedChunk(cleaned) {
 			continue
 		}
 		p.Text = cleaned
@@ -27,5 +27,19 @@ func stripLeakedContentFilterSuffix(text string) string {
 	if idx < 0 {
 		return text
 	}
-	return strings.TrimRight(text[:idx], " \t\r\n")
+	// Keep "\n" so we don't collapse line structure when the upstream model
+	// appends leaked CONTENT_FILTER markers after a line break.
+	return strings.TrimRight(text[:idx], " \t\r")
+}
+
+func shouldDropCleanedLeakedChunk(cleaned string) bool {
+	if cleaned == "" {
+		return true
+	}
+	// Preserve newline-only chunks to avoid dropping legitimate line breaks
+	// before a leaked CONTENT_FILTER suffix.
+	if strings.Contains(cleaned, "\n") {
+		return false
+	}
+	return strings.TrimSpace(cleaned) == ""
 }
