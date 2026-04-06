@@ -6,6 +6,10 @@ import (
 )
 
 func ValidateConfig(c Config) error {
+	c.Normalize()
+	if err := ValidateProxyConfig(c.Proxies); err != nil {
+		return err
+	}
 	if err := ValidateAdminConfig(c.Admin); err != nil {
 		return err
 	}
@@ -20,6 +24,55 @@ func ValidateConfig(c Config) error {
 	}
 	if err := ValidateAutoDeleteConfig(c.AutoDelete); err != nil {
 		return err
+	}
+	if err := ValidateAccountProxyReferences(c.Accounts, c.Proxies); err != nil {
+		return err
+	}
+	return nil
+}
+
+func ValidateProxyConfig(proxies []Proxy) error {
+	seen := make(map[string]struct{}, len(proxies))
+	for _, proxy := range proxies {
+		proxy = NormalizeProxy(proxy)
+		if err := ValidateTrimmedString("proxies.id", proxy.ID, true); err != nil {
+			return err
+		}
+		switch proxy.Type {
+		case "socks5", "socks5h":
+		default:
+			return fmt.Errorf("proxies.type must be one of socks5, socks5h")
+		}
+		if err := ValidateTrimmedString("proxies.host", proxy.Host, true); err != nil {
+			return err
+		}
+		if err := ValidateIntRange("proxies.port", proxy.Port, 1, 65535, true); err != nil {
+			return err
+		}
+		if _, ok := seen[proxy.ID]; ok {
+			return fmt.Errorf("duplicate proxy id: %s", proxy.ID)
+		}
+		seen[proxy.ID] = struct{}{}
+	}
+	return nil
+}
+
+func ValidateAccountProxyReferences(accounts []Account, proxies []Proxy) error {
+	if len(accounts) == 0 {
+		return nil
+	}
+	ids := make(map[string]struct{}, len(proxies))
+	for _, proxy := range proxies {
+		ids[NormalizeProxy(proxy).ID] = struct{}{}
+	}
+	for _, acc := range accounts {
+		proxyID := strings.TrimSpace(acc.ProxyID)
+		if proxyID == "" {
+			continue
+		}
+		if _, ok := ids[proxyID]; !ok {
+			return fmt.Errorf("account proxy_id references unknown proxy: %s", proxyID)
+		}
 	}
 	return nil
 }

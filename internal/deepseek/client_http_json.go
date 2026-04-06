@@ -27,6 +27,7 @@ func (c *Client) postJSONWithStatus(ctx context.Context, doer trans.Doer, url st
 	if err != nil {
 		return nil, 0, err
 	}
+	clients := c.requestClientsFromContext(ctx)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(b))
 	if err != nil {
 		return nil, 0, err
@@ -44,7 +45,7 @@ func (c *Client) postJSONWithStatus(ctx context.Context, doer trans.Doer, url st
 		for k, v := range headers {
 			req2.Header.Set(k, v)
 		}
-		resp, err = c.fallback.Do(req2)
+		resp, err = clients.fallback.Do(req2)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -64,6 +65,7 @@ func (c *Client) postJSONWithStatus(ctx context.Context, doer trans.Doer, url st
 }
 
 func (c *Client) getJSONWithStatus(ctx context.Context, doer trans.Doer, url string, headers map[string]string) (map[string]any, int, error) {
+	clients := c.requestClientsFromContext(ctx)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, 0, err
@@ -81,7 +83,7 @@ func (c *Client) getJSONWithStatus(ctx context.Context, doer trans.Doer, url str
 		for k, v := range headers {
 			req2.Header.Set(k, v)
 		}
-		resp, err = c.fallback.Do(req2)
+		resp, err = clients.fallback.Do(req2)
 		if err != nil {
 			return nil, 0, err
 		}

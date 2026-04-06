@@ -74,6 +74,25 @@ func (h *Handler) configImport(w http.ResponseWriter, r *http.Request) {
 			}
 
 			existingAccounts := map[string]struct{}{}
+			existingProxies := map[string]struct{}{}
+			for _, proxy := range next.Proxies {
+				proxy = config.NormalizeProxy(proxy)
+				if proxy.ID != "" {
+					existingProxies[proxy.ID] = struct{}{}
+				}
+			}
+			for _, proxy := range incoming.Proxies {
+				proxy = config.NormalizeProxy(proxy)
+				if proxy.ID == "" {
+					continue
+				}
+				if _, ok := existingProxies[proxy.ID]; ok {
+					continue
+				}
+				existingProxies[proxy.ID] = struct{}{}
+				next.Proxies = append(next.Proxies, proxy)
+			}
+
 			for _, acc := range next.Accounts {
 				acc = normalizeAccountForStorage(acc)
 				key := accountDedupeKey(acc)

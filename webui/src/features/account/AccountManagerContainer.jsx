@@ -45,6 +45,7 @@ export default function AccountManagerContainer({ config, onRefresh, onMessage, 
         batchProgress,
         sessionCounts,
         deletingSessions,
+        updatingProxy,
         addKey,
         deleteKey,
         addAccount,
@@ -52,6 +53,7 @@ export default function AccountManagerContainer({ config, onRefresh, onMessage, 
         testAccount,
         testAllAccounts,
         deleteAllSessions,
+        updateAccountProxy,
     } = useAccountActions({
         apiFetch,
         t,
@@ -107,16 +109,19 @@ export default function AccountManagerContainer({ config, onRefresh, onMessage, 
                 batchProgress={batchProgress}
                 sessionCounts={sessionCounts}
                 deletingSessions={deletingSessions}
+                updatingProxy={updatingProxy}
                 totalAccounts={totalAccounts}
                 page={page}
                 pageSize={pageSize}
                 totalPages={totalPages}
                 resolveAccountIdentifier={resolveAccountIdentifier}
+                proxies={config?.proxies || []}
                 onTestAll={testAllAccounts}
                 onShowAddAccount={() => setShowAddAccount(true)}
                 onTestAccount={testAccount}
                 onDeleteAccount={deleteAccount}
                 onDeleteAllSessions={deleteAllSessions}
+                onUpdateAccountProxy={updateAccountProxy}
                 onPrevPage={() => fetchAccounts(page - 1)}
                 onNextPage={() => fetchAccounts(page + 1)}
                 onPageSizeChange={changePageSize}
@@ -140,6 +145,7 @@ export default function AccountManagerContainer({ config, onRefresh, onMessage, 
                 t={t}
                 newAccount={newAccount}
                 setNewAccount={setNewAccount}
+                proxies={config?.proxies || []}
                 loading={loading}
                 onClose={() => setShowAddAccount(false)}
                 onAdd={addAccount}

@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from 'react'
 const ENV_DRAFT_KEY = 'ds2api_env_config_draft_v1'
 
 export function useAdminConfig({ token, showMessage, t }) {
-    const [config, setConfig] = useState({ keys: [], accounts: [] })
+    const [config, setConfig] = useState({ keys: [], accounts: [], proxies: [] })
 
     const fetchConfig = useCallback(async () => {
         if (!token) return

@@ -3,6 +3,7 @@ package config
 type Config struct {
 	Keys             []string          `json:"keys,omitempty"`
 	Accounts         []Account         `json:"accounts,omitempty"`
+	Proxies          []Proxy           `json:"proxies,omitempty"`
 	ClaudeMapping    map[string]string `json:"claude_mapping,omitempty"`
 	ClaudeModelMap   map[string]string `json:"claude_model_mapping,omitempty"`
 	ModelAliases     map[string]string `json:"model_aliases,omitempty"`
@@ -22,6 +23,17 @@ type Account struct {
 	Mobile   string `json:"mobile,omitempty"`
 	Password string `json:"password,omitempty"`
 	Token    string `json:"token,omitempty"`
+	ProxyID  string `json:"proxy_id,omitempty"`
+}
+
+type Proxy struct {
+	ID       string `json:"id,omitempty"`
+	Name     string `json:"name,omitempty"`
+	Type     string `json:"type,omitempty"`
+	Host     string `json:"host,omitempty"`
+	Port     int    `json:"port,omitempty"`
+	Username string `json:"username,omitempty"`
+	Password string `json:"password,omitempty"`
 }
 
 func (c *Config) ClearAccountTokens() {

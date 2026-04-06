@@ -46,7 +46,7 @@ export default function AppRoutes() {
             {!isProduction && (
                 <Route path="/" element={<LandingPage onEnter={() => navigate('/admin')} />} />
             )}
-            <Route path={isProduction ? "/" : "/admin"} element={
+            <Route path={isProduction ? "/*" : "/admin/*"} element={
                 token ? (
                     <DashboardShell
                         token={token}

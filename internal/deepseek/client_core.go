@@ -3,6 +3,7 @@ package deepseek
 import (
 	"context"
 	"net/http"
+	"sync"
 	"time"
 
 	"ds2api/internal/auth"
@@ -24,6 +25,9 @@ type Client struct {
 	fallback   *http.Client
 	fallbackS  *http.Client
 	maxRetries int
+
+	proxyClientsMu sync.RWMutex
+	proxyClients   map[string]requestClients
 }
 
 func NewClient(store *config.Store, resolver *auth.Resolver) *Client {
@@ -36,6 +40,7 @@ func NewClient(store *config.Store, resolver *auth.Resolver) *Client {
 		fallback:   &http.Client{Timeout: 60 * time.Second},
 		fallbackS:  &http.Client{Timeout: 0},
 		maxRetries: 3,
+		proxyClients: map[string]requestClients{},
 	}
 }
 

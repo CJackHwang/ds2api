@@ -17,8 +17,19 @@ export default function BatchImport({ onRefresh, onMessage, authFetch }) {
             desc: t('batchImport.templates.full.desc'),
             config: {
                 keys: ["your-api-key-1", "your-api-key-2"],
+                proxies: [
+                    {
+                        id: "proxy-hk-1",
+                        name: "Hong Kong Exit",
+                        type: "socks5h",
+                        host: "127.0.0.1",
+                        port: 1080,
+                        username: "proxy-user",
+                        password: "proxy-password"
+                    }
+                ],
                 accounts: [
-                    { email: "user1@example.com", password: "password1", token: "" },
+                    { email: "user1@example.com", password: "password1", token: "", proxy_id: "proxy-hk-1" },
                     { email: "user2@example.com", password: "password2", token: "" },
                     { mobile: "+8613800138001", password: "password3", token: "" }
                 ],

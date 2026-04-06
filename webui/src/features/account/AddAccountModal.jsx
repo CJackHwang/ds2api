@@ -5,6 +5,7 @@ export default function AddAccountModal({
     t,
     newAccount,
     setNewAccount,
+    proxies,
     loading,
     onClose,
     onAdd,
@@ -52,6 +53,21 @@ export default function AddAccountModal({
                             value={newAccount.password}
                             onChange={e => setNewAccount({ ...newAccount, password: e.target.value })}
                         />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium mb-1.5">{t('accountManager.accountProxyLabel')}</label>
+                        <select
+                            className="input-field"
+                            value={newAccount.proxy_id || ''}
+                            onChange={e => setNewAccount({ ...newAccount, proxy_id: e.target.value })}
+                        >
+                            <option value="">{t('accountManager.proxyNone')}</option>
+                            {proxies.map((proxy) => (
+                                <option key={proxy.id} value={proxy.id}>
+                                    {proxy.name || `${proxy.host}:${proxy.port}`} ({proxy.type})
+                                </option>
+                            ))}
+                        </select>
                     </div>
                     <div className="flex justify-end gap-2 pt-2">
                         <button onClick={onClose} className="px-4 py-2 rounded-lg border border-border hover:bg-secondary transition-colors text-sm font-medium">{t('actions.cancel')}</button>

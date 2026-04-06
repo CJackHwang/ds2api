@@ -32,6 +32,47 @@ func TestLoadStoreClearsTokensFromConfigInput(t *testing.T) {
 	}
 }
 
+func TestLoadStorePreservesProxiesAndAccountProxyAssignment(t *testing.T) {
+	t.Setenv("DS2API_CONFIG_JSON", `{
+		"proxies":[
+			{
+				"id":"proxy-sh-1",
+				"name":"Shanghai Exit",
+				"type":"socks5h",
+				"host":"127.0.0.1",
+				"port":1080,
+				"username":"demo",
+				"password":"secret"
+			}
+		],
+		"accounts":[
+			{
+				"email":"u@example.com",
+				"password":"p",
+				"proxy_id":"proxy-sh-1"
+			}
+		]
+	}`)
+
+	store := LoadStore()
+	snap := store.Snapshot()
+	if len(snap.Proxies) != 1 {
+		t.Fatalf("expected 1 proxy, got %d", len(snap.Proxies))
+	}
+	if snap.Proxies[0].ID != "proxy-sh-1" {
+		t.Fatalf("unexpected proxy id: %#v", snap.Proxies[0])
+	}
+	if snap.Proxies[0].Type != "socks5h" {
+		t.Fatalf("unexpected proxy type: %#v", snap.Proxies[0])
+	}
+	if len(snap.Accounts) != 1 {
+		t.Fatalf("expected 1 account, got %d", len(snap.Accounts))
+	}
+	if snap.Accounts[0].ProxyID != "proxy-sh-1" {
+		t.Fatalf("expected account proxy assignment preserved, got %#v", snap.Accounts[0])
+	}
+}
+
 func TestLoadStoreDropsLegacyTokenOnlyAccounts(t *testing.T) {
 	t.Setenv("DS2API_CONFIG_JSON", `{
 		"accounts":[

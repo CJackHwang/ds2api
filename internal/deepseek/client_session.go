@@ -36,6 +36,7 @@ func (c *Client) GetSessionCount(ctx context.Context, a *auth.RequestAuth, maxAt
 	if maxAttempts <= 0 {
 		maxAttempts = c.maxRetries
 	}
+	clients := c.requestClientsForAuth(ctx, a)
 
 	stats := &SessionStats{
 		AccountID: a.AccountID,
@@ -50,7 +51,7 @@ func (c *Client) GetSessionCount(ctx context.Context, a *auth.RequestAuth, maxAt
 		// 构建请求 URL
 		reqURL := DeepSeekFetchSessionURL + "?lte_cursor.pinned=false"
 
-		resp, status, err := c.getJSONWithStatus(ctx, c.regular, reqURL, headers)
+		resp, status, err := c.getJSONWithStatus(ctx, clients.regular, reqURL, headers)
 		if err != nil {
 			config.Logger.Warn("[get_session_count] request error", "error", err, "account", a.AccountID)
 			attempts++
@@ -106,10 +107,11 @@ func (c *Client) GetSessionCount(ctx context.Context, a *auth.RequestAuth, maxAt
 
 // GetSessionCountForToken 直接使用 token 获取会话数量（直通模式）
 func (c *Client) GetSessionCountForToken(ctx context.Context, token string) (*SessionStats, error) {
+	clients := c.requestClientsFromContext(ctx)
 	headers := c.authHeaders(token)
 	reqURL := DeepSeekFetchSessionURL + "?lte_cursor.pinned=false"
 
-	resp, status, err := c.getJSONWithStatus(ctx, c.regular, reqURL, headers)
+	resp, status, err := c.getJSONWithStatus(ctx, clients.regular, reqURL, headers)
 	if err != nil {
 		return nil, err
 	}
@@ -160,7 +162,7 @@ func (c *Client) GetSessionCountAll(ctx context.Context) []*SessionStats {
 		// 如果没有 token，尝试登录获取
 		if token == "" {
 			var err error
-			token, err = c.Login(ctx, acc)
+			token, err = c.Login(auth.WithAuth(ctx, &auth.RequestAuth{AccountID: acc.Identifier(), Account: acc}), acc)
 			if err != nil {
 				results = append(results, &SessionStats{
 					AccountID:    accountID,
@@ -171,7 +173,8 @@ func (c *Client) GetSessionCountAll(ctx context.Context) []*SessionStats {
 			}
 		}
 
-		stats, err := c.GetSessionCountForToken(ctx, token)
+		ctxWithAuth := auth.WithAuth(ctx, &auth.RequestAuth{AccountID: acc.Identifier(), Account: acc, DeepSeekToken: token})
+		stats, err := c.GetSessionCountForToken(ctxWithAuth, token)
 		if err != nil {
 			results = append(results, &SessionStats{
 				AccountID:    accountID,
@@ -190,6 +193,7 @@ func (c *Client) GetSessionCountAll(ctx context.Context) []*SessionStats {
 
 // FetchSessionPage 获取会话列表（支持分页）
 func (c *Client) FetchSessionPage(ctx context.Context, a *auth.RequestAuth, cursor string) ([]SessionInfo, bool, error) {
+	clients := c.requestClientsForAuth(ctx, a)
 	headers := c.authHeaders(a.DeepSeekToken)
 
 	// 构建请求 URL
@@ -200,7 +204,7 @@ func (c *Client) FetchSessionPage(ctx context.Context, a *auth.RequestAuth, curs
 	}
 	reqURL := DeepSeekFetchSessionURL + "?" + params.Encode()
 
-	resp, status, err := c.getJSONWithStatus(ctx, c.regular, reqURL, headers)
+	resp, status, err := c.getJSONWithStatus(ctx, clients.regular, reqURL, headers)
 	if err != nil {
 		return nil, false, err
 	}

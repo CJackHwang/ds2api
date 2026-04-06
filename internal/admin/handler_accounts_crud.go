@@ -68,6 +68,7 @@ func (h *Handler) listAccounts(w http.ResponseWriter, r *http.Request) {
 			"identifier":    acc.Identifier(),
 			"email":         acc.Email,
 			"mobile":        acc.Mobile,
+			"proxy_id":      acc.ProxyID,
 			"has_password":  acc.Password != "",
 			"has_token":     token != "",
 			"token_preview": preview,
@@ -86,6 +87,11 @@ func (h *Handler) addAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	err := h.Store.Update(func(c *config.Config) error {
+		if acc.ProxyID != "" {
+			if _, ok := findProxyByID(*c, acc.ProxyID); !ok {
+				return fmt.Errorf("代理不存在")
+			}
+		}
 		mobileKey := config.CanonicalMobileKey(acc.Mobile)
 		for _, a := range c.Accounts {
 			if acc.Email != "" && a.Email == acc.Email {

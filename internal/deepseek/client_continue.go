@@ -51,6 +51,7 @@ func (c *Client) callContinue(ctx context.Context, a *auth.RequestAuth, sessionI
 	if strings.TrimSpace(sessionID) == "" || responseMessageID <= 0 {
 		return nil, errors.New("missing continue identifiers")
 	}
+	clients := c.requestClientsForAuth(ctx, a)
 	headers := c.authHeaders(a.DeepSeekToken)
 	headers["x-ds-pow-response"] = powResp
 	payload := map[string]any{
@@ -60,7 +61,7 @@ func (c *Client) callContinue(ctx context.Context, a *auth.RequestAuth, sessionI
 	}
 	config.Logger.Info("[auto_continue] calling continue", "session_id", sessionID, "message_id", responseMessageID)
 	captureSession := c.capture.Start("deepseek_continue", DeepSeekContinueURL, a.AccountID, payload)
-	resp, err := c.streamPost(ctx, DeepSeekContinueURL, headers, payload)
+	resp, err := c.streamPost(ctx, clients.stream, DeepSeekContinueURL, headers, payload)
 	if err != nil {
 		return nil, err
 	}

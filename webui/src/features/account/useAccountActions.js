@@ -5,13 +5,14 @@ export function useAccountActions({ apiFetch, t, onMessage, onRefresh, config, f
     const [showAddAccount, setShowAddAccount] = useState(false)
     const [newKey, setNewKey] = useState('')
     const [copiedKey, setCopiedKey] = useState(null)
-    const [newAccount, setNewAccount] = useState({ email: '', mobile: '', password: '' })
+    const [newAccount, setNewAccount] = useState({ email: '', mobile: '', password: '', proxy_id: '' })
     const [loading, setLoading] = useState(false)
     const [testing, setTesting] = useState({})
     const [testingAll, setTestingAll] = useState(false)
     const [batchProgress, setBatchProgress] = useState({ current: 0, total: 0, results: [] })
     const [sessionCounts, setSessionCounts] = useState({})
     const [deletingSessions, setDeletingSessions] = useState({})
+    const [updatingProxy, setUpdatingProxy] = useState({})
 
     const addKey = async () => {
         if (!newKey.trim()) return
@@ -67,7 +68,7 @@ export function useAccountActions({ apiFetch, t, onMessage, onRefresh, config, f
             })
             if (res.ok) {
                 onMessage('success', t('accountManager.addAccountSuccess'))
-                setNewAccount({ email: '', mobile: '', password: '' })
+                setNewAccount({ email: '', mobile: '', password: '', proxy_id: '' })
                 setShowAddAccount(false)
                 fetchAccounts(1)
                 onRefresh()
@@ -213,6 +214,34 @@ export function useAccountActions({ apiFetch, t, onMessage, onRefresh, config, f
         }
     }
 
+    const updateAccountProxy = async (identifier, proxyID) => {
+        const accountID = String(identifier || '').trim()
+        if (!accountID) {
+            onMessage('error', t('accountManager.invalidIdentifier'))
+            return
+        }
+        setUpdatingProxy(prev => ({ ...prev, [accountID]: true }))
+        try {
+            const res = await apiFetch(`/admin/accounts/${encodeURIComponent(accountID)}/proxy`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ proxy_id: proxyID || '' }),
+            })
+            const data = await res.json()
+            if (!res.ok) {
+                onMessage('error', data.detail || t('messages.requestFailed'))
+                return
+            }
+            onMessage('success', t('accountManager.proxyUpdateSuccess'))
+            fetchAccounts()
+            onRefresh()
+        } catch (_err) {
+            onMessage('error', t('messages.networkError'))
+        } finally {
+            setUpdatingProxy(prev => ({ ...prev, [accountID]: false }))
+        }
+    }
+
     return {
         showAddKey,
         setShowAddKey,
@@ -230,6 +259,7 @@ export function useAccountActions({ apiFetch, t, onMessage, onRefresh, config, f
         batchProgress,
         sessionCounts,
         deletingSessions,
+        updatingProxy,
         addKey,
         deleteKey,
         addAccount,
@@ -237,5 +267,6 @@ export function useAccountActions({ apiFetch, t, onMessage, onRefresh, config, f
         testAccount,
         testAllAccounts,
         deleteAllSessions,
+        updateAccountProxy,
     }
 }

@@ -65,6 +65,7 @@ func toAccount(m map[string]any) config.Account {
 		Email:    email,
 		Mobile:   mobile,
 		Password: fieldString(m, "password"),
+		ProxyID:  fieldString(m, "proxy_id"),
 	}
 }
 
@@ -100,7 +101,34 @@ func accountMatchesIdentifier(acc config.Account, identifier string) bool {
 func normalizeAccountForStorage(acc config.Account) config.Account {
 	acc.Email = strings.TrimSpace(acc.Email)
 	acc.Mobile = config.NormalizeMobileForStorage(acc.Mobile)
+	acc.ProxyID = strings.TrimSpace(acc.ProxyID)
 	return acc
+}
+
+func toProxy(m map[string]any) config.Proxy {
+	return config.NormalizeProxy(config.Proxy{
+		ID:       fieldString(m, "id"),
+		Name:     fieldString(m, "name"),
+		Type:     fieldString(m, "type"),
+		Host:     fieldString(m, "host"),
+		Port:     intFrom(m["port"]),
+		Username: fieldString(m, "username"),
+		Password: fieldString(m, "password"),
+	})
+}
+
+func findProxyByID(c config.Config, proxyID string) (config.Proxy, bool) {
+	id := strings.TrimSpace(proxyID)
+	if id == "" {
+		return config.Proxy{}, false
+	}
+	for _, proxy := range c.Proxies {
+		proxy = config.NormalizeProxy(proxy)
+		if proxy.ID == id {
+			return proxy, true
+		}
+	}
+	return config.Proxy{}, false
 }
 
 func accountDedupeKey(acc config.Account) string {

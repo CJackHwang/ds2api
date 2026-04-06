@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import {
     LayoutDashboard,
     Upload,
@@ -8,7 +9,8 @@ import {
     Menu,
     X,
     Server,
-    Users
+    Users,
+    Globe
 } from 'lucide-react'
 import clsx from 'clsx'
 
@@ -17,21 +19,39 @@ import ApiTesterContainer from '../features/apiTester/ApiTesterContainer'
 import BatchImport from '../components/BatchImport'
 import VercelSyncContainer from '../features/vercel/VercelSyncContainer'
 import SettingsContainer from '../features/settings/SettingsContainer'
+import ProxyManagerContainer from '../features/proxy/ProxyManagerContainer'
 import LanguageToggle from '../components/LanguageToggle'
 import { useI18n } from '../i18n'
 
 export default function DashboardShell({ token, onLogout, config, fetchConfig, showMessage, message, onForceLogout, isVercel }) {
     const { t } = useI18n()
-    const [activeTab, setActiveTab] = useState('accounts')
+    const location = useLocation()
+    const navigate = useNavigate()
     const [sidebarOpen, setSidebarOpen] = useState(false)
 
     const navItems = [
         { id: 'accounts', label: t('nav.accounts.label'), icon: Users, description: t('nav.accounts.desc') },
+        { id: 'proxies', label: t('nav.proxies.label'), icon: Globe, description: t('nav.proxies.desc') },
         { id: 'test', label: t('nav.test.label'), icon: Server, description: t('nav.test.desc') },
         { id: 'import', label: t('nav.import.label'), icon: Upload, description: t('nav.import.desc') },
         { id: 'vercel', label: t('nav.vercel.label'), icon: Cloud, description: t('nav.vercel.desc') },
         { id: 'settings', label: t('nav.settings.label'), icon: SettingsIcon, description: t('nav.settings.desc') },
     ]
+
+    const tabIds = new Set(navItems.map(item => item.id))
+    const pathSegments = location.pathname.replace(/^\/+|\/+$/g, '').split('/').filter(Boolean)
+    const routeSegments = pathSegments[0] === 'admin' ? pathSegments.slice(1) : pathSegments
+    const pathTab = routeSegments[0] || ''
+    const activeTab = tabIds.has(pathTab) ? pathTab : 'accounts'
+    const adminBasePath = pathSegments[0] === 'admin' ? '/admin' : ''
+
+    const navigateToTab = useCallback((tabID) => {
+        const nextPath = tabID === 'accounts'
+            ? `${adminBasePath || ''}/`
+            : `${adminBasePath}/${tabID}`
+        navigate(nextPath)
+        setSidebarOpen(false)
+    }, [adminBasePath, navigate])
 
     const authFetch = useCallback(async (url, options = {}) => {
         const headers = {
@@ -74,6 +94,8 @@ export default function DashboardShell({ token, onLogout, config, fetchConfig, s
         switch (activeTab) {
             case 'accounts':
                 return <AccountManagerContainer config={config} onRefresh={fetchConfig} onMessage={showMessage} authFetch={authFetch} />
+            case 'proxies':
+                return <ProxyManagerContainer config={config} onRefresh={fetchConfig} onMessage={showMessage} authFetch={authFetch} />
             case 'test':
                 return <ApiTesterContainer config={config} onMessage={showMessage} authFetch={authFetch} />
             case 'import':
@@ -121,8 +143,7 @@ export default function DashboardShell({ token, onLogout, config, fetchConfig, s
                             <button
                                 key={item.id}
                                 onClick={() => {
-                                    setActiveTab(item.id)
-                                    setSidebarOpen(false)
+                                    navigateToTab(item.id)
                                 }}
                                 className={clsx(
                                     "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 group border",

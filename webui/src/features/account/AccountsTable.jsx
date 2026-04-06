@@ -11,16 +11,19 @@ export default function AccountsTable({
     batchProgress,
     sessionCounts,
     deletingSessions,
+    updatingProxy,
     totalAccounts,
     page,
     pageSize,
     totalPages,
     resolveAccountIdentifier,
+    proxies,
     onTestAll,
     onShowAddAccount,
     onTestAccount,
     onDeleteAccount,
     onDeleteAllSessions,
+    onUpdateAccountProxy,
     onPrevPage,
     onNextPage,
     onPageSizeChange,
@@ -102,6 +105,7 @@ export default function AccountsTable({
                 ) : accounts.length > 0 ? (
                     accounts.map((acc, i) => {
                         const id = resolveAccountIdentifier(acc)
+                        const assignedProxy = proxies.find(proxy => proxy.id === acc.proxy_id)
                         const runtimeUnknown = envBacked && !acc.test_status
                         const isActive = acc.test_status === 'ok' || acc.has_token
                         return (
@@ -150,10 +154,26 @@ export default function AccountsTable({
                                                     )}
                                                 </button>
                                             )}
+                                            <span className="font-mono bg-amber-500/10 text-amber-500 px-1.5 py-0.5 rounded text-[10px]">
+                                                {t('accountManager.proxyBadge', { name: assignedProxy ? (assignedProxy.name || `${assignedProxy.host}:${assignedProxy.port}`) : t('accountManager.proxyNone') })}
+                                            </span>
                                         </div>
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-2 self-start lg:self-auto ml-5 lg:ml-0">
+                                    <select
+                                        value={acc.proxy_id || ''}
+                                        onChange={e => onUpdateAccountProxy(id, e.target.value)}
+                                        disabled={updatingProxy?.[id]}
+                                        className="max-w-[180px] px-2.5 py-1.5 text-[10px] lg:text-xs bg-secondary border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50"
+                                    >
+                                        <option value="">{t('accountManager.proxyNone')}</option>
+                                        {proxies.map(proxy => (
+                                            <option key={proxy.id} value={proxy.id}>
+                                                {proxy.name || `${proxy.host}:${proxy.port}`}
+                                            </option>
+                                        ))}
+                                    </select>
                                     <button
                                         onClick={() => onTestAccount(id)}
                                         disabled={testing[id]}

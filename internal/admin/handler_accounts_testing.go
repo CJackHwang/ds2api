@@ -115,10 +115,11 @@ func (h *Handler) testAccount(ctx context.Context, acc config.Account, model, me
 		result["message"] = "登录成功但写入运行时 token 失败: " + err.Error()
 		return result
 	}
-	authCtx := &authn.RequestAuth{UseConfigToken: false, DeepSeekToken: token}
-	sessionID, err := h.DS.CreateSession(ctx, authCtx, 1)
+	authCtx := &authn.RequestAuth{UseConfigToken: false, DeepSeekToken: token, AccountID: identifier, Account: acc}
+	proxyCtx := authn.WithAuth(ctx, authCtx)
+	sessionID, err := h.DS.CreateSession(proxyCtx, authCtx, 1)
 	if err != nil {
-		newToken, loginErr := h.DS.Login(ctx, acc)
+		newToken, loginErr := h.DS.Login(proxyCtx, acc)
 		if loginErr != nil {
 			result["message"] = "创建会话失败: " + err.Error()
 			return result
@@ -129,7 +130,7 @@ func (h *Handler) testAccount(ctx context.Context, acc config.Account, model, me
 			result["message"] = "刷新 token 成功但写入运行时 token 失败: " + err.Error()
 			return result
 		}
-		sessionID, err = h.DS.CreateSession(ctx, authCtx, 1)
+		sessionID, err = h.DS.CreateSession(proxyCtx, authCtx, 1)
 		if err != nil {
 			result["message"] = "创建会话失败: " + err.Error()
 			return result
@@ -137,7 +138,7 @@ func (h *Handler) testAccount(ctx context.Context, acc config.Account, model, me
 	}
 
 	// 获取会话数量
-	sessionStats, sessionErr := h.DS.GetSessionCountForToken(ctx, token)
+	sessionStats, sessionErr := h.DS.GetSessionCountForToken(proxyCtx, token)
 	if sessionErr == nil && sessionStats != nil {
 		result["session_count"] = sessionStats.FirstPageCount
 	}
@@ -153,13 +154,13 @@ func (h *Handler) testAccount(ctx context.Context, acc config.Account, model, me
 		thinking, search = false, false
 	}
 	_ = search
-	pow, err := h.DS.GetPow(ctx, authCtx, 1)
+	pow, err := h.DS.GetPow(proxyCtx, authCtx, 1)
 	if err != nil {
 		result["message"] = "获取 PoW 失败: " + err.Error()
 		return result
 	}
 	payload := map[string]any{"chat_session_id": sessionID, "prompt": deepseek.MessagesPrepare([]map[string]any{{"role": "user", "content": message}}), "ref_file_ids": []any{}, "thinking_enabled": thinking, "search_enabled": search}
-	resp, err := h.DS.CallCompletion(ctx, authCtx, payload, pow, 1)
+	resp, err := h.DS.CallCompletion(proxyCtx, authCtx, payload, pow, 1)
 	if err != nil {
 		result["message"] = "请求失败: " + err.Error()
 		return result
@@ -244,25 +245,29 @@ func (h *Handler) deleteAllSessions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 每次先登录刷新一次 token，避免使用过期 token。
-	token, err := h.DS.Login(r.Context(), acc)
+	authCtx := &authn.RequestAuth{UseConfigToken: false, AccountID: acc.Identifier(), Account: acc}
+	proxyCtx := authn.WithAuth(r.Context(), authCtx)
+	token, err := h.DS.Login(proxyCtx, acc)
 	if err != nil {
 		writeJSON(w, http.StatusOK, map[string]any{"success": false, "message": "登录失败: " + err.Error()})
 		return
 	}
 	_ = h.Store.UpdateAccountToken(acc.Identifier(), token)
+	authCtx.DeepSeekToken = token
 
 	// 删除所有会话
-	err = h.DS.DeleteAllSessionsForToken(r.Context(), token)
+	err = h.DS.DeleteAllSessionsForToken(proxyCtx, token)
 	if err != nil {
 		// token 可能过期，尝试重新登录并重试一次
-		newToken, loginErr := h.DS.Login(r.Context(), acc)
+		newToken, loginErr := h.DS.Login(proxyCtx, acc)
 		if loginErr != nil {
 			writeJSON(w, http.StatusOK, map[string]any{"success": false, "message": "删除失败: " + err.Error()})
 			return
 		}
 		token = newToken
 		_ = h.Store.UpdateAccountToken(acc.Identifier(), token)
-		if retryErr := h.DS.DeleteAllSessionsForToken(r.Context(), token); retryErr != nil {
+		authCtx.DeepSeekToken = token
+		if retryErr := h.DS.DeleteAllSessionsForToken(proxyCtx, token); retryErr != nil {
 			writeJSON(w, http.StatusOK, map[string]any{"success": false, "message": "删除失败: " + retryErr.Error()})
 			return
 		}

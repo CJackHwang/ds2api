@@ -56,6 +56,26 @@ func (h *Handler) updateConfig(w http.ResponseWriter, r *http.Request) {
 			}
 			c.Accounts = accounts
 		}
+		if proxiesRaw, ok := req["proxies"].([]any); ok {
+			proxies := make([]config.Proxy, 0, len(proxiesRaw))
+			seen := map[string]struct{}{}
+			for _, item := range proxiesRaw {
+				m, ok := item.(map[string]any)
+				if !ok {
+					continue
+				}
+				proxy := toProxy(m)
+				if proxy.ID == "" {
+					continue
+				}
+				if _, ok := seen[proxy.ID]; ok {
+					continue
+				}
+				seen[proxy.ID] = struct{}{}
+				proxies = append(proxies, proxy)
+			}
+			c.Proxies = proxies
+		}
 		if m, ok := req["claude_mapping"].(map[string]any); ok {
 			newMap := map[string]string{}
 			for k, v := range m {
@@ -63,7 +83,7 @@ func (h *Handler) updateConfig(w http.ResponseWriter, r *http.Request) {
 			}
 			c.ClaudeMapping = newMap
 		}
-		return nil
+		return config.ValidateConfig(*c)
 	})
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"detail": err.Error()})
@@ -89,7 +109,7 @@ func (h *Handler) addKey(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		c.Keys = append(c.Keys, key)
-		return nil
+		return config.ValidateConfig(*c)
 	})
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"detail": err.Error()})
@@ -166,6 +186,27 @@ func (h *Handler) batchImport(w http.ResponseWriter, r *http.Request) {
 				c.Accounts = append(c.Accounts, acc)
 				existing[key] = true
 				importedAccounts++
+			}
+		}
+		if proxies, ok := req["proxies"].([]any); ok {
+			existing := map[string]bool{}
+			for _, p := range c.Proxies {
+				p = config.NormalizeProxy(p)
+				if p.ID != "" {
+					existing[p.ID] = true
+				}
+			}
+			for _, item := range proxies {
+				m, ok := item.(map[string]any)
+				if !ok {
+					continue
+				}
+				proxy := toProxy(m)
+				if proxy.ID == "" || existing[proxy.ID] {
+					continue
+				}
+				c.Proxies = append(c.Proxies, proxy)
+				existing[proxy.ID] = true
 			}
 		}
 		return nil

@@ -5,11 +5,24 @@
     "your-api-key-1",
     "your-api-key-2"
   ],
+  "proxies": [
+    {
+      "_comment": "SOCKS5H 代理示例，远端解析目标域名",
+      "id": "proxy-hk-1",
+      "name": "Hong Kong Exit",
+      "type": "socks5h",
+      "host": "127.0.0.1",
+      "port": 1080,
+      "username": "proxy-user",
+      "password": "proxy-password"
+    }
+  ],
   "accounts": [
     {
       "_comment": "邮箱登录方式",
       "email": "example1@example.com",
-      "password": "your-password-1"
+      "password": "your-password-1",
+      "proxy_id": "proxy-hk-1"
     },
     {
       "_comment": "邮箱登录方式 - 账号2",
