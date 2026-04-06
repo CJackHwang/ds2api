@@ -7,11 +7,49 @@ cd "$ROOT_DIR"
 LINT_BIN="${GOLANGCI_LINT_BIN:-golangci-lint}"
 BOOTSTRAP_VERSION="${GOLANGCI_LINT_VERSION:-v2.11.4}"
 BOOTSTRAP_BIN="${ROOT_DIR}/.tmp/golangci-lint-${BOOTSTRAP_VERSION}"
+BOOTSTRAP_TARGET=""
+
+detect_bootstrap_target() {
+  local os arch
+  os="$(uname -s | tr '[:upper:]' '[:lower:]')"
+  arch="$(uname -m)"
+
+  case "$os" in
+    linux|darwin|windows) ;;
+    mingw*|msys*|cygwin*) os="windows" ;;
+    *)
+      echo "unsupported OS for auto-bootstrap: ${os}" >&2
+      return 1
+      ;;
+  esac
+
+  case "$arch" in
+    x86_64|amd64) arch="amd64" ;;
+    arm64|aarch64) arch="arm64" ;;
+    *)
+      echo "unsupported architecture for auto-bootstrap: ${arch}" >&2
+      return 1
+      ;;
+  esac
+
+  BOOTSTRAP_TARGET="${os}-${arch}"
+}
+
+should_bootstrap() {
+  local output="$1"
+  [[ "$output" == *"unknown command \"fmt\" for \"golangci-lint\""* ]] ||
+    [[ "$output" == *"unknown command \"run\" for \"golangci-lint\""* ]] ||
+    [[ "$output" == *"is no longer supported"* ]] ||
+    [[ "$output" == *"unknown flag:"* ]] ||
+    [[ "$output" == *"command not found"* ]] ||
+    [[ "$output" == *"No such file or directory"* ]]
+}
 
 bootstrap_golangci_lint() {
   local version_no_v archive_url tmp_dir
   version_no_v="${BOOTSTRAP_VERSION#v}"
-  archive_url="https://github.com/golangci/golangci-lint/releases/download/${BOOTSTRAP_VERSION}/golangci-lint-${version_no_v}-linux-amd64.tar.gz"
+  detect_bootstrap_target
+  archive_url="https://github.com/golangci/golangci-lint/releases/download/${BOOTSTRAP_VERSION}/golangci-lint-${version_no_v}-${BOOTSTRAP_TARGET}.tar.gz"
 
   mkdir -p "${ROOT_DIR}/.tmp"
   tmp_dir="$(mktemp -d)"
@@ -19,7 +57,7 @@ bootstrap_golangci_lint() {
 
   curl -sSfL "${archive_url}" -o "${tmp_dir}/golangci-lint.tar.gz"
   tar -xzf "${tmp_dir}/golangci-lint.tar.gz" -C "${tmp_dir}"
-  cp "${tmp_dir}/golangci-lint-${version_no_v}-linux-amd64/golangci-lint" "${BOOTSTRAP_BIN}"
+  cp "${tmp_dir}/golangci-lint-${version_no_v}-${BOOTSTRAP_TARGET}/golangci-lint" "${BOOTSTRAP_BIN}"
   chmod +x "${BOOTSTRAP_BIN}"
 
   echo "bootstrapped golangci-lint ${BOOTSTRAP_VERSION} to ${BOOTSTRAP_BIN}" >&2
@@ -43,6 +81,11 @@ fi
 if [[ -n "${GOLANGCI_LINT_BIN:-}" ]]; then
   echo "$lint_output" >&2
   echo "lint failed with explicit GOLANGCI_LINT_BIN=${GOLANGCI_LINT_BIN}; skip auto-bootstrap." >&2
+  exit 1
+fi
+
+if ! should_bootstrap "$lint_output"; then
+  echo "$lint_output" >&2
   exit 1
 fi
 
