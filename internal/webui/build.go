@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -76,7 +77,7 @@ func buildWebUI(staticDir string) error {
 		if !os.IsNotExist(err) {
 			return err
 		}
-		installCmd := exec.CommandContext(ctx, "npm", "ci", "--prefix", "webui")
+		installCmd := exec.CommandContext(ctx, "npm", "ci", "--include=optional", "--prefix", "webui")
 		installCmd.Stdout = os.Stdout
 		installCmd.Stderr = os.Stderr
 		if err := installCmd.Run(); err != nil {
@@ -90,6 +91,9 @@ func buildWebUI(staticDir string) error {
 	if err := os.MkdirAll(staticDir, 0o755); err != nil {
 		return err
 	}
+	if err := ensureFrontendNativeBinding(ctx); err != nil {
+		return err
+	}
 	cmd := exec.CommandContext(ctx, "npm", "run", "build", "--prefix", "webui", "--", "--outDir", staticDir, "--emptyOutDir")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -100,4 +104,48 @@ func buildWebUI(staticDir string) error {
 		return err
 	}
 	return nil
+}
+
+func ensureFrontendNativeBinding(ctx context.Context) error {
+	bindingPkg := rolldownBindingPackage()
+	if bindingPkg == "" {
+		return nil
+	}
+	bindingPath := filepath.Join(append([]string{"webui", "node_modules"}, strings.Split(bindingPkg, "/")...)...)
+	if _, err := os.Stat(bindingPath); err == nil {
+		return nil
+	}
+	config.Logger.Warn("[webui] native binding missing; repairing optional deps", "package", bindingPkg)
+	repairCmd := exec.CommandContext(ctx, "npm", "install", "--include=optional", "--prefix", "webui")
+	repairCmd.Stdout = os.Stdout
+	repairCmd.Stderr = os.Stderr
+	if err := repairCmd.Run(); err != nil {
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return fmt.Errorf("webui optional dependency repair timed out after %s", defaultBuildTimeout)
+		}
+		return fmt.Errorf("repair optional deps for %s: %w", bindingPkg, err)
+	}
+	if _, err := os.Stat(bindingPath); err != nil {
+		return fmt.Errorf("required frontend native binding still missing after repair: %s", bindingPkg)
+	}
+	return nil
+}
+
+func rolldownBindingPackage() string {
+	switch runtime.GOOS + "/" + runtime.GOARCH {
+	case "windows/amd64":
+		return "@rolldown/binding-win32-x64-msvc"
+	case "windows/arm64":
+		return "@rolldown/binding-win32-arm64-msvc"
+	case "linux/amd64":
+		return "@rolldown/binding-linux-x64-gnu"
+	case "linux/arm64":
+		return "@rolldown/binding-linux-arm64-gnu"
+	case "darwin/amd64":
+		return "@rolldown/binding-darwin-x64"
+	case "darwin/arm64":
+		return "@rolldown/binding-darwin-arm64"
+	default:
+		return ""
+	}
 }
