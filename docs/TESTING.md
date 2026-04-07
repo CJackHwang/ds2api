@@ -2,6 +2,8 @@
 
 语言 / Language: 中文 + English（同页）
 
+文档导航： [总览](../README.MD) / [架构说明](./ARCHITECTURE.md) / [部署指南](./DEPLOY.md) / [接口文档](../API.md)
+
 ## 概述 | Overview
 
 DS2API 提供两个层级的测试：

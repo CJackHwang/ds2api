@@ -4,6 +4,8 @@ Language: [中文](DEPLOY.md) | [English](DEPLOY.en.md)
 
 This guide covers all deployment methods for the current Go-based codebase.
 
+Doc map: [Index](./README.md) | [Architecture](./ARCHITECTURE.en.md) | [API](../API.en.md) | [Testing](./TESTING.md)
+
 ---
 
 ## Table of Contents

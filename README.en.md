@@ -16,6 +16,8 @@ Language: [中文](README.MD) | [English](README.en.md)
 
 DS2API converts DeepSeek Web chat capability into OpenAI-compatible, Claude-compatible, and Gemini-compatible APIs. The backend is a **pure Go implementation**, with a React WebUI admin panel (source in `webui/`, build output auto-generated to `static/admin` during deployment).
 
+Documentation entry: [Docs Index](docs/README.md) / [Architecture](docs/ARCHITECTURE.en.md) / [API Reference](API.en.md)
+
 > **Important Disclaimer**
 >
 > This repository is provided for learning, research, personal experimentation, and internal validation only. It does not grant any commercial authorization and comes with no warranty of fitness, stability, or results.
@@ -24,7 +26,7 @@ DS2API converts DeepSeek Web chat capability into OpenAI-compatible, Claude-comp
 >
 > Do not use this project in ways that violate service terms, agreements, laws, or platform rules. Before any commercial use, review the `LICENSE`, the relevant terms, and confirm that you have the author's written permission.
 
-## Architecture Overview
+## Architecture Overview (Summary)
 
 ```mermaid
 flowchart LR
@@ -71,6 +73,8 @@ flowchart LR
     OAEngine --> Bridge
     Bridge --> Client
 ```
+
+For the full module-by-module architecture and directory responsibilities, see [docs/ARCHITECTURE.en.md](docs/ARCHITECTURE.en.md).
 
 - **Backend**: Go (`cmd/ds2api/`, `api/`, `internal/`), no Python runtime
 - **Frontend**: React admin panel (`webui/`), served as static build at runtime
@@ -431,69 +435,10 @@ The save endpoint can target a chain by `query`, `chain_key`, or `capture_id`. E
 
 ## Project Structure
 
-```text
-ds2api/
-├── app/                     # Unified HTTP handler assembly (shared by local + serverless)
-├── cmd/
-│   ├── ds2api/              # Local / container entrypoint
-│   └── ds2api-tests/        # End-to-end testsuite entrypoint
-├── api/
-│   ├── index.go             # Vercel Serverless Go entry
-│   ├── chat-stream.js       # Vercel Node.js stream relay
-│   └── (rewrite targets in vercel.json)
-├── internal/
-│   ├── account/             # Account pool and concurrency queue
-│   ├── adapter/
-│   │   ├── openai/          # OpenAI adapter (incl. tool call parsing, Vercel stream prepare/release)
-│   │   ├── claude/          # Claude adapter
-│   │   └── gemini/          # Gemini adapter (generateContent / streamGenerateContent)
-│   ├── admin/               # Admin API handlers (incl. Settings hot-reload)
-│   ├── auth/                # Auth and JWT
-│   ├── claudeconv/          # Claude message format conversion
-│   ├── compat/              # Go-version compatibility and regression helpers
-│   ├── config/              # Config loading, validation, and hot-reload
-│   ├── deepseek/            # DeepSeek API client, PoW logic
-│   ├── js/                  # Node runtime stream/compat logic
-│   ├── devcapture/          # Dev packet capture module
-│   ├── rawsample/           # Visible-text extraction and replay helpers for raw stream samples
-│   ├── format/              # Output formatting
-│   ├── prompt/              # Prompt construction
-│   ├── server/              # HTTP routing and middleware (chi router)
-│   ├── sse/                 # SSE parsing utilities
-│   ├── stream/              # Unified stream consumption engine
-│   ├── testsuite/           # End-to-end testsuite framework and case orchestration
-│   ├── translatorcliproxy/  # CLIProxy bridge and stream writer components
-│   ├── toolcall/            # Tool Call parsing, repair, and formatting (core business logic)
-│   ├── util/                # Common utilities (Token estimation, JSON helpers, etc.)
-│   ├── version/             # Version parsing/comparison and tag normalization
-│   └── webui/               # WebUI static file serving and auto-build
-├── webui/                   # React WebUI source (Vite + Tailwind)
-│   └── src/
-│       ├── app/             # Routing, auth, config state
-│       ├── features/        # Feature modules (account/settings/vercel/apiTester)
-│       ├── components/      # Shared UI pieces (login/landing, etc.)
-│       └── locales/         # Language packs (zh.json / en.json)
-├── scripts/
-│   └── build-webui.sh       # Manual WebUI build script
-├── tests/
-│   ├── compat/              # Compatibility fixtures and expected outputs
-│   ├── node/                # Node-side unit tests (chat-stream / tool-sieve)
-│   ├── raw_stream_samples/  # Raw SSE samples and replay metadata
-│   └── scripts/             # Unified test script entrypoints (unit/e2e)
-├── docs/                    # Deployment / contributing / testing docs
-├── static/admin/            # WebUI build output (not committed to Git)
-├── .github/
-│   ├── workflows/           # GitHub Actions (quality gates + release automation)
-│   ├── ISSUE_TEMPLATE/      # Issue templates
-│   └── PULL_REQUEST_TEMPLATE.md
-├── config.example.json      # Config file template
-├── .env.example             # Environment variable template
-├── Dockerfile               # Multi-stage build (WebUI + Go)
-├── docker-compose.yml       # Production Docker Compose
-├── docker-compose.dev.yml   # Development Docker Compose
-├── vercel.json              # Vercel routing and build config
-└── go.mod / go.sum          # Go module dependencies
-```
+Project layout and folder-by-folder responsibilities are now maintained in one place to avoid duplication drift:
+
+- [docs/ARCHITECTURE.en.md](docs/ARCHITECTURE.en.md) (fully expanded tree + folder-purpose annotations)
+- [docs/README.md](docs/README.md) (docs index)
 
 ## Documentation Index
 

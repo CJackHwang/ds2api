@@ -4,6 +4,8 @@ Language: [中文](API.md) | [English](API.en.md)
 
 This document describes the actual behavior of the current Go codebase.
 
+Docs: [Overview](README.en.md) / [Architecture](docs/ARCHITECTURE.en.md) / [Deployment](docs/DEPLOY.en.md) / [Testing](docs/TESTING.md)
+
 ---
 
 ## Table of Contents

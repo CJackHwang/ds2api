@@ -94,58 +94,12 @@ docker-compose -f docker-compose.dev.yml up
 
 ## 项目结构
 
-```text
-ds2api/
-├── app/                     # 统一 HTTP Handler 装配（本地 + Serverless）
-├── cmd/
-│   ├── ds2api/              # 本地/容器启动入口
-│   └── ds2api-tests/        # 端到端测试集入口
-├── api/
-│   ├── index.go             # Vercel Serverless Go 入口
-│   ├── chat-stream.js       # Vercel Node.js 流式转发
-│   └── (rewrite targets in vercel.json)
-├── internal/
-│   ├── account/             # 账号池与并发队列
-│   ├── adapter/
-│   │   ├── openai/          # OpenAI 兼容适配器
-│   │   ├── claude/          # Claude 兼容适配器
-│   │   └── gemini/          # Gemini 兼容适配器
-│   ├── admin/               # Admin API handlers
-│   ├── auth/                # 鉴权与 JWT
-│   ├── claudeconv/          # Claude 消息格式转换
-│   ├── compat/              # Go 版本兼容与回归测试辅助
-│   ├── config/              # 配置加载、校验与热更新
-│   ├── deepseek/            # DeepSeek 客户端、PoW 逻辑
-│   ├── js/                  # Node 运行时流式/兼容逻辑
-│   ├── devcapture/          # 开发抓包
-│   ├── format/              # 输出格式化
-│   ├── prompt/              # Prompt 构建
-│   ├── server/              # HTTP 路由（chi router）
-│   ├── sse/                 # SSE 解析工具
-│   ├── stream/              # 统一流式消费引擎
-│   ├── testsuite/           # 测试集框架与场景编排
-│   ├── translatorcliproxy/  # CLIProxy 桥接与流式写入
-│   ├── util/                # 通用工具
-│   ├── version/             # 版本解析与比较
-│   └── webui/               # WebUI 静态托管
-├── webui/                   # React WebUI 源码
-│   └── src/
-│       ├── app/             # 路由、鉴权、配置状态
-│       ├── features/        # 业务功能模块
-│       ├── components/      # 通用组件
-│       └── locales/         # 语言包
-├── scripts/                 # 构建与测试脚本
-├── tests/
-│   ├── compat/              # 兼容夹具与期望输出
-│   ├── node/                # Node 侧单元测试
-│   └── scripts/             # 测试脚本入口（unit/e2e）
-├── plans/                   # 计划、门禁和手工烟测记录
-├── static/admin/            # WebUI 构建产物（不提交）
-├── Dockerfile               # 多阶段构建
-├── docker-compose.yml       # 生产环境
-├── docker-compose.dev.yml   # 开发环境
-└── vercel.json              # Vercel 配置
-```
+为避免与其他文档重复维护，目录结构与模块职责已迁移到：
+
+- [docs/ARCHITECTURE.md](./ARCHITECTURE.md)
+- [docs/README.md](./README.md)
+
+贡献前建议先阅读架构文档中的“请求主链路”和 `internal/` 模块职责，再定位改动范围。
 
 ## 问题反馈
 

@@ -2,6 +2,8 @@
 
 本文档描述当前代码中 `ParseToolCallsDetailed` / `parseToolCallsDetailed` 的**实际行为**，用于对齐 Go 与 Node Runtime。
 
+文档导航：[总览](../README.MD) / [架构说明](./ARCHITECTURE.md) / [测试指南](./TESTING.md)
+
 ## 1) 输出结构（当前实现）
 
 - `calls`：解析得到的工具调用列表（`name` + `input`）。

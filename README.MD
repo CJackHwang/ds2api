@@ -16,6 +16,8 @@
 
 将 DeepSeek Web 对话能力转换为 OpenAI、Claude 与 Gemini 兼容 API。后端为 **Go 全量实现**，前端为 React WebUI 管理台（源码在 `webui/`，部署时自动构建到 `static/admin`）。
 
+文档入口：[文档导航](docs/README.md) / [架构说明](docs/ARCHITECTURE.md) / [接口文档](API.md)
+
 > **重要免责声明**
 >
 > 本仓库仅供学习、研究、个人实验和内部验证使用，不提供任何形式的商业授权、适用性保证或结果保证。
@@ -24,7 +26,7 @@
 >
 > 请勿将本项目用于违反服务条款、协议、法律法规或平台规则的场景。商业使用前请自行确认 `LICENSE`、相关协议以及你是否获得了作者的书面许可。
 
-## 架构概览
+## 架构概览（摘要）
 
 ```mermaid
 flowchart LR
@@ -71,6 +73,8 @@ flowchart LR
     OAEngine --> Bridge
     Bridge --> Client
 ```
+
+详细架构拆分与目录职责见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
 
 - **后端**：Go（`cmd/ds2api/`、`api/`、`internal/`），不依赖 Python 运行时
 - **前端**：React 管理台（`webui/`），运行时托管静态构建产物
@@ -433,69 +437,10 @@ go run ./cmd/ds2api
 
 ## 项目结构
 
-```text
-ds2api/
-├── app/                     # 统一 HTTP Handler 组装层（供本地与 Serverless 复用）
-├── cmd/
-│   ├── ds2api/              # 本地 / 容器启动入口
-│   └── ds2api-tests/        # 端到端测试集入口
-├── api/
-│   ├── index.go             # Vercel Serverless Go 入口
-│   ├── chat-stream.js       # Vercel Node.js 流式转发
-│   └── (rewrite targets in vercel.json)
-├── internal/
-│   ├── account/             # 账号池与并发队列
-│   ├── adapter/
-│   │   ├── openai/          # OpenAI 兼容适配器（含 Tool Call 解析、Vercel 流式 prepare/release）
-│   │   ├── claude/          # Claude 兼容适配器
-│   │   └── gemini/          # Gemini 兼容适配器（generateContent / streamGenerateContent）
-│   ├── admin/               # Admin API handlers（含 Settings 热更新）
-│   ├── auth/                # 鉴权与 JWT
-│   ├── claudeconv/          # Claude 消息格式转换
-│   ├── compat/              # Go 版本兼容与回归测试辅助
-│   ├── config/              # 配置加载、校验与热更新
-│   ├── deepseek/            # DeepSeek API 客户端、PoW 逻辑
-│   ├── js/                  # Node 运行时流式处理与兼容逻辑
-│   ├── devcapture/          # 开发抓包模块
-│   ├── rawsample/           # 原始流样本可见文本提取与回放辅助
-│   ├── format/              # 输出格式化
-│   ├── prompt/              # Prompt 构建
-│   ├── server/              # HTTP 路由与中间件（chi router）
-│   ├── sse/                 # SSE 解析工具
-│   ├── stream/              # 统一流式消费引擎
-│   ├── testsuite/           # 端到端测试框架与用例编排
-│   ├── translatorcliproxy/  # CLIProxy 桥接与流写入组件
-│   ├── toolcall/            # Tool Call 解析、修复与格式化（核心业务逻辑）
-│   ├── util/                # 通用工具函数（Token 估算、JSON 辅助等）
-│   ├── version/             # 版本解析 / 比较与 tag 规范化
-│   └── webui/               # WebUI 静态文件托管与自动构建
-├── webui/                   # React WebUI 源码（Vite + Tailwind）
-│   └── src/
-│       ├── app/             # 路由、鉴权、配置状态管理
-│       ├── features/        # 业务功能模块（account/settings/vercel/apiTester）
-│       ├── components/      # 登录/落地页等通用组件
-│       └── locales/         # 中英文语言包（zh.json / en.json）
-├── scripts/
-│   └── build-webui.sh       # WebUI 手动构建脚本
-├── tests/
-│   ├── compat/              # 兼容性测试夹具与期望输出
-│   ├── node/                # Node 侧单元测试（chat-stream / tool-sieve）
-│   ├── raw_stream_samples/  # 原始 SSE 样本与回放元数据
-│   └── scripts/             # 统一测试脚本入口（unit/e2e）
-├── docs/                    # 部署 / 贡献 / 测试等辅助文档
-├── static/admin/            # WebUI 构建产物（不提交到 Git）
-├── .github/
-│   ├── workflows/           # GitHub Actions（质量门禁 + Release 自动构建）
-│   ├── ISSUE_TEMPLATE/      # Issue 模板
-│   └── PULL_REQUEST_TEMPLATE.md
-├── config.example.json      # 配置文件示例
-├── .env.example             # 环境变量示例
-├── Dockerfile               # 多阶段构建（WebUI + Go）
-├── docker-compose.yml       # 生产环境 Docker Compose
-├── docker-compose.dev.yml   # 开发环境 Docker Compose
-├── vercel.json              # Vercel 路由与构建配置
-└── go.mod / go.sum          # Go 模块依赖
-```
+项目目录结构与各文件夹职责已迁移到统一文档，避免重复维护：
+
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)（完整展开目录 + 文件夹作用注释）
+- [docs/README.md](docs/README.md)（文档导航）
 
 ## 文档索引
 
