@@ -114,6 +114,27 @@ function checkFrontendDeps() {
   return existsSync(join(CONFIG.webuiDir, 'node_modules'));
 }
 
+function getRolldownBindingPackage() {
+  const platform = process.platform;
+  const arch = process.arch;
+
+  if (platform === 'win32' && arch === 'x64') return '@rolldown/binding-win32-x64-msvc';
+  if (platform === 'win32' && arch === 'arm64') return '@rolldown/binding-win32-arm64-msvc';
+  if (platform === 'linux' && arch === 'x64') return '@rolldown/binding-linux-x64-gnu';
+  if (platform === 'linux' && arch === 'arm64') return '@rolldown/binding-linux-arm64-gnu';
+  if (platform === 'darwin' && arch === 'x64') return '@rolldown/binding-darwin-x64';
+  if (platform === 'darwin' && arch === 'arm64') return '@rolldown/binding-darwin-arm64';
+  return null;
+}
+
+function hasFrontendNativeBinding() {
+  const bindingPkg = getRolldownBindingPackage();
+  if (!bindingPkg) return true;
+  if (!checkFrontendDeps()) return false;
+  const bindingPath = join(CONFIG.webuiDir, 'node_modules', ...bindingPkg.split('/'));
+  return existsSync(bindingPath);
+}
+
 // 检查前端是否已构建
 function checkWebuiBuilt() {
   return existsSync(join(CONFIG.staticAdminDir, 'index.html'));
@@ -223,12 +244,36 @@ async function installFrontendDeps() {
   });
 }
 
+async function repairFrontendOptionalDeps() {
+  if (!existsSync(CONFIG.webuiDir)) return;
+  const bindingPkg = getRolldownBindingPackage();
+  if (!bindingPkg) return;
+  if (!checkFrontendDeps()) return;
+  if (hasFrontendNativeBinding()) return;
+
+  log.warn(`检测到缺失前端原生依赖 ${bindingPkg}，尝试自动修复...`);
+  await new Promise((resolve, reject) => {
+    const proc = spawn('npm', ['install', '--include=optional', '--registry', MIRRORS.npm], {
+      cwd: CONFIG.webuiDir,
+      stdio: 'inherit',
+      shell: true,
+    });
+    proc.on('close', code => code === 0 ? resolve() : reject(new Error('前端可选依赖修复失败')));
+  });
+
+  if (!hasFrontendNativeBinding()) {
+    throw new Error(`仍然缺失前端原生依赖 ${bindingPkg}，请删除 webui/node_modules 后重新执行“安装前端依赖”`);
+  }
+  log.success(`前端原生依赖已修复: ${bindingPkg}`);
+}
+
 // 确保前端依赖已安装
 async function ensureFrontendDeps() {
   if (checkFrontendDeps() === false) {
     log.warn('检测到前端依赖未安装，正在安装...');
     await installFrontendDeps();
   }
+  await repairFrontendOptionalDeps();
 }
 
 // 编译后端二进制

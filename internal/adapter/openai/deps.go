@@ -7,6 +7,7 @@ import (
 	"ds2api/internal/auth"
 	"ds2api/internal/config"
 	"ds2api/internal/deepseek"
+	"ds2api/internal/usagestats"
 )
 
 type AuthResolver interface {
@@ -35,6 +36,11 @@ type ConfigReader interface {
 	AutoDeleteSessions() bool
 }
 
+type UsageRecorder interface {
+	Record(evt usagestats.Event)
+}
+
 var _ AuthResolver = (*auth.Resolver)(nil)
 var _ DeepSeekCaller = (*deepseek.Client)(nil)
 var _ ConfigReader = (*config.Store)(nil)
+var _ UsageRecorder = (*usagestats.Store)(nil)

@@ -21,6 +21,7 @@ type Handler struct {
 	Store ConfigReader
 	Auth  AuthResolver
 	DS    DeepSeekCaller
+	Stats UsageRecorder
 
 	leaseMu      sync.Mutex
 	streamLeases map[string]streamLease

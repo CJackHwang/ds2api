@@ -13,6 +13,7 @@ import (
 	openaifmt "ds2api/internal/format/openai"
 	"ds2api/internal/sse"
 	streamengine "ds2api/internal/stream"
+	"ds2api/internal/usagestats"
 )
 
 func (h *Handler) ChatCompletions(w http.ResponseWriter, r *http.Request) {
@@ -53,6 +54,12 @@ func (h *Handler) ChatCompletions(w http.ResponseWriter, r *http.Request) {
 		writeOpenAIError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	h.recordUsage(a, usagestats.Event{
+		Surface:        stdReq.Surface,
+		RequestedModel: stdReq.RequestedModel,
+		ResolvedModel:  stdReq.ResolvedModel,
+		ResponseModel:  stdReq.ResponseModel,
+	})
 
 	sessionID, err = h.DS.CreateSession(r.Context(), a, 3)
 	if err != nil {
@@ -79,6 +86,20 @@ func (h *Handler) ChatCompletions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.handleNonStream(w, r.Context(), resp, sessionID, stdReq.ResponseModel, stdReq.FinalPrompt, stdReq.Thinking, stdReq.ToolNames)
+}
+
+func (h *Handler) recordUsage(a *auth.RequestAuth, evt usagestats.Event) {
+	if h == nil || h.Stats == nil {
+		return
+	}
+	if a != nil && a.UseConfigToken {
+		evt.AccountID = a.AccountID
+		evt.AccountType = "managed"
+	} else if a != nil {
+		evt.AccountID = a.CallerID
+		evt.AccountType = "direct"
+	}
+	h.Stats.Record(evt)
 }
 
 func (h *Handler) autoDeleteRemoteSession(ctx context.Context, a *auth.RequestAuth, sessionID string) {

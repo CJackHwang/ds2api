@@ -10,6 +10,7 @@ import (
 
 	"ds2api/internal/auth"
 	"ds2api/internal/config"
+	"ds2api/internal/usagestats"
 	"ds2api/internal/util"
 )
 
@@ -41,6 +42,12 @@ func (h *Handler) Embeddings(w http.ResponseWriter, r *http.Request) {
 		writeOpenAIError(w, http.StatusBadRequest, fmt.Sprintf("Model '%s' is not available.", model))
 		return
 	}
+	h.recordUsage(a, usagestats.Event{
+		Surface:        "openai_embeddings",
+		RequestedModel: model,
+		ResolvedModel:  model,
+		ResponseModel:  model,
+	})
 
 	inputs := extractEmbeddingInputs(req["input"])
 	if len(inputs) == 0 {

@@ -17,6 +17,10 @@
             "label": "批量导入",
             "desc": "批量导入账号配置"
         },
+        "usage": {
+            "label": "调用统计",
+            "desc": "查看账号与模型的调用分布"
+        },
         "vercel": {
             "label": "Vercel 同步",
             "desc": "同步配置到 Vercel"
@@ -211,6 +215,41 @@
         "importing": "正在导入...",
         "importComplete": "导入操作已完成",
         "importSummary": "成功导入了 {keys} 个 API 密钥，并更新了 {accounts} 个账号。"
+    },
+    "usageStats": {
+        "title": "调用统计",
+        "desc": "按账号、模型和接口维度统计最近的调用情况。统计数据保存在内存中，服务重启后会重新开始累计。",
+        "loadFailed": "加载调用统计失败",
+        "loading": "正在加载调用统计...",
+        "empty": "当前还没有记录到任何调用。",
+        "refresh": "刷新",
+        "refreshing": "刷新中...",
+        "lastUpdated": "最近调用",
+        "summary": {
+            "totalCalls": "总调用次数",
+            "accounts": "涉及账号",
+            "models": "涉及模型",
+            "surfaces": "接口类型"
+        },
+        "table": {
+            "title": "调用明细",
+            "desc": "同一账号、模型、接口类型会聚合为一条记录。",
+            "rows": "{count} 条记录"
+        },
+        "columns": {
+            "account": "账号",
+            "accountType": "账号类型",
+            "model": "实际模型",
+            "requestedModel": "请求模型",
+            "surface": "接口",
+            "count": "次数",
+            "lastCalledAt": "最近调用时间"
+        },
+        "accountType": {
+            "managed": "托管账号",
+            "direct": "直连 Token",
+            "unknown": "未知"
+        }
     },
     "settings": {
         "loadFailed": "加载设置失败",

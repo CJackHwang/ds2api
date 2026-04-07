@@ -8,7 +8,12 @@ import (
 	"ds2api/internal/auth"
 	"ds2api/internal/config"
 	"ds2api/internal/deepseek"
+	"ds2api/internal/usagestats"
 )
+
+type UsageStatsReader interface {
+	Snapshot() usagestats.Snapshot
+}
 
 type ConfigStore interface {
 	Snapshot() config.Config
@@ -59,3 +64,4 @@ type DeepSeekCaller interface {
 var _ ConfigStore = (*config.Store)(nil)
 var _ PoolController = (*account.Pool)(nil)
 var _ DeepSeekCaller = (*deepseek.Client)(nil)
+var _ UsageStatsReader = (*usagestats.Store)(nil)

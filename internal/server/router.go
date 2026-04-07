@@ -19,6 +19,7 @@ import (
 	"ds2api/internal/auth"
 	"ds2api/internal/config"
 	"ds2api/internal/deepseek"
+	"ds2api/internal/usagestats"
 	"ds2api/internal/webui"
 )
 
@@ -36,6 +37,7 @@ func NewApp() (*App, error) {
 		return nil, fmt.Errorf("load config: %w", err)
 	}
 	pool := account.NewPool(store)
+	stats := usagestats.New()
 	var dsClient *deepseek.Client
 	resolver := auth.NewResolver(store, pool, func(ctx context.Context, acc config.Account) (string, error) {
 		return dsClient.Login(ctx, acc)
@@ -47,10 +49,10 @@ func NewApp() (*App, error) {
 		config.Logger.Info("[PoW] pure Go solver ready")
 	}
 
-	openaiHandler := &openai.Handler{Store: store, Auth: resolver, DS: dsClient}
+	openaiHandler := &openai.Handler{Store: store, Auth: resolver, DS: dsClient, Stats: stats}
 	claudeHandler := &claude.Handler{Store: store, Auth: resolver, DS: dsClient, OpenAI: openaiHandler}
 	geminiHandler := &gemini.Handler{Store: store, Auth: resolver, DS: dsClient, OpenAI: openaiHandler}
-	adminHandler := &admin.Handler{Store: store, Pool: pool, DS: dsClient, OpenAI: openaiHandler}
+	adminHandler := &admin.Handler{Store: store, Pool: pool, DS: dsClient, OpenAI: openaiHandler, Stats: stats}
 	webuiHandler := webui.NewHandler()
 
 	r := chi.NewRouter()

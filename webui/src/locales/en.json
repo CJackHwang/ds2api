@@ -17,6 +17,10 @@
             "label": "Batch Import",
             "desc": "Bulk import account configuration"
         },
+        "usage": {
+            "label": "Usage Stats",
+            "desc": "Inspect account and model call distribution"
+        },
         "vercel": {
             "label": "Vercel Sync",
             "desc": "Sync configuration to Vercel"
@@ -211,6 +215,41 @@
         "importing": "Importing...",
         "importComplete": "Import complete",
         "importSummary": "Imported {keys} API keys and updated {accounts} accounts."
+    },
+    "usageStats": {
+        "title": "Usage Statistics",
+        "desc": "Track recent calls by account, model, and interface surface. These stats are kept in memory and reset after service restart.",
+        "loadFailed": "Failed to load usage statistics.",
+        "loading": "Loading usage statistics...",
+        "empty": "No calls have been recorded yet.",
+        "refresh": "Refresh",
+        "refreshing": "Refreshing...",
+        "lastUpdated": "Last call",
+        "summary": {
+            "totalCalls": "Total calls",
+            "accounts": "Accounts",
+            "models": "Models",
+            "surfaces": "Surfaces"
+        },
+        "table": {
+            "title": "Usage Rows",
+            "desc": "Each row aggregates the same account, model, and interface surface.",
+            "rows": "{count} rows"
+        },
+        "columns": {
+            "account": "Account",
+            "accountType": "Account type",
+            "model": "Resolved model",
+            "requestedModel": "Requested model",
+            "surface": "Surface",
+            "count": "Count",
+            "lastCalledAt": "Last called at"
+        },
+        "accountType": {
+            "managed": "Managed account",
+            "direct": "Direct token",
+            "unknown": "Unknown"
+        }
     },
     "settings": {
         "loadFailed": "Failed to load settings.",

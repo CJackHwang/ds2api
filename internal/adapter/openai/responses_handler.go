@@ -17,6 +17,7 @@ import (
 	openaifmt "ds2api/internal/format/openai"
 	"ds2api/internal/sse"
 	streamengine "ds2api/internal/stream"
+	"ds2api/internal/usagestats"
 	"ds2api/internal/util"
 )
 
@@ -76,6 +77,12 @@ func (h *Handler) Responses(w http.ResponseWriter, r *http.Request) {
 		writeOpenAIError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	h.recordUsage(a, usagestats.Event{
+		Surface:        stdReq.Surface,
+		RequestedModel: stdReq.RequestedModel,
+		ResolvedModel:  stdReq.ResolvedModel,
+		ResponseModel:  stdReq.ResponseModel,
+	})
 
 	sessionID, err := h.DS.CreateSession(r.Context(), a, 3)
 	if err != nil {
