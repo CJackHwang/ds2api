@@ -2,63 +2,70 @@
 apiVersion: zeabur.com/v1
 kind: Template
 metadata:
-  name: DS2API
+    name: DS2API
 spec:
-  description: DeepSeek Web 对话转 OpenAI/Claude/Gemini 兼容 API（Go 实现，含 WebUI）
-  tags:
-    - DeepSeek
-    - API
-    - Go
-  readme: |-
-    # DS2API (Zeabur)
+    description: DeepSeek Web 对话转 OpenAI/Claude/Gemini 兼容 API（Go 实现，含 WebUI）
+    tags:
+        - DeepSeek
+        - API
+        - Go
+    readme: |-
+        # DS2API (Zeabur)
 
-    ## Runtime baseline
-    - Go: 1.26
+        ## After deployment
+        - Admin panel: `/admin`
+        - Health check: `/healthz`
+        - Config is persisted at `/data/config.json` (mounted volume)
 
-    ## After deployment
-    - Admin panel: `/admin`
-    - Health check: `/healthz`
-    - Config is persisted at `/data/config.json` (mounted volume)
-    - `BUILD_VERSION` is optional; when omitted, Docker build falls back to the repo `VERSION` file automatically
-
-    ## First-time setup
-    1. Open your service URL, then visit `/admin`
-    2. Login with `DS2API_ADMIN_KEY` (shown in Zeabur env/instructions)
-    3. Import / edit config in Admin UI (saved to `/data/config.json`)
-
-  services:
-    - name: ds2api
-      template: GIT
-      spec:
-        source:
-          source: GITHUB
-          repo: 1139136822
-          branch: main
-          rootDirectory: /
-        ports:
-          - id: web
-            port: 5001
-            type: HTTP
-        volumes:
-          - id: data
-            dir: /data
-        env:
-          PORT:
-            default: "5001"
-          LOG_LEVEL:
-            default: "INFO"
-          DS2API_ADMIN_KEY:
-            default: ${PASSWORD}
-            expose: true
-          DS2API_CONFIG_PATH:
-            default: /data/config.json
-        instructions:
-          - title: Admin panel
-            content: Visit `/admin` on your service URL.
-          - title: DS2API admin key
-            content: ${DS2API_ADMIN_KEY}
-        healthCheck:
-          type: HTTP
-          port: web
-          http:
-            path: /healthz
+        ## First-time setup
+        1. Open your service URL, then visit `/admin`
+        2. Login with `DS2API_ADMIN_KEY` (shown in Zeabur env/instructions)
+        3. Import / edit config in Admin UI (saved to `/data/config.json`)
+    services:
+        - name: ds2api
+          template: GIT
+          spec:
+            source:
+                source: GITHUB
+                repo: 1139136822
+                branch: main
+                rootDirectory: /
+            ports:
+                - id: web
+                  port: 5001
+                  type: HTTP
+            volumes:
+                - id: data
+                  dir: /data
+            instructions:
+                - title: Admin panel
+                  content: Visit `/admin` on your service URL.
+                - title: DS2API admin key
+                  content: ${DS2API_ADMIN_KEY}
+            env:
+                DS2API_ADMIN_KEY:
+                    default: ${PASSWORD}
+                    expose: true
+                DS2API_CONFIG_PATH:
+                    default: /data/config.json
+                LOG_LEVEL:
+                    default: INFO
+                PORT:
+                    default: "5001"
+            # 添加启动命令，先检查配置文件是否存在
+            command:
+                - sh
+                - -c
+                - |
+                  # 检查配置文件是否存在，如果不存在则创建默认配置
+                  if [ ! -f /data/config.json ]; then
+                    echo "Creating default config file..."
+                    echo '{}' > /data/config.json
+                  fi
+                  # 启动应用
+                  ./ds2api
+            healthCheck:
+                type: HTTP
+                port: web
+                http:
+                    path: /healthz
