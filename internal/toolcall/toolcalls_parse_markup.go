@@ -115,6 +115,12 @@ func parseSingleXMLToolCall(block string) (ParsedToolCall, bool) {
 				if err := dec.DecodeElement(&node, &t); err == nil {
 					inner := strings.TrimSpace(node.Inner)
 					if inner != "" {
+						if named := parseXMLNamedParameters(inner); len(named) > 0 {
+							for k, vv := range named {
+								params[k] = vv
+							}
+							break
+						}
 						unescapedInner := html.UnescapeString(inner)
 						if parsed := parseToolCallInput(unescapedInner); len(parsed) > 0 {
 							if len(parsed) == 1 {
@@ -181,6 +187,55 @@ func parseSingleXMLToolCall(block string) (ParsedToolCall, bool) {
 		return ParsedToolCall{}, false
 	}
 	return ParsedToolCall{Name: strings.TrimSpace(html.UnescapeString(name)), Input: params}, true
+}
+
+func parseXMLNamedParameters(innerXML string) map[string]any {
+	raw := strings.TrimSpace(innerXML)
+	if raw == "" {
+		return nil
+	}
+	dec := xml.NewDecoder(strings.NewReader("<root>" + raw + "</root>"))
+	out := map[string]any{}
+	for {
+		tok, err := dec.Token()
+		if err != nil {
+			break
+		}
+		start, ok := tok.(xml.StartElement)
+		if !ok {
+			continue
+		}
+		if !strings.EqualFold(start.Name.Local, "parameter") {
+			continue
+		}
+		key := ""
+		for _, attr := range start.Attr {
+			if strings.EqualFold(strings.TrimSpace(attr.Name.Local), "name") {
+				key = strings.TrimSpace(attr.Value)
+				break
+			}
+		}
+		var v string
+		if err := dec.DecodeElement(&v, &start); err != nil {
+			continue
+		}
+		val := normalizeToolParamValue(v)
+		if key == "" {
+			continue
+		}
+		out[key] = val
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func normalizeToolParamValue(v string) string {
+	if strings.Contains(v, "\n") {
+		return strings.Trim(v, "\n")
+	}
+	return strings.TrimSpace(v)
 }
 
 func stripTopLevelXMLParameters(inner string) string {
@@ -316,7 +371,7 @@ func parseInvokeFunctionCallStyle(text string) (ParsedToolCall, bool) {
 			continue
 		}
 		k := strings.TrimSpace(pm[1])
-		v := strings.TrimSpace(html.UnescapeString(pm[2]))
+		v := normalizeToolParamValue(unwrapXMLCDATA(html.UnescapeString(pm[2])))
 		if k != "" {
 			input[k] = v
 		}
@@ -347,7 +402,7 @@ func parseToolUseFunctionStyle(text string) (ParsedToolCall, bool) {
 			continue
 		}
 		k := strings.TrimSpace(pm[1])
-		v := strings.TrimSpace(html.UnescapeString(pm[2]))
+		v := normalizeToolParamValue(unwrapXMLCDATA(html.UnescapeString(pm[2])))
 		if k != "" {
 			input[k] = v
 		}
@@ -455,5 +510,13 @@ func parseXMLChildKV(body string) map[string]any {
 
 func asString(v any) string {
 	s, _ := v.(string)
+	return s
+}
+
+func unwrapXMLCDATA(s string) string {
+	t := strings.TrimSpace(s)
+	if strings.HasPrefix(t, "<![CDATA[") && strings.HasSuffix(t, "]]>") && len(t) >= len("<![CDATA[")+len("]]>") {
+		return t[len("<![CDATA[") : len(t)-len("]]>")]
+	}
 	return s
 }

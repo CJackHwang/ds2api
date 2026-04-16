@@ -318,6 +318,27 @@ func TestParseToolCallsSupportsInvokeFunctionCallStyle(t *testing.T) {
 	}
 }
 
+func TestParseToolCallsSupportsXMLNamedParameterStyle(t *testing.T) {
+	text := `<tool_calls><tool_call><tool_name>write_to_file</tool_name><parameters><parameter name="path">novel_chapter1.md</parameter><parameter name="content"><![CDATA[# 第一章：启航
+
+这里是正文
+]]></parameter></parameters></tool_call></tool_calls>`
+	calls := ParseToolCalls(text, []string{"write_to_file"})
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 call, got %#v", calls)
+	}
+	if calls[0].Name != "write_to_file" {
+		t.Fatalf("expected tool name write_to_file, got %q", calls[0].Name)
+	}
+	if calls[0].Input["path"] != "novel_chapter1.md" {
+		t.Fatalf("expected path argument, got %#v", calls[0].Input)
+	}
+	content, _ := calls[0].Input["content"].(string)
+	if !strings.Contains(content, "第一章") || !strings.Contains(content, "这里是正文") {
+		t.Fatalf("expected content to preserve text, got %#v", calls[0].Input)
+	}
+}
+
 func TestParseToolCallsSupportsGeminiFunctionCallJSON(t *testing.T) {
 	text := `{"functionCall":{"name":"search_web","args":{"query":"latest"}}}`
 	calls := ParseToolCalls(text, []string{"search_web"})

@@ -20,6 +20,7 @@ const TOOL_CALL_MARKUP_ARGS_PATTERNS = [
   /<(?:[a-z0-9_:-]+:)?args\b[^>]*>([\s\S]*?)<\/(?:[a-z0-9_:-]+:)?args>/i,
   /<(?:[a-z0-9_:-]+:)?params\b[^>]*>([\s\S]*?)<\/(?:[a-z0-9_:-]+:)?params>/i,
 ];
+const NAMED_PARAMETER_PATTERN = /<(?:[a-z0-9_:-]+:)?parameter\b[^>]*\bname="([^"]+)"[^>]*>([\s\S]*?)<\/(?:[a-z0-9_:-]+:)?parameter>/gi;
 const TEXT_KV_NAME_PATTERN = /function\.name:\s*([a-zA-Z0-9_.-]+)/gi;
 
 const {
@@ -266,6 +267,10 @@ function parseMarkupInput(raw) {
   if (!s) {
     return {};
   }
+  const named = parseNamedParameterElements(s);
+  if (Object.keys(named).length > 0) {
+    return named;
+  }
   const parsed = parseToolCallInput(s);
   if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && Object.keys(parsed).length > 0) {
     return parsed;
@@ -275,6 +280,41 @@ function parseMarkupInput(raw) {
     return kv;
   }
   return { _raw: stripTagText(s) };
+}
+
+function parseNamedParameterElements(text) {
+  const raw = toStringSafe(text);
+  if (!raw) {
+    return {};
+  }
+  const out = {};
+  for (const m of raw.matchAll(NAMED_PARAMETER_PATTERN)) {
+    const key = toStringSafe(m[1]).trim();
+    if (!key) {
+      continue;
+    }
+    let value = toStringSafe(m[2]);
+    value = unwrapCDATA(value);
+    value = normalizeParamValue(value);
+    out[key] = value;
+  }
+  return out;
+}
+
+function unwrapCDATA(value) {
+  const t = toStringSafe(value).trim();
+  if (t.startsWith('<![CDATA[') && t.endsWith(']]>')) {
+    return t.slice('<![CDATA['.length, t.length - ']]>'.length);
+  }
+  return value;
+}
+
+function normalizeParamValue(value) {
+  const s = toStringSafe(value);
+  if (s.includes('\n')) {
+    return s.replace(/^\n+/, '').replace(/\n+$/, '');
+  }
+  return s.trim();
 }
 
 function parseMarkupKVObject(text) {

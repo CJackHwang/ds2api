@@ -208,6 +208,35 @@ func TestHandleNonStreamUnknownToolIntercepted(t *testing.T) {
 	}
 }
 
+func TestHandleNonStreamDoesNotPromoteToolCallsWhenNoToolsProvided(t *testing.T) {
+	h := &Handler{}
+	resp := makeSSEHTTPResponse(
+		`data: {"p":"response/content","v":"{\"tool_calls\":[{\"name\":\"search\",\"input\":{\"q\":\"go\"}}]}"}`,
+		`data: [DONE]`,
+	)
+	rec := httptest.NewRecorder()
+
+	h.handleNonStream(rec, context.Background(), resp, "cid2b2", "deepseek-chat", "prompt", false, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("unexpected status: %d", rec.Code)
+	}
+
+	out := decodeJSONBody(t, rec.Body.String())
+	choices, _ := out["choices"].([]any)
+	choice, _ := choices[0].(map[string]any)
+	if choice["finish_reason"] != "stop" {
+		t.Fatalf("expected finish_reason=stop, got %#v", choice["finish_reason"])
+	}
+	msg, _ := choice["message"].(map[string]any)
+	if msg["tool_calls"] != nil {
+		t.Fatalf("expected no tool_calls, got %#v", msg["tool_calls"])
+	}
+	content, _ := msg["content"].(string)
+	if !strings.Contains(content, `"tool_calls"`) {
+		t.Fatalf("expected tool_calls json preserved as content, got %#v", content)
+	}
+}
+
 func TestHandleNonStreamEmbeddedToolCallExamplePromotesToolCall(t *testing.T) {
 	h := &Handler{}
 	resp := makeSSEHTTPResponse(

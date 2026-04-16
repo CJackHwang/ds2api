@@ -7,16 +7,18 @@ import (
 )
 
 func BuildChatCompletion(completionID, model, finalPrompt, finalThinking, finalText string, toolNames []string) map[string]any {
-	detected := toolcall.ParseStandaloneToolCallsDetailed(finalText, toolNames)
 	finishReason := "stop"
 	messageObj := map[string]any{"role": "assistant", "content": finalText}
 	if strings.TrimSpace(finalThinking) != "" {
 		messageObj["reasoning_content"] = finalThinking
 	}
-	if len(detected.Calls) > 0 {
-		finishReason = "tool_calls"
-		messageObj["tool_calls"] = toolcall.FormatOpenAIToolCalls(detected.Calls)
-		messageObj["content"] = nil
+	if len(toolNames) > 0 {
+		detected := toolcall.ParseStandaloneToolCallsDetailed(finalText, toolNames)
+		if len(detected.Calls) > 0 {
+			finishReason = "tool_calls"
+			messageObj["tool_calls"] = toolcall.FormatOpenAIToolCalls(detected.Calls)
+			messageObj["content"] = nil
+		}
 	}
 
 	return map[string]any{
