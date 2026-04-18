@@ -20,6 +20,7 @@ const (
 	defaultStatsFailedKey  = "ds2api:stats:failed"
 	legacyStatsSuccessKey  = "ds2api:stats:success_calls"
 	legacyStatsFailedKey   = "ds2api:stats:failed_calls"
+	defaultStatsHashKey    = "ds2api:stats"
 )
 
 type redisCounterStore struct {
@@ -70,11 +71,11 @@ func envOr(key, fallback string) string {
 }
 
 func (r *redisCounterStore) IncrSuccess() error {
-	return r.incr(r.successKey)
+	return r.incr(r.successKey, defaultStatsHashKey, "success")
 }
 
 func (r *redisCounterStore) IncrFailed() error {
-	return r.incr(r.failedKey)
+	return r.incr(r.failedKey, defaultStatsHashKey, "failed")
 }
 
 func (r *redisCounterStore) Snapshot() (int64, int64, error) {
@@ -84,28 +85,54 @@ func (r *redisCounterStore) Snapshot() (int64, int64, error) {
 	var failed int64
 	err := r.withConn(ctx, func(rw *bufio.ReadWriter) error {
 		var err error
-		success, err = readCounterWithFallback(rw, r.successKey, legacyStatsSuccessKey)
+		success, err = readCounterWithFallback(
+			rw,
+			[]string{r.successKey, legacyStatsSuccessKey},
+			[]hashCounterLookup{
+				{key: defaultStatsHashKey, fields: []string{"success", "success_calls", "successCount"}},
+				{key: r.successKey, fields: []string{"success", "success_calls", "value"}},
+			},
+		)
 		if err != nil {
 			return err
 		}
-		failed, err = readCounterWithFallback(rw, r.failedKey, legacyStatsFailedKey)
+		failed, err = readCounterWithFallback(
+			rw,
+			[]string{r.failedKey, legacyStatsFailedKey},
+			[]hashCounterLookup{
+				{key: defaultStatsHashKey, fields: []string{"failed", "failed_calls", "failedCount"}},
+				{key: r.failedKey, fields: []string{"failed", "failed_calls", "value"}},
+			},
+		)
 		return err
 	})
 	return success, failed, err
 }
 
-func (r *redisCounterStore) incr(key string) error {
+func (r *redisCounterStore) incr(key, hashKey, field string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	return r.withConn(ctx, func(rw *bufio.ReadWriter) error {
 		_, err := writeCommandAndReadInteger(rw, "INCR", key)
-		return err
+		if err != nil {
+			return err
+		}
+		if strings.TrimSpace(hashKey) != "" && strings.TrimSpace(field) != "" {
+			_, err = writeCommandAndReadInteger(rw, "HINCRBY", hashKey, field, "1")
+			if err != nil && !isWrongTypeErr(err) {
+				return err
+			}
+		}
+		return nil
 	})
 }
 
 func readCounter(rw *bufio.ReadWriter, key string) (int64, error) {
 	val, err := writeCommandAndReadBulkString(rw, "GET", key)
 	if err != nil {
+		if isWrongTypeErr(err) {
+			return 0, nil
+		}
 		return 0, err
 	}
 	if strings.TrimSpace(val) == "" {
@@ -118,7 +145,12 @@ func readCounter(rw *bufio.ReadWriter, key string) (int64, error) {
 	return n, nil
 }
 
-func readCounterWithFallback(rw *bufio.ReadWriter, keys ...string) (int64, error) {
+type hashCounterLookup struct {
+	key    string
+	fields []string
+}
+
+func readCounterWithFallback(rw *bufio.ReadWriter, keys []string, hashLookups []hashCounterLookup) (int64, error) {
 	for _, key := range keys {
 		if strings.TrimSpace(key) == "" {
 			continue
@@ -131,7 +163,47 @@ func readCounterWithFallback(rw *bufio.ReadWriter, keys ...string) (int64, error
 			return v, nil
 		}
 	}
+	for _, lookup := range hashLookups {
+		if strings.TrimSpace(lookup.key) == "" || len(lookup.fields) == 0 {
+			continue
+		}
+		v, err := readCounterFromHash(rw, lookup.key, lookup.fields...)
+		if err != nil {
+			return 0, err
+		}
+		if v != 0 {
+			return v, nil
+		}
+	}
 	return 0, nil
+}
+
+func readCounterFromHash(rw *bufio.ReadWriter, hashKey string, fields ...string) (int64, error) {
+	for _, field := range fields {
+		if strings.TrimSpace(field) == "" {
+			continue
+		}
+		val, err := writeCommandAndReadBulkString(rw, "HGET", hashKey, field)
+		if err != nil {
+			if isWrongTypeErr(err) {
+				return 0, nil
+			}
+			return 0, err
+		}
+		if strings.TrimSpace(val) == "" {
+			continue
+		}
+		n, err := strconv.ParseInt(strings.TrimSpace(val), 10, 64)
+		if err != nil {
+			return 0, err
+		}
+		return n, nil
+	}
+	return 0, nil
+}
+
+func isWrongTypeErr(err error) bool {
+	return err != nil && strings.Contains(strings.ToUpper(err.Error()), "WRONGTYPE")
 }
 
 func (r *redisCounterStore) withConn(ctx context.Context, fn func(*bufio.ReadWriter) error) error {
