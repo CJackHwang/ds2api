@@ -19,6 +19,7 @@ import (
 	"ds2api/internal/auth"
 	"ds2api/internal/config"
 	"ds2api/internal/deepseek"
+	"ds2api/internal/metrics"
 	"ds2api/internal/webui"
 )
 
@@ -50,13 +51,15 @@ func NewApp() (*App, error) {
 	openaiHandler := &openai.Handler{Store: store, Auth: resolver, DS: dsClient}
 	claudeHandler := &claude.Handler{Store: store, Auth: resolver, DS: dsClient, OpenAI: openaiHandler}
 	geminiHandler := &gemini.Handler{Store: store, Auth: resolver, DS: dsClient, OpenAI: openaiHandler}
-	adminHandler := &admin.Handler{Store: store, Pool: pool, DS: dsClient, OpenAI: openaiHandler}
+	requestStats := metrics.NewRequestStats()
+	adminHandler := &admin.Handler{Store: store, Pool: pool, DS: dsClient, OpenAI: openaiHandler, Stats: requestStats}
 	webuiHandler := webui.NewHandler()
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Logger)
+	r.Use(requestStats.Middleware)
 	r.Use(middleware.Recoverer)
 	r.Use(cors)
 	r.Use(timeout(0))

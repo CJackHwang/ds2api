@@ -9,6 +9,7 @@ type Handler struct {
 	Pool   PoolController
 	DS     DeepSeekCaller
 	OpenAI OpenAIChatCaller
+	Stats  RequestStatsReader
 }
 
 func RegisterRoutes(r chi.Router, h *Handler) {

@@ -56,6 +56,10 @@ type DeepSeekCaller interface {
 	DeleteAllSessionsForToken(ctx context.Context, token string) error
 }
 
+type RequestStatsReader interface {
+	Snapshot() (success int64, failed int64)
+}
+
 var _ ConfigStore = (*config.Store)(nil)
 var _ PoolController = (*account.Pool)(nil)
 var _ DeepSeekCaller = (*deepseek.Client)(nil)

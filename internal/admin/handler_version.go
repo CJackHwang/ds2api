@@ -26,6 +26,11 @@ func (h *Handler) getVersion(w http.ResponseWriter, _ *http.Request) {
 		"source":          source,
 		"checked_at":      time.Now().UTC().Format(time.RFC3339),
 	}
+	if h.Stats != nil {
+		successCalls, failedCalls := h.Stats.Snapshot()
+		resp["success_calls"] = successCalls
+		resp["failed_calls"] = failedCalls
+	}
 
 	req, err := http.NewRequest(http.MethodGet, latestReleaseAPI, nil)
 	if err != nil {
