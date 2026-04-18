@@ -1,7 +1,10 @@
 package metrics
 
 import (
+	"bufio"
+	"fmt"
 	"net/http"
+	"net"
 	"strings"
 	"sync/atomic"
 )
@@ -46,17 +49,48 @@ func shouldTrackPath(path string) bool {
 	if strings.HasPrefix(p, "/admin") || strings.HasPrefix(p, "/healthz") || strings.HasPrefix(p, "/readyz") {
 		return false
 	}
-	// Track business API calls only.
-	return strings.HasPrefix(p, "/v1") || strings.HasPrefix(p, "/v1beta") || strings.HasPrefix(p, "/anthropic") || strings.HasPrefix(p, "/messages")
+	// Track all non-admin requests so reverse-proxy prefixes (/api, etc.) are
+	// included as well.
+	return true
 }
 
 type statusRecorder struct {
 	http.ResponseWriter
-	status int
+	status      int
+	wroteHeader bool
 }
 
 func (r *statusRecorder) WriteHeader(code int) {
 	r.status = code
+	r.wroteHeader = true
 	r.ResponseWriter.WriteHeader(code)
 }
 
+func (r *statusRecorder) Write(b []byte) (int, error) {
+	if !r.wroteHeader {
+		r.WriteHeader(http.StatusOK)
+	}
+	return r.ResponseWriter.Write(b)
+}
+
+func (r *statusRecorder) Flush() {
+	if f, ok := r.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
+func (r *statusRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	h, ok := r.ResponseWriter.(http.Hijacker)
+	if !ok {
+		return nil, nil, fmt.Errorf("response writer does not support hijacking")
+	}
+	return h.Hijack()
+}
+
+func (r *statusRecorder) Push(target string, opts *http.PushOptions) error {
+	p, ok := r.ResponseWriter.(http.Pusher)
+	if !ok {
+		return http.ErrNotSupported
+	}
+	return p.Push(target, opts)
+}
