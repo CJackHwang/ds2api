@@ -5,12 +5,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 )
 
 func envWritebackEnabled() bool {
-	v := strings.ToLower(strings.TrimSpace(os.Getenv("DS2API_ENV_WRITEBACK")))
-	return v == "1" || v == "true" || v == "yes" || v == "on"
+	return false
 }
 
 func (s *Store) IsEnvWritebackEnabled() bool {
@@ -18,8 +16,7 @@ func (s *Store) IsEnvWritebackEnabled() bool {
 }
 
 func (s *Store) HasEnvConfigSource() bool {
-	rawCfg := strings.TrimSpace(os.Getenv("DS2API_CONFIG_JSON"))
-	return rawCfg != ""
+	return false
 }
 
 func (s *Store) ConfigPath() string {

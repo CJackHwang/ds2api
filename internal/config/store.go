@@ -15,6 +15,7 @@ type Store struct {
 	cfg     Config
 	path    string
 	fromEnv bool
+	redis   *redisConfigStore
 	keyMap  map[string]struct{} // O(1) API key lookup index
 	accMap  map[string]int      // O(1) account lookup: identifier -> slice index
 	accTest map[string]string   // runtime-only account test status cache
@@ -42,6 +43,18 @@ func LoadStoreWithError() (*Store, error) {
 }
 
 func loadStore() (*Store, error) {
+	if redisEnabled() {
+		cfg, redisStore, err := loadConfigFromRedis()
+		if validateErr := ValidateConfig(cfg); validateErr != nil {
+			err = errors.Join(err, validateErr)
+		}
+		return &Store{
+			cfg:   cfg,
+			path:  ConfigPath(),
+			redis: redisStore,
+		}, err
+	}
+
 	cfg, fromEnv, err := loadConfig()
 	if validateErr := ValidateConfig(cfg); validateErr != nil {
 		err = errors.Join(err, validateErr)
@@ -50,43 +63,6 @@ func loadStore() (*Store, error) {
 }
 
 func loadConfig() (Config, bool, error) {
-	rawCfg := strings.TrimSpace(os.Getenv("DS2API_CONFIG_JSON"))
-	if rawCfg != "" {
-		cfg, err := parseConfigString(rawCfg)
-		if err != nil {
-			if !IsVercel() && envWritebackEnabled() {
-				if fileCfg, fileErr := loadConfigFromFile(ConfigPath()); fileErr == nil {
-					return fileCfg, false, nil
-				}
-			}
-			return cfg, true, err
-		}
-		cfg.ClearAccountTokens()
-		cfg.DropInvalidAccounts()
-		if IsVercel() || !envWritebackEnabled() {
-			return cfg, true, err
-		}
-		content, fileErr := os.ReadFile(ConfigPath())
-		if fileErr == nil {
-			var fileCfg Config
-			if unmarshalErr := json.Unmarshal(content, &fileCfg); unmarshalErr == nil {
-				fileCfg.DropInvalidAccounts()
-				return fileCfg, false, err
-			}
-		}
-		if errors.Is(fileErr, os.ErrNotExist) {
-			if validateErr := ValidateConfig(cfg); validateErr != nil {
-				return cfg, true, validateErr
-			}
-			if writeErr := writeConfigFile(ConfigPath(), cfg.Clone()); writeErr == nil {
-				return cfg, false, err
-			} else {
-				Logger.Warn("[config] env writeback bootstrap failed", "error", writeErr)
-			}
-		}
-		return cfg, true, err
-	}
-
 	cfg, err := loadConfigFromFile(ConfigPath())
 	if err != nil {
 		if IsVercel() {
@@ -227,6 +203,9 @@ func (s *Store) Update(mutator func(*Config) error) error {
 func (s *Store) Save() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.redis != nil {
+		return s.saveRedisLocked()
+	}
 	if s.fromEnv && (IsVercel() || !envWritebackEnabled()) {
 		Logger.Info("[save_config] source from env, skip write")
 		return nil
@@ -245,6 +224,9 @@ func (s *Store) Save() error {
 }
 
 func (s *Store) saveLocked() error {
+	if s.redis != nil {
+		return s.saveRedisLocked()
+	}
 	if s.fromEnv && (IsVercel() || !envWritebackEnabled()) {
 		Logger.Info("[save_config] source from env, skip write")
 		return nil
@@ -260,6 +242,16 @@ func (s *Store) saveLocked() error {
 	}
 	s.fromEnv = false
 	return nil
+}
+
+func (s *Store) saveRedisLocked() error {
+	persistCfg := s.cfg.Clone()
+	persistCfg.ClearAccountTokens()
+	b, err := json.Marshal(persistCfg)
+	if err != nil {
+		return err
+	}
+	return s.redis.SaveJSON(string(b))
 }
 
 func (s *Store) IsEnvBacked() bool {
