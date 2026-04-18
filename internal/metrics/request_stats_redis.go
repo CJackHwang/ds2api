@@ -21,6 +21,11 @@ const (
 	legacyStatsSuccessKey  = "ds2api:stats:success_calls"
 	legacyStatsFailedKey   = "ds2api:stats:failed_calls"
 	defaultStatsHashKey    = "ds2api:stats"
+	altStatsSuccessKey     = "stats:success"
+	altStatsFailedKey      = "stats:failed"
+	plainSuccessKey        = "success"
+	plainFailedKey         = "failed"
+	plainStatsHashKey      = "stats"
 )
 
 type redisCounterStore struct {
@@ -87,9 +92,15 @@ func (r *redisCounterStore) Snapshot() (int64, int64, error) {
 		var err error
 		success, err = readCounterWithFallback(
 			rw,
-			[]string{r.successKey, legacyStatsSuccessKey},
+			[]string{
+				r.successKey,
+				legacyStatsSuccessKey,
+				altStatsSuccessKey,
+				plainSuccessKey,
+			},
 			[]hashCounterLookup{
 				{key: defaultStatsHashKey, fields: []string{"success", "success_calls", "successCount"}},
+				{key: plainStatsHashKey, fields: []string{"success", "success_calls", "successCount"}},
 				{key: r.successKey, fields: []string{"success", "success_calls", "value"}},
 			},
 		)
@@ -98,9 +109,15 @@ func (r *redisCounterStore) Snapshot() (int64, int64, error) {
 		}
 		failed, err = readCounterWithFallback(
 			rw,
-			[]string{r.failedKey, legacyStatsFailedKey},
+			[]string{
+				r.failedKey,
+				legacyStatsFailedKey,
+				altStatsFailedKey,
+				plainFailedKey,
+			},
 			[]hashCounterLookup{
 				{key: defaultStatsHashKey, fields: []string{"failed", "failed_calls", "failedCount"}},
+				{key: plainStatsHashKey, fields: []string{"failed", "failed_calls", "failedCount"}},
 				{key: r.failedKey, fields: []string{"failed", "failed_calls", "value"}},
 			},
 		)
