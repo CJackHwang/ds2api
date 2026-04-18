@@ -31,6 +31,29 @@ func (s *RequestStats) Snapshot() (success int64, failed int64) {
 	return atomic.LoadInt64(&s.success), atomic.LoadInt64(&s.failed)
 }
 
+func (s *RequestStats) DebugSnapshot() map[string]any {
+	success, failed := s.Snapshot()
+	info := map[string]any{
+		"memory_success": atomic.LoadInt64(&s.success),
+		"memory_failed":  atomic.LoadInt64(&s.failed),
+		"snapshot": map[string]any{
+			"success": success,
+			"failed":  failed,
+		},
+		"redis_enabled": s != nil && s.redis != nil,
+	}
+	if s == nil || s.redis == nil {
+		return info
+	}
+	redisInfo, err := s.redis.DebugSnapshot()
+	if err != nil {
+		info["redis_error"] = err.Error()
+		return info
+	}
+	info["redis"] = redisInfo
+	return info
+}
+
 func (s *RequestStats) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !shouldTrackPath(r.URL.Path) {

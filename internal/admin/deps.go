@@ -58,6 +58,7 @@ type DeepSeekCaller interface {
 
 type RequestStatsReader interface {
 	Snapshot() (success int64, failed int64)
+	DebugSnapshot() map[string]any
 }
 
 var _ ConfigStore = (*config.Store)(nil)

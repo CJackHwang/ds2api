@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -97,12 +98,14 @@ func (r *redisCounterStore) Snapshot() (int64, int64, error) {
 				legacyStatsSuccessKey,
 				altStatsSuccessKey,
 				plainSuccessKey,
+				plainStatsHashKey,
 			},
 			[]hashCounterLookup{
 				{key: defaultStatsHashKey, fields: []string{"success", "success_calls", "successCount"}},
 				{key: plainStatsHashKey, fields: []string{"success", "success_calls", "successCount"}},
 				{key: r.successKey, fields: []string{"success", "success_calls", "value"}},
 			},
+			[]string{"success", "success_calls", "successCount"},
 		)
 		if err != nil {
 			return err
@@ -114,16 +117,72 @@ func (r *redisCounterStore) Snapshot() (int64, int64, error) {
 				legacyStatsFailedKey,
 				altStatsFailedKey,
 				plainFailedKey,
+				plainStatsHashKey,
 			},
 			[]hashCounterLookup{
 				{key: defaultStatsHashKey, fields: []string{"failed", "failed_calls", "failedCount"}},
 				{key: plainStatsHashKey, fields: []string{"failed", "failed_calls", "failedCount"}},
 				{key: r.failedKey, fields: []string{"failed", "failed_calls", "value"}},
 			},
+			[]string{"failed", "failed_calls", "failedCount"},
 		)
 		return err
 	})
 	return success, failed, err
+}
+
+func (r *redisCounterStore) DebugSnapshot() (map[string]any, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	out := map[string]any{
+		"success_key": r.successKey,
+		"failed_key":  r.failedKey,
+	}
+	err := r.withConn(ctx, func(rw *bufio.ReadWriter) error {
+		keys := []string{
+			r.successKey, r.failedKey,
+			legacyStatsSuccessKey, legacyStatsFailedKey,
+			altStatsSuccessKey, altStatsFailedKey,
+			plainSuccessKey, plainFailedKey,
+			defaultStatsHashKey, plainStatsHashKey,
+		}
+		seen := map[string]struct{}{}
+		items := make([]map[string]any, 0, len(keys))
+		for _, key := range keys {
+			if _, ok := seen[key]; ok || strings.TrimSpace(key) == "" {
+				continue
+			}
+			seen[key] = struct{}{}
+			item := map[string]any{"key": key}
+			typ, err := writeCommandAndReadSimpleString(rw, "TYPE", key)
+			if err != nil {
+				item["error"] = err.Error()
+				items = append(items, item)
+				continue
+			}
+			item["type"] = typ
+			switch typ {
+			case "string":
+				v, err := writeCommandAndReadBulkString(rw, "GET", key)
+				if err != nil {
+					item["error"] = err.Error()
+				} else {
+					item["value"] = v
+				}
+			case "hash":
+				m, err := writeCommandAndReadHash(rw, "HGETALL", key)
+				if err != nil {
+					item["error"] = err.Error()
+				} else {
+					item["fields"] = m
+				}
+			}
+			items = append(items, item)
+		}
+		out["keys"] = items
+		return nil
+	})
+	return out, err
 }
 
 func (r *redisCounterStore) incr(key, hashKey, field string) error {
@@ -167,12 +226,20 @@ type hashCounterLookup struct {
 	fields []string
 }
 
-func readCounterWithFallback(rw *bufio.ReadWriter, keys []string, hashLookups []hashCounterLookup) (int64, error) {
+func readCounterWithFallback(rw *bufio.ReadWriter, keys []string, hashLookups []hashCounterLookup, jsonFields []string) (int64, error) {
 	for _, key := range keys {
 		if strings.TrimSpace(key) == "" {
 			continue
 		}
 		v, err := readCounter(rw, key)
+		if err != nil {
+			return 0, err
+		}
+		if v != 0 {
+			return v, nil
+		}
+		// Some deployments store a JSON document in a string key.
+		v, err = readCounterFromJSONDoc(rw, key, jsonFields...)
 		if err != nil {
 			return 0, err
 		}
@@ -193,6 +260,76 @@ func readCounterWithFallback(rw *bufio.ReadWriter, keys []string, hashLookups []
 		}
 	}
 	return 0, nil
+}
+
+func readCounterFromJSONDoc(rw *bufio.ReadWriter, key string, fields ...string) (int64, error) {
+	raw, err := writeCommandAndReadBulkString(rw, "GET", key)
+	if err != nil {
+		if isWrongTypeErr(err) {
+			return 0, nil
+		}
+		return 0, err
+	}
+	raw = strings.TrimSpace(raw)
+	if raw == "" || !(strings.HasPrefix(raw, "{") || strings.HasPrefix(raw, "[")) {
+		return 0, nil
+	}
+	var doc any
+	if err := json.Unmarshal([]byte(raw), &doc); err != nil {
+		return 0, nil
+	}
+	for _, field := range fields {
+		if n, ok := findNumericField(doc, field); ok && n != 0 {
+			return n, nil
+		}
+	}
+	return 0, nil
+}
+
+func findNumericField(node any, field string) (int64, bool) {
+	switch v := node.(type) {
+	case map[string]any:
+		for k, item := range v {
+			if strings.EqualFold(strings.TrimSpace(k), strings.TrimSpace(field)) {
+				if n, ok := toInt64(item); ok {
+					return n, true
+				}
+			}
+			if n, ok := findNumericField(item, field); ok {
+				return n, true
+			}
+		}
+	case []any:
+		for _, item := range v {
+			if n, ok := findNumericField(item, field); ok {
+				return n, true
+			}
+		}
+	}
+	return 0, false
+}
+
+func toInt64(v any) (int64, bool) {
+	switch n := v.(type) {
+	case float64:
+		return int64(n), true
+	case float32:
+		return int64(n), true
+	case int:
+		return int64(n), true
+	case int64:
+		return n, true
+	case int32:
+		return int64(n), true
+	case string:
+		parsed, err := strconv.ParseInt(strings.TrimSpace(n), 10, 64)
+		if err != nil {
+			return 0, false
+		}
+		return parsed, true
+	default:
+		return 0, false
+	}
 }
 
 func readCounterFromHash(rw *bufio.ReadWriter, hashKey string, fields ...string) (int64, error) {
@@ -367,6 +504,23 @@ func writeCommandAndReadInteger(rw *bufio.ReadWriter, parts ...string) (int64, e
 	return strconv.ParseInt(strings.TrimSpace(strings.TrimPrefix(line, ":")), 10, 64)
 }
 
+func writeCommandAndReadSimpleString(rw *bufio.ReadWriter, parts ...string) (string, error) {
+	if err := writeCommand(rw, parts...); err != nil {
+		return "", err
+	}
+	line, err := rw.ReadString('\n')
+	if err != nil {
+		return "", err
+	}
+	if strings.HasPrefix(line, "-") {
+		return "", errors.New(strings.TrimSpace(strings.TrimPrefix(line, "-")))
+	}
+	if strings.HasPrefix(line, "+") {
+		return strings.TrimSpace(strings.TrimPrefix(line, "+")), nil
+	}
+	return strings.TrimSpace(line), nil
+}
+
 func writeCommandAndReadBulkString(rw *bufio.ReadWriter, parts ...string) (string, error) {
 	if err := writeCommand(rw, parts...); err != nil {
 		return "", err
@@ -390,6 +544,64 @@ func writeCommandAndReadBulkString(rw *bufio.ReadWriter, parts ...string) (strin
 	}
 	if n < 0 {
 		return "", nil
+	}
+	buf := make([]byte, n+2)
+	if _, err := io.ReadFull(rw, buf); err != nil {
+		return "", err
+	}
+	return string(buf[:n]), nil
+}
+
+func writeCommandAndReadHash(rw *bufio.ReadWriter, parts ...string) (map[string]string, error) {
+	if err := writeCommand(rw, parts...); err != nil {
+		return nil, err
+	}
+	header, err := rw.ReadString('\n')
+	if err != nil {
+		return nil, err
+	}
+	if strings.HasPrefix(header, "-") {
+		return nil, errors.New(strings.TrimSpace(strings.TrimPrefix(header, "-")))
+	}
+	if !strings.HasPrefix(header, "*") {
+		return nil, fmt.Errorf("unexpected redis response: %s", strings.TrimSpace(header))
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(strings.TrimPrefix(header, "*")))
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]string{}
+	for i := 0; i < n/2; i++ {
+		k, err := readNextBulkString(rw)
+		if err != nil {
+			return nil, err
+		}
+		v, err := readNextBulkString(rw)
+		if err != nil {
+			return nil, err
+		}
+		out[k] = v
+	}
+	return out, nil
+}
+
+func readNextBulkString(rw *bufio.ReadWriter) (string, error) {
+	header, err := rw.ReadString('\n')
+	if err != nil {
+		return "", err
+	}
+	if strings.HasPrefix(header, "-") {
+		return "", errors.New(strings.TrimSpace(strings.TrimPrefix(header, "-")))
+	}
+	if strings.HasPrefix(header, "$-1") {
+		return "", nil
+	}
+	if !strings.HasPrefix(header, "$") {
+		return "", fmt.Errorf("unexpected redis response: %s", strings.TrimSpace(header))
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(strings.TrimPrefix(header, "$")))
+	if err != nil {
+		return "", err
 	}
 	buf := make([]byte, n+2)
 	if _, err := io.ReadFull(rw, buf); err != nil {
