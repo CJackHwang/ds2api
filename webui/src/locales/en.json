@@ -36,6 +36,8 @@
         "statusOnline": "Online",
         "accounts": "Accounts",
         "keys": "Keys",
+        "successCalls": "Success Calls",
+        "failedCalls": "Failed Calls",
         "signOut": "Sign out",
         "version": "Version",
         "updateAvailable": "Update available: {latest}"

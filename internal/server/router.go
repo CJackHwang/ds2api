@@ -19,6 +19,7 @@ import (
 	"ds2api/internal/auth"
 	"ds2api/internal/config"
 	"ds2api/internal/deepseek"
+	"ds2api/internal/metrics"
 	"ds2api/internal/webui"
 )
 
@@ -27,6 +28,7 @@ type App struct {
 	Pool     *account.Pool
 	Resolver *auth.Resolver
 	DS       *deepseek.Client
+	Stats    *metrics.RequestStats
 	Router   http.Handler
 }
 
@@ -47,16 +49,19 @@ func NewApp() (*App, error) {
 		config.Logger.Info("[PoW] pure Go solver ready")
 	}
 
+	requestStats := metrics.NewRequestStats()
+
 	openaiHandler := &openai.Handler{Store: store, Auth: resolver, DS: dsClient}
 	claudeHandler := &claude.Handler{Store: store, Auth: resolver, DS: dsClient, OpenAI: openaiHandler}
 	geminiHandler := &gemini.Handler{Store: store, Auth: resolver, DS: dsClient, OpenAI: openaiHandler}
-	adminHandler := &admin.Handler{Store: store, Pool: pool, DS: dsClient, OpenAI: openaiHandler}
+	adminHandler := &admin.Handler{Store: store, Pool: pool, DS: dsClient, OpenAI: openaiHandler, Stats: requestStats}
 	webuiHandler := webui.NewHandler()
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Logger)
+	r.Use(requestStats.Middleware)
 	r.Use(middleware.Recoverer)
 	r.Use(cors)
 	r.Use(timeout(0))
@@ -89,7 +94,7 @@ func NewApp() (*App, error) {
 		http.NotFound(w, req)
 	})
 
-	return &App{Store: store, Pool: pool, Resolver: resolver, DS: dsClient, Router: r}, nil
+	return &App{Store: store, Pool: pool, Resolver: resolver, DS: dsClient, Stats: requestStats, Router: r}, nil
 }
 
 func timeout(d time.Duration) func(http.Handler) http.Handler {

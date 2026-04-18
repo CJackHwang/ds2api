@@ -32,7 +32,6 @@ export default function SettingsContainer({ onRefresh, onMessage, authFetch, onF
         autoFetchPaused,
         lastError,
         settingsMeta,
-        syncHintVisible,
         retryLoadSettings,
         saveSettings,
         updatePassword,
@@ -74,13 +73,6 @@ export default function SettingsContainer({ onRefresh, onMessage, authFetch, onF
                     <span className="text-sm">{t('settings.defaultPasswordWarning')}</span>
                 </div>
             )}
-            {syncHintVisible && (
-                <div className="p-4 rounded-lg border border-amber-300/30 bg-amber-500/10 text-amber-700 flex items-center gap-2">
-                    <AlertTriangle className="w-4 h-4" />
-                    <span className="text-sm">{t('settings.vercelSyncHint')}</span>
-                </div>
-            )}
-
             <SecuritySection
                 t={t}
                 form={form}

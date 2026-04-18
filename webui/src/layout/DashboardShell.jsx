@@ -3,7 +3,6 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import {
     LayoutDashboard,
     Upload,
-    Cloud,
     Settings as SettingsIcon,
     LogOut,
     Menu,
@@ -17,7 +16,6 @@ import clsx from 'clsx'
 import AccountManagerContainer from '../features/account/AccountManagerContainer'
 import ApiTesterContainer from '../features/apiTester/ApiTesterContainer'
 import BatchImport from '../components/BatchImport'
-import VercelSyncContainer from '../features/vercel/VercelSyncContainer'
 import SettingsContainer from '../features/settings/SettingsContainer'
 import ProxyManagerContainer from '../features/proxy/ProxyManagerContainer'
 import LanguageToggle from '../components/LanguageToggle'
@@ -34,7 +32,6 @@ export default function DashboardShell({ token, onLogout, config, fetchConfig, s
         { id: 'proxies', label: t('nav.proxies.label'), icon: Globe, description: t('nav.proxies.desc') },
         { id: 'test', label: t('nav.test.label'), icon: Server, description: t('nav.test.desc') },
         { id: 'import', label: t('nav.import.label'), icon: Upload, description: t('nav.import.desc') },
-        { id: 'vercel', label: t('nav.vercel.label'), icon: Cloud, description: t('nav.vercel.desc') },
         { id: 'settings', label: t('nav.settings.label'), icon: SettingsIcon, description: t('nav.settings.desc') },
     ]
 
@@ -69,6 +66,7 @@ export default function DashboardShell({ token, onLogout, config, fetchConfig, s
 
 
     const [versionInfo, setVersionInfo] = useState(null)
+    const [callStats, setCallStats] = useState({ success: 0, failed: 0 })
 
     useEffect(() => {
         let disposed = false
@@ -90,6 +88,33 @@ export default function DashboardShell({ token, onLogout, config, fetchConfig, s
             disposed = true
         }
     }, [authFetch])
+
+    useEffect(() => {
+        let disposed = false
+        async function loadStats() {
+            try {
+                const res = await authFetch('/admin/stats')
+                const data = await res.json()
+                if (!disposed) {
+                    setCallStats({
+                        success: Number.isFinite(data.success_calls) ? data.success_calls : 0,
+                        failed: Number.isFinite(data.failed_calls) ? data.failed_calls : 0,
+                    })
+                }
+            } catch (_err) {
+                if (!disposed) {
+                    setCallStats({ success: 0, failed: 0 })
+                }
+            }
+        }
+        loadStats()
+        const timer = setInterval(loadStats, 10000)
+        return () => {
+            disposed = true
+            clearInterval(timer)
+        }
+    }, [authFetch])
+
     const renderTab = () => {
         switch (activeTab) {
             case 'accounts':
@@ -100,8 +125,6 @@ export default function DashboardShell({ token, onLogout, config, fetchConfig, s
                 return <ApiTesterContainer config={config} onMessage={showMessage} authFetch={authFetch} />
             case 'import':
                 return <BatchImport onRefresh={fetchConfig} onMessage={showMessage} authFetch={authFetch} />
-            case 'vercel':
-                return <VercelSyncContainer onMessage={showMessage} authFetch={authFetch} isVercel={isVercel} config={config} />
             case 'settings':
                 return <SettingsContainer onRefresh={fetchConfig} onMessage={showMessage} authFetch={authFetch} onForceLogout={onForceLogout} isVercel={isVercel} />
             default:
@@ -177,6 +200,14 @@ export default function DashboardShell({ token, onLogout, config, fetchConfig, s
                             <div className="bg-background rounded-lg p-3 border border-border shadow-sm">
                                 <div className="text-[9px] text-muted-foreground font-bold uppercase tracking-wider mb-0.5 opacity-70">{t('sidebar.keys')}</div>
                                 <div className="text-lg font-bold text-foreground">{config.keys?.length || 0}</div>
+                            </div>
+                            <div className="bg-background rounded-lg p-3 border border-border shadow-sm">
+                                <div className="text-[9px] text-muted-foreground font-bold uppercase tracking-wider mb-0.5 opacity-70">{t('sidebar.successCalls')}</div>
+                                <div className="text-lg font-bold text-emerald-500">{callStats.success}</div>
+                            </div>
+                            <div className="bg-background rounded-lg p-3 border border-border shadow-sm">
+                                <div className="text-[9px] text-muted-foreground font-bold uppercase tracking-wider mb-0.5 opacity-70">{t('sidebar.failedCalls')}</div>
+                                <div className="text-lg font-bold text-destructive">{callStats.failed}</div>
                             </div>
                         </div>
                         <div className="bg-background rounded-lg p-3 border border-border shadow-sm">
