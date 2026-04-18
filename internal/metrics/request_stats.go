@@ -12,15 +12,21 @@ import (
 type RequestStats struct {
 	success int64
 	failed  int64
+	redis   *redisCounterStore
 }
 
 func NewRequestStats() *RequestStats {
-	return &RequestStats{}
+	return &RequestStats{redis: newRedisCounterStoreFromEnv()}
 }
 
 func (s *RequestStats) Snapshot() (success int64, failed int64) {
 	if s == nil {
 		return 0, 0
+	}
+	if s.redis != nil {
+		if rs, rf, err := s.redis.Snapshot(); err == nil {
+			return rs, rf
+		}
 	}
 	return atomic.LoadInt64(&s.success), atomic.LoadInt64(&s.failed)
 }
@@ -35,9 +41,15 @@ func (s *RequestStats) Middleware(next http.Handler) http.Handler {
 		next.ServeHTTP(rec, r)
 		if rec.status >= http.StatusBadRequest {
 			atomic.AddInt64(&s.failed, 1)
+			if s.redis != nil {
+				_ = s.redis.IncrFailed()
+			}
 			return
 		}
 		atomic.AddInt64(&s.success, 1)
+		if s.redis != nil {
+			_ = s.redis.IncrSuccess()
+		}
 	})
 }
 
