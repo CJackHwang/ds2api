@@ -16,9 +16,13 @@ func BuildResponseObject(responseID, model, finalPrompt, finalThinking, finalTex
 	exposedOutputText := finalText
 	output := make([]any, 0, 2)
 	if len(detected.Calls) > 0 {
-		exposedOutputText = ""
-		output = append(output, toResponsesFunctionCallItems(detected.Calls)...)
-	} else {
+		callItems := toResponsesFunctionCallItems(detected.Calls)
+		if len(callItems) > 0 {
+			exposedOutputText = ""
+			output = append(output, callItems...)
+		}
+	}
+	if len(output) == 0 {
 		content := make([]any, 0, 2)
 		if finalThinking != "" {
 			content = append([]any{map[string]any{

@@ -151,3 +151,27 @@ func TestBuildResponseObjectIgnoresToolCallFromThinkingChannel(t *testing.T) {
 		t.Fatalf("expected output message, got %#v", first["type"])
 	}
 }
+
+func TestBuildResponseObjectToolCallWithEmptyNameFallsBackToMessage(t *testing.T) {
+	obj := BuildResponseObject(
+		"resp_test",
+		"gpt-4o",
+		"prompt",
+		"",
+		`{"tool_calls":[{"name":"","input":{"q":"x"}}]}`,
+		[]string{"search"},
+	)
+
+	output, _ := obj["output"].([]any)
+	if len(output) == 0 {
+		t.Fatalf("expected non-empty output fallback, got %#v", obj["output"])
+	}
+	first, _ := output[0].(map[string]any)
+	if first["type"] != "message" {
+		t.Fatalf("expected message fallback, got %#v", first["type"])
+	}
+	id, _ := first["id"].(string)
+	if strings.TrimSpace(id) == "" {
+		t.Fatalf("expected message id in fallback output, got %#v", first["id"])
+	}
+}
