@@ -68,6 +68,15 @@ export default function DashboardShell({ token, onLogout, config, fetchConfig, s
     const [versionInfo, setVersionInfo] = useState(null)
     const [callStats, setCallStats] = useState({ success: 0, failed: 0 })
 
+    const parseStatValue = useCallback((value) => {
+        if (typeof value === 'number' && Number.isFinite(value)) return value
+        if (typeof value === 'string') {
+            const n = Number(value)
+            if (Number.isFinite(n)) return n
+        }
+        return 0
+    }, [])
+
     useEffect(() => {
         let disposed = false
         async function loadVersion() {
@@ -96,14 +105,17 @@ export default function DashboardShell({ token, onLogout, config, fetchConfig, s
                 const res = await authFetch('/admin/stats')
                 const data = await res.json()
                 if (!disposed) {
+                    const successCalls = data.success_calls ?? data.successCount ?? data.success
+                    const failedCalls = data.failed_calls ?? data.failedCount ?? data.failed
                     setCallStats({
-                        success: Number.isFinite(data.success_calls) ? data.success_calls : 0,
-                        failed: Number.isFinite(data.failed_calls) ? data.failed_calls : 0,
+                        success: parseStatValue(successCalls),
+                        failed: parseStatValue(failedCalls),
                     })
                 }
             } catch (_err) {
                 if (!disposed) {
-                    setCallStats({ success: 0, failed: 0 })
+                    // Keep last value on transient fetch errors.
+                    setCallStats(prev => prev)
                 }
             }
         }
@@ -113,7 +125,7 @@ export default function DashboardShell({ token, onLogout, config, fetchConfig, s
             disposed = true
             clearInterval(timer)
         }
-    }, [authFetch])
+    }, [authFetch, parseStatValue])
 
     const renderTab = () => {
         switch (activeTab) {

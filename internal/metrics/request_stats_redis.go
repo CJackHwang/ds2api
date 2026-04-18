@@ -18,6 +18,8 @@ import (
 const (
 	defaultStatsSuccessKey = "ds2api:stats:success"
 	defaultStatsFailedKey  = "ds2api:stats:failed"
+	legacyStatsSuccessKey  = "ds2api:stats:success_calls"
+	legacyStatsFailedKey   = "ds2api:stats:failed_calls"
 )
 
 type redisCounterStore struct {
@@ -82,11 +84,11 @@ func (r *redisCounterStore) Snapshot() (int64, int64, error) {
 	var failed int64
 	err := r.withConn(ctx, func(rw *bufio.ReadWriter) error {
 		var err error
-		success, err = readCounter(rw, r.successKey)
+		success, err = readCounterWithFallback(rw, r.successKey, legacyStatsSuccessKey)
 		if err != nil {
 			return err
 		}
-		failed, err = readCounter(rw, r.failedKey)
+		failed, err = readCounterWithFallback(rw, r.failedKey, legacyStatsFailedKey)
 		return err
 	})
 	return success, failed, err
@@ -114,6 +116,22 @@ func readCounter(rw *bufio.ReadWriter, key string) (int64, error) {
 		return 0, err
 	}
 	return n, nil
+}
+
+func readCounterWithFallback(rw *bufio.ReadWriter, keys ...string) (int64, error) {
+	for _, key := range keys {
+		if strings.TrimSpace(key) == "" {
+			continue
+		}
+		v, err := readCounter(rw, key)
+		if err != nil {
+			return 0, err
+		}
+		if v != 0 {
+			return v, nil
+		}
+	}
+	return 0, nil
 }
 
 func (r *redisCounterStore) withConn(ctx context.Context, fn func(*bufio.ReadWriter) error) error {
@@ -290,4 +308,3 @@ func writeCommandAndReadBulkString(rw *bufio.ReadWriter, parts ...string) (strin
 	}
 	return string(buf[:n]), nil
 }
-
