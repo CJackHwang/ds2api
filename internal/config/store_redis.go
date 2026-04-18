@@ -3,6 +3,7 @@ package config
 import (
 	"bufio"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -28,6 +29,8 @@ type redisEndpoint struct {
 	username string
 	password string
 	db       int
+	useTLS   bool
+	host     string
 }
 
 func redisEnabled() bool {
@@ -84,7 +87,13 @@ func parseRedisURL(raw string) (redisEndpoint, error) {
 	if err != nil {
 		return redisEndpoint{}, err
 	}
-	if u.Scheme != "redis" {
+	scheme := strings.ToLower(strings.TrimSpace(u.Scheme))
+	switch scheme {
+	case "redis", "wredis":
+		// Keep compatibility with accidental wredis:// values.
+	case "rediss", "wrediss":
+		// TLS Redis.
+	default:
 		return redisEndpoint{}, fmt.Errorf("unsupported REDIS_URL scheme: %s", u.Scheme)
 	}
 	host := strings.TrimSpace(u.Hostname())
@@ -121,6 +130,8 @@ func parseRedisURL(raw string) (redisEndpoint, error) {
 		username: username,
 		password: password,
 		db:       db,
+		useTLS:   scheme == "rediss" || scheme == "wrediss",
+		host:     host,
 	}, nil
 }
 
@@ -149,7 +160,20 @@ func (r *redisConfigStore) SaveJSON(raw string) error {
 
 func (r *redisConfigStore) withConn(ctx context.Context, fn func(net.Conn, *bufio.ReadWriter) error) error {
 	dialer := net.Dialer{}
-	conn, err := dialer.DialContext(ctx, r.endpoint.network, r.endpoint.addr)
+	var conn net.Conn
+	var err error
+	if r.endpoint.useTLS {
+		tlsDialer := tls.Dialer{
+			NetDialer: &dialer,
+			Config: &tls.Config{
+				MinVersion: tls.VersionTLS12,
+				ServerName: r.endpoint.host,
+			},
+		}
+		conn, err = tlsDialer.DialContext(ctx, r.endpoint.network, r.endpoint.addr)
+	} else {
+		conn, err = dialer.DialContext(ctx, r.endpoint.network, r.endpoint.addr)
+	}
 	if err != nil {
 		return err
 	}
