@@ -82,14 +82,6 @@
       "destination": "/api/index"
     },
     {
-      "source": "/admin/stats",
-      "destination": "/api/index"
-    },
-    {
-      "source": "/admin/stats/debug",
-      "destination": "/api/index"
-    },
-    {
       "source": "/admin",
       "destination": "/admin/index.html"
     },

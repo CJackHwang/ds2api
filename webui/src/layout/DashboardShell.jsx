@@ -66,16 +66,6 @@ export default function DashboardShell({ token, onLogout, config, fetchConfig, s
 
 
     const [versionInfo, setVersionInfo] = useState(null)
-    const [callStats, setCallStats] = useState({ success: 0, failed: 0 })
-
-    const parseStatValue = useCallback((value) => {
-        if (typeof value === 'number' && Number.isFinite(value)) return value
-        if (typeof value === 'string') {
-            const n = Number(value)
-            if (Number.isFinite(n)) return n
-        }
-        return 0
-    }, [])
 
     useEffect(() => {
         let disposed = false
@@ -97,35 +87,6 @@ export default function DashboardShell({ token, onLogout, config, fetchConfig, s
             disposed = true
         }
     }, [authFetch])
-
-    useEffect(() => {
-        let disposed = false
-        async function loadStats() {
-            try {
-                const res = await authFetch('/admin/stats')
-                const data = await res.json()
-                if (!disposed) {
-                    const successCalls = data.success_calls ?? data.successCount ?? data.success
-                    const failedCalls = data.failed_calls ?? data.failedCount ?? data.failed
-                    setCallStats({
-                        success: parseStatValue(successCalls),
-                        failed: parseStatValue(failedCalls),
-                    })
-                }
-            } catch (_err) {
-                if (!disposed) {
-                    // Keep last value on transient fetch errors.
-                    setCallStats(prev => prev)
-                }
-            }
-        }
-        loadStats()
-        const timer = setInterval(loadStats, 10000)
-        return () => {
-            disposed = true
-            clearInterval(timer)
-        }
-    }, [authFetch, parseStatValue])
 
     const renderTab = () => {
         switch (activeTab) {
@@ -212,14 +173,6 @@ export default function DashboardShell({ token, onLogout, config, fetchConfig, s
                             <div className="bg-background rounded-lg p-3 border border-border shadow-sm">
                                 <div className="text-[9px] text-muted-foreground font-bold uppercase tracking-wider mb-0.5 opacity-70">{t('sidebar.keys')}</div>
                                 <div className="text-lg font-bold text-foreground">{config.keys?.length || 0}</div>
-                            </div>
-                            <div className="bg-background rounded-lg p-3 border border-border shadow-sm">
-                                <div className="text-[9px] text-muted-foreground font-bold uppercase tracking-wider mb-0.5 opacity-70">{t('sidebar.successCalls')}</div>
-                                <div className="text-lg font-bold text-emerald-500">{callStats.success}</div>
-                            </div>
-                            <div className="bg-background rounded-lg p-3 border border-border shadow-sm">
-                                <div className="text-[9px] text-muted-foreground font-bold uppercase tracking-wider mb-0.5 opacity-70">{t('sidebar.failedCalls')}</div>
-                                <div className="text-lg font-bold text-destructive">{callStats.failed}</div>
                             </div>
                         </div>
                         <div className="bg-background rounded-lg p-3 border border-border shadow-sm">
