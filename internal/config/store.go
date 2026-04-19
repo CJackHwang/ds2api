@@ -58,6 +58,8 @@ func loadStore() (*Store, error) {
 	}
 
 	cfg, _, err := loadConfig()
+
+	cfg, fromEnv, err := loadConfig()
 	if validateErr := ValidateConfig(cfg); validateErr != nil {
 		err = errors.Join(err, validateErr)
 	}
@@ -199,6 +201,10 @@ func (s *Store) Save() error {
 	if s.redis != nil {
 		return s.saveRedisLocked()
 	}
+	if s.fromEnv && (IsVercel() || !envWritebackEnabled()) {
+		Logger.Info("[save_config] source from env, skip write")
+		return nil
+	}
 	persistCfg := s.cfg.Clone()
 	persistCfg.ClearAccountTokens()
 	b, err := json.MarshalIndent(persistCfg, "", "  ")
@@ -214,6 +220,10 @@ func (s *Store) Save() error {
 func (s *Store) saveLocked() error {
 	if s.redis != nil {
 		return s.saveRedisLocked()
+	}
+	if s.fromEnv && (IsVercel() || !envWritebackEnabled()) {
+		Logger.Info("[save_config] source from env, skip write")
+		return nil
 	}
 	persistCfg := s.cfg.Clone()
 	persistCfg.ClearAccountTokens()
