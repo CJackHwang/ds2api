@@ -1,4 +1,0 @@
-{
-  "text": "```json\n{\"tool_calls\":[{\"name\":\"read_file\",\"input\":{\"path\":\"README.MD\"}}]}\n```",
-  "tool_names": ["read_file"]
-}

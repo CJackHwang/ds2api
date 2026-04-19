@@ -26,8 +26,8 @@ var xmlToolCallTagPairs = []struct{ open, close string }{
 	{"<invoke", "</invoke>"},
 	{"<tool_use", "</tool_use>"},
 	// Agent-style: these are XML "tool call" patterns from coding agents.
-	// They get captured → parsed. If parsing fails, the block is consumed
-	// (swallowed) to prevent raw XML from leaking to the client.
+	// They get captured → parsed. If parsing fails, the raw XML is preserved
+	// so the caller can still see the original text.
 	{"<attempt_completion", "</attempt_completion>"},
 	{"<ask_followup_question", "</ask_followup_question>"},
 	{"<new_task", "</new_task>"},
@@ -73,29 +73,10 @@ func consumeXMLToolCapture(captured string, toolNames []string) (prefix string, 
 			prefixPart, suffixPart = trimWrappingJSONFence(prefixPart, suffixPart)
 			return prefixPart, parsed, suffixPart, true
 		}
-		// If this block does not look like an executable tool-call payload,
-		// pass it through as normal content (e.g. user-requested XML snippets).
-		if !looksLikeExecutableXMLToolCallBlock(xmlBlock, pair.open) {
-			return prefixPart + xmlBlock, nil, suffixPart, true
-		}
-		// Looks like XML tool syntax but failed to parse — consume it to avoid leak.
-		return prefixPart, nil, suffixPart, true
+		// If this block failed to become a tool call, pass it through as text.
+		return prefixPart + xmlBlock, nil, suffixPart, true
 	}
 	return "", nil, "", false
-}
-
-func looksLikeExecutableXMLToolCallBlock(xmlBlock, openTag string) bool {
-	lower := strings.ToLower(xmlBlock)
-	// Agent wrapper tags are always treated as internal tool-call wrappers.
-	switch openTag {
-	case "<attempt_completion", "<ask_followup_question", "<new_task":
-		return true
-	}
-	return strings.Contains(lower, "<tool_name") ||
-		strings.Contains(lower, "<parameters") ||
-		strings.Contains(lower, `"tool"`) ||
-		strings.Contains(lower, `"tool_name"`) ||
-		strings.Contains(lower, `"name"`)
 }
 
 // hasOpenXMLToolTag returns true if captured text contains an XML tool opening tag
@@ -136,33 +117,4 @@ func findPartialXMLToolTagStart(s string) int {
 		}
 	}
 	return -1
-}
-
-// looksLikeXMLToolTagFragment returns true if s looks like a fragment from a
-// split XML tool call tag — for example "tool_calls>" or "/tool_call>\n".
-// These fragments arise when '<' was consumed separately and the tail remains.
-func looksLikeXMLToolTagFragment(s string) bool {
-	trimmed := strings.TrimSpace(s)
-	if trimmed == "" {
-		return false
-	}
-	lower := strings.ToLower(trimmed)
-	// Check for closing tag tails like "tool_calls>" or "/tool_calls>"
-	fragments := []string{
-		"tool_calls>", "tool_call>", "/tool_calls>", "/tool_call>",
-		"function_calls>", "function_call>", "/function_calls>", "/function_call>",
-		"invoke>", "/invoke>", "tool_use>", "/tool_use>",
-		"tool_name>", "/tool_name>", "parameters>", "/parameters>",
-		// Agent-style tag fragments
-		"attempt_completion>", "/attempt_completion>",
-		"ask_followup_question>", "/ask_followup_question>",
-		"new_task>", "/new_task>",
-		"result>", "/result>",
-	}
-	for _, f := range fragments {
-		if strings.Contains(lower, f) {
-			return true
-		}
-	}
-	return false
 }

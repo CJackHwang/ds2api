@@ -116,7 +116,7 @@ flowchart LR
 - `internal/translatorcliproxy`：Claude/Gemini 与 OpenAI 结构互转。
 - `internal/deepseek`：上游请求、会话、PoW、SSE 消费。
 - `internal/stream` + `internal/sse`：流式解析与增量处理。
-- `internal/toolcall`：JSON/XML/invoke/text-kv 工具调用解析及防泄漏筛分。
+- `internal/toolcall`：以 XML/Markup 家族为核心的工具调用解析与防泄漏筛分（`<tool_call>` / `<function_call>` / `<invoke>` / `tool_use` / antml 变体）。
 - `internal/admin`：配置管理、账号管理、Vercel 同步、版本检查、开发抓包。
 - `internal/config`：配置加载、校验、运行时 settings 热更新。
 - `internal/account`：托管账号池、并发槽位、等待队列。

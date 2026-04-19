@@ -1,5 +1,0 @@
-{
-  "mode": "standalone",
-  "text": "{\"tool_calls\":[{\"name\":\"read_file\",\"input\":{\"path\":\"README.MD\"}}]}",
-  "tool_names": ["read_file"]
-}

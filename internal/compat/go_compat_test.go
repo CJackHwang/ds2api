@@ -1,12 +1,10 @@
 package compat
 
 import (
-	"ds2api/internal/toolcall"
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
-	"strings"
 	"testing"
 
 	"ds2api/internal/sse"
@@ -61,55 +59,6 @@ func TestGoCompatSSEFixtures(t *testing.T) {
 			t.Fatalf("fixture %s mismatch:\n got parts=%#v finished=%v newType=%q contentFilter=%v errorMessage=%q\nwant parts=%#v finished=%v newType=%q contentFilter=%v errorMessage=%q",
 				name, gotParts, res.Stop, res.NextType, res.ContentFilter, res.ErrorMessage,
 				expected.Parts, expected.Finished, expected.NewType, expected.ContentFilter, expected.ErrorMessage)
-		}
-	}
-}
-
-func TestGoCompatToolcallFixtures(t *testing.T) {
-	files, err := filepath.Glob(compatPath("fixtures", "toolcalls", "*.json"))
-	if err != nil {
-		t.Fatalf("glob toolcall fixtures failed: %v", err)
-	}
-	if len(files) == 0 {
-		t.Fatal("no toolcall fixtures found")
-	}
-	for _, fixturePath := range files {
-		name := trimExt(filepath.Base(fixturePath))
-		expectedPath := compatPath("expected", "toolcalls_"+name+".json")
-
-		var fixture struct {
-			Text      string   `json:"text"`
-			ToolNames []string `json:"tool_names"`
-			Mode      string   `json:"mode"`
-		}
-		mustLoadJSON(t, fixturePath, &fixture)
-
-		var expected struct {
-			Calls             []toolcall.ParsedToolCall `json:"calls"`
-			SawToolCallSyntax bool                      `json:"sawToolCallSyntax"`
-			RejectedByPolicy  bool                      `json:"rejectedByPolicy"`
-			RejectedToolNames []string                  `json:"rejectedToolNames"`
-		}
-		mustLoadJSON(t, expectedPath, &expected)
-
-		var got toolcall.ToolCallParseResult
-		switch strings.ToLower(strings.TrimSpace(fixture.Mode)) {
-		case "standalone":
-			got = toolcall.ParseStandaloneToolCallsDetailed(fixture.Text, fixture.ToolNames)
-		default:
-			got = toolcall.ParseToolCallsDetailed(fixture.Text, fixture.ToolNames)
-		}
-		if got.Calls == nil {
-			got.Calls = []toolcall.ParsedToolCall{}
-		}
-		if got.RejectedToolNames == nil {
-			got.RejectedToolNames = []string{}
-		}
-		if !reflect.DeepEqual(got.Calls, expected.Calls) ||
-			got.SawToolCallSyntax != expected.SawToolCallSyntax ||
-			got.RejectedByPolicy != expected.RejectedByPolicy ||
-			!reflect.DeepEqual(got.RejectedToolNames, expected.RejectedToolNames) {
-			t.Fatalf("toolcall fixture %s mismatch:\n got=%#v\nwant=%#v", name, got, expected)
 		}
 	}
 }

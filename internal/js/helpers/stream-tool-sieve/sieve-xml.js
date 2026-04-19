@@ -42,8 +42,8 @@ function consumeXMLToolCapture(captured, toolNames, trimWrappingJSONFence) {
         suffix: trimmedFence.suffix,
       };
     }
-    // XML tool syntax but failed to parse — consume to avoid leak.
-    return { ready: true, prefix: prefixPart, calls: [], suffix: suffixPart };
+    // If this block failed to become a tool call, pass it through as text.
+    return { ready: true, prefix: prefixPart + xmlBlock, calls: [], suffix: suffixPart };
   }
   return { ready: false, prefix: '', calls: [], suffix: '' };
 }
@@ -79,22 +79,8 @@ function findPartialXMLToolTagStart(s) {
   return -1;
 }
 
-function looksLikeXMLToolTagFragment(s) {
-  const trimmed = (s || '').trim();
-  if (!trimmed) return false;
-  const lower = trimmed.toLowerCase();
-  const fragments = [
-    'tool_calls>', 'tool_call>', '/tool_calls>', '/tool_call>',
-    'function_calls>', 'function_call>', '/function_calls>', '/function_call>',
-    'invoke>', '/invoke>', 'tool_use>', '/tool_use>',
-    'tool_name>', '/tool_name>', 'parameters>', '/parameters>',
-  ];
-  return fragments.some(f => lower.includes(f));
-}
-
 module.exports = {
   consumeXMLToolCapture,
   hasOpenXMLToolTag,
   findPartialXMLToolTagStart,
-  looksLikeXMLToolTagFragment,
 };

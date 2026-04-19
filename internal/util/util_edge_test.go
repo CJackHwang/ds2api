@@ -173,8 +173,10 @@ func TestMessagesPrepareMergesConsecutiveSameRole(t *testing.T) {
 	if count != 1 {
 		t.Fatalf("expected one User marker for the merged pair, got %d occurrences", count)
 	}
-	if count := strings.Count(got, "<｜end▁of▁sentence｜>"); count != 1 {
-		t.Fatalf("expected one sentence terminator for the merged pair, got %d occurrences", count)
+	// User messages no longer have end_of_sentence markers in the official format.
+	// The merged pair should have zero end_of_sentence markers (user turn only).
+	if count := strings.Count(got, "<｜end▁of▁sentence｜>"); count != 0 {
+		t.Fatalf("expected zero sentence terminators for user-only merge, got %d occurrences", count)
 	}
 }
 
@@ -190,11 +192,14 @@ func TestMessagesPrepareAssistantMarkers(t *testing.T) {
 	if !strings.Contains(got, "<｜end▁of▁sentence｜>") {
 		t.Fatalf("expected end of sentence marker, got %q", got)
 	}
-	if strings.Count(got, "<｜end▁of▁sentence｜>") != 2 {
-		t.Fatalf("expected both turns to be terminated, got %q", got)
+	if strings.Count(got, "<｜end▁of▁sentence｜>") != 1 {
+		t.Fatalf("expected one end_of_sentence (assistant only), got %q", got)
 	}
-	if !strings.Contains(got, "<｜Assistant｜>\n</think>Hello!<｜end▁of▁sentence｜>") {
+	if !strings.Contains(got, "<｜Assistant｜>Hello!<｜end▁of▁sentence｜>") {
 		t.Fatalf("expected assistant EOS suffix, got %q", got)
+	}
+	if strings.Contains(got, "<think>") || strings.Contains(got, "</think>") {
+		t.Fatalf("did not expect think tags in prompt, got %q", got)
 	}
 	if strings.Contains(got, "<system_instructions>") {
 		t.Fatalf("did not expect legacy system marker, got %q", got)

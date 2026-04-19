@@ -36,45 +36,47 @@ func BuildToolCallInstructions(toolNames []string) string {
 
 	return `TOOL CALL FORMAT — FOLLOW EXACTLY:
 
-When calling tools, emit ONLY raw XML at the very end of your response. No text before, no text after, no markdown fences.
-
 <tool_calls>
   <tool_call>
     <tool_name>TOOL_NAME_HERE</tool_name>
-    <parameters>{"key":"value"}</parameters>
+    <parameters>
+      <PARAMETER_NAME><![CDATA[PARAMETER_VALUE]]></PARAMETER_NAME>
+    </parameters>
   </tool_call>
 </tool_calls>
 
 RULES:
-1) When calling tools, you MUST use the <tool_calls> XML format.
-2) No text is allowed AFTER the XML block.
-3) <parameters> MUST be a single-line strict JSON object. Use double quotes.
-4) Multiple tools must be inside the same <tool_calls> root.
-5) Do NOT wrap XML in markdown fences (` + "```" + `).
-6) Do NOT invent parameters. Use only the provided schema.
-7) CRITICAL: Do NOT use native tool markers like "<｜Tool｜>" or "<｜tool｜>".
-8) CRITICAL: Do NOT output role markers like "<｜System｜>", "<｜User｜>", or "<｜Assistant｜>".
-9) CRITICAL: Do NOT output internal monologues (e.g. "I will list files now..."). Just output your answer or the XML.
+1) Use the <tool_calls> XML format only. Never emit JSON or function-call syntax.
+2) Put one or more <tool_call> entries under a single <tool_calls> root.
+3) Parameters must be XML, not JSON.
+4) All string values must use <![CDATA[...]]>, even short ones. This includes code, scripts, file contents, prompts, paths, names, and queries.
+5) Objects use nested XML elements. Arrays may repeat the same tag or use <item> children.
+6) Numbers, booleans, and null stay plain text.
+7) Use only the parameter names in the tool schema. Do not invent fields.
+8) Do NOT wrap XML in markdown fences. Do NOT output explanations, role markers, or internal monologue.
 
-❌ WRONG — Do NOT do these:
+PARAMETER SHAPES:
+- string => <name><![CDATA[value]]></name>
+- object => nested XML elements
+- array => repeated tags or <item> children
+- number/bool/null => plain text
+
+【WRONG — Do NOT do these】:
+
 Wrong 1 — mixed text after XML:
   <tool_calls>...</tool_calls> I hope this helps.
 Wrong 2 — function-call syntax:
   Grep({"pattern": "token"})
-Wrong 3 — missing <tool_calls> wrapper:
-  <tool_call><tool_name>` + ex1 + `</tool_name><parameters>{}</parameters></tool_call>
+Wrong 3 — JSON parameters:
+  <tool_call><tool_name>` + ex1 + `</tool_name><parameters>{"path":"x"}</parameters></tool_call>
 Wrong 4 — Markdown code fences:
   ` + "```xml" + `
   <tool_calls>...</tool_calls>
   ` + "```" + `
-Wrong 5 — native tool tokens:
-  <｜Tool｜>call_some_tool{"param":1}<｜Tool｜>
-Wrong 6 — role markers in response:
-  <｜Assistant｜> Here is the result...
 
 Remember: The ONLY valid way to use tools is the <tool_calls> XML block at the end of your response.
 
-✅ CORRECT EXAMPLES:
+【CORRECT EXAMPLES】:
 
 Example A — Single tool:
 <tool_calls>
@@ -96,15 +98,31 @@ Example B — Two tools in parallel:
   </tool_call>
 </tool_calls>
 
-Example C — Tool with complex nested JSON parameters:
+Example C — Tool with nested XML parameters:
 <tool_calls>
   <tool_call>
     <tool_name>` + ex3 + `</tool_name>
     <parameters>` + ex3Params + `</parameters>
   </tool_call>
 </tool_calls>
+ 
+Example D — Tool with long script using CDATA (RELIABLE FOR CODE/SCRIPTS):
+<tool_calls>
+  <tool_call>
+    <tool_name>` + ex2 + `</tool_name>
+    <parameters>
+      <path>` + promptCDATA("script.sh") + `</path>
+      <content><![CDATA[
+#!/bin/bash
+if [ "$1" == "test" ]; then
+  echo "Success!"
+fi
+]]></content>
+    </parameters>
+  </tool_call>
+</tool_calls>
 
-Remember: Output ONLY the <tool_calls>...</tool_calls> XML block when calling tools.`
+`
 }
 
 func matchAny(name string, candidates ...string) bool {
@@ -119,34 +137,44 @@ func matchAny(name string, candidates ...string) bool {
 func exampleReadParams(name string) string {
 	switch strings.TrimSpace(name) {
 	case "Read":
-		return `{"file_path":"README.md"}`
+		return `<file_path>` + promptCDATA("README.md") + `</file_path>`
 	case "Glob":
-		return `{"pattern":"**/*.go","path":"."}`
+		return `<pattern>` + promptCDATA("**/*.go") + `</pattern><path>` + promptCDATA(".") + `</path>`
 	default:
-		return `{"path":"src/main.go"}`
+		return `<path>` + promptCDATA("src/main.go") + `</path>`
 	}
 }
 
 func exampleWriteOrExecParams(name string) string {
 	switch strings.TrimSpace(name) {
 	case "Bash", "execute_command":
-		return `{"command":"pwd"}`
+		return `<command>` + promptCDATA("pwd") + `</command>`
 	case "exec_command":
-		return `{"cmd":"pwd"}`
+		return `<cmd>` + promptCDATA("pwd") + `</cmd>`
 	case "Edit":
-		return `{"file_path":"README.md","old_string":"foo","new_string":"bar"}`
+		return `<file_path>` + promptCDATA("README.md") + `</file_path><old_string>` + promptCDATA("foo") + `</old_string><new_string>` + promptCDATA("bar") + `</new_string>`
 	case "MultiEdit":
-		return `{"file_path":"README.md","edits":[{"old_string":"foo","new_string":"bar"}]}`
+		return `<file_path>` + promptCDATA("README.md") + `</file_path><edits><old_string>` + promptCDATA("foo") + `</old_string><new_string>` + promptCDATA("bar") + `</new_string></edits>`
 	default:
-		return `{"path":"output.txt","content":"Hello world"}`
+		return `<path>` + promptCDATA("output.txt") + `</path><content>` + promptCDATA("Hello world") + `</content>`
 	}
 }
 
 func exampleInteractiveParams(name string) string {
 	switch strings.TrimSpace(name) {
 	case "Task":
-		return `{"description":"Investigate flaky tests","prompt":"Run targeted tests and summarize failures"}`
+		return `<description>` + promptCDATA("Investigate flaky tests") + `</description><prompt>` + promptCDATA("Run targeted tests and summarize failures") + `</prompt>`
 	default:
-		return `{"question":"Which approach do you prefer?","follow_up":[{"text":"Option A"},{"text":"Option B"}]}`
+		return `<question>` + promptCDATA("Which approach do you prefer?") + `</question><follow_up><text>` + promptCDATA("Option A") + `</text></follow_up><follow_up><text>` + promptCDATA("Option B") + `</text></follow_up>`
 	}
+}
+
+func promptCDATA(text string) string {
+	if text == "" {
+		return ""
+	}
+	if strings.Contains(text, "]]>") {
+		return "<![CDATA[" + strings.ReplaceAll(text, "]]>", "]]]]><![CDATA[>") + "]]>"
+	}
+	return "<![CDATA[" + text + "]]>"
 }

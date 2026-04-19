@@ -1,5 +1,0 @@
-{
-  "mode": "standalone",
-  "text": "下面是示例：{\"tool_calls\":[{\"name\":\"read_file\",\"input\":{\"path\":\"README.MD\"}}]}请勿执行。",
-  "tool_names": ["read_file"]
-}

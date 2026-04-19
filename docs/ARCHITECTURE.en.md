@@ -116,7 +116,7 @@ flowchart LR
 - `internal/translatorcliproxy`: structure translation between Claude/Gemini and OpenAI.
 - `internal/deepseek`: upstream request/session/PoW/SSE handling.
 - `internal/stream` + `internal/sse`: stream parsing and incremental assembly.
-- `internal/toolcall`: JSON/XML/invoke/text-kv tool-call parsing + anti-leak sieve.
+- `internal/toolcall`: XML/Markup-family tool-call parsing + anti-leak sieve (`<tool_call>` / `<function_call>` / `<invoke>` / `tool_use` / antml variants).
 - `internal/admin`: config/accounts/vercel sync/version/dev-capture endpoints.
 - `internal/config`: config loading/validation + runtime settings hot-reload.
 - `internal/account`: managed account pool, inflight slots, waiting queue.

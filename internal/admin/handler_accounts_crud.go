@@ -21,8 +21,8 @@ func (h *Handler) listAccounts(w http.ResponseWriter, r *http.Request) {
 	if pageSize < 1 {
 		pageSize = 1
 	}
-	if pageSize > 100 {
-		pageSize = 100
+	if pageSize > 5000 {
+		pageSize = 5000
 	}
 	accounts := h.Store.Snapshot().Accounts
 	reverseAccounts(accounts)

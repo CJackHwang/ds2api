@@ -35,14 +35,17 @@ func TestMessagesPrepareUsesTurnSuffixes(t *testing.T) {
 	if !strings.HasPrefix(got, "<｜begin▁of▁sentence｜>") {
 		t.Fatalf("expected begin-of-sentence marker, got %q", got)
 	}
-	if !strings.Contains(got, "<｜System｜>\nSystem rule<｜end▁of▁instructions｜>") {
+	if !strings.Contains(got, "<｜System｜>System rule<｜end▁of▁instructions｜>") {
 		t.Fatalf("expected system instructions suffix, got %q", got)
 	}
-	if !strings.Contains(got, "<｜User｜>\nQuestion<｜end▁of▁sentence｜>") {
-		t.Fatalf("expected user sentence suffix, got %q", got)
+	if !strings.Contains(got, "<｜User｜>Question") {
+		t.Fatalf("expected user question, got %q", got)
 	}
-	if !strings.Contains(got, "<｜Assistant｜>\n</think>Answer<｜end▁of▁sentence｜>") {
+	if !strings.Contains(got, "<｜Assistant｜>Answer<｜end▁of▁sentence｜>") {
 		t.Fatalf("expected assistant sentence suffix, got %q", got)
+	}
+	if strings.Contains(got, "<think>") || strings.Contains(got, "</think>") {
+		t.Fatalf("did not expect think tags in prompt, got %q", got)
 	}
 }
 
@@ -55,10 +58,23 @@ func TestNormalizeContentArrayFallsBackToContentWhenTextEmpty(t *testing.T) {
 	}
 }
 
-func TestMessagesPrepareWithThinkingEndsWithOpenThink(t *testing.T) {
+func TestMessagesPrepareWithThinkingAddsContinuityContract(t *testing.T) {
 	messages := []map[string]any{{"role": "user", "content": "Question"}}
-	got := MessagesPrepareWithThinking(messages, true)
-	if !strings.HasSuffix(got, "<｜Assistant｜><think>") {
-		t.Fatalf("expected thinking suffix, got %q", got)
+	gotThinking := MessagesPrepareWithThinking(messages, true)
+	gotPlain := MessagesPrepareWithThinking(messages, false)
+	if gotThinking == gotPlain {
+		t.Fatalf("expected thinking-enabled prompt to include extra continuity instructions")
+	}
+	if !strings.HasSuffix(gotThinking, "<｜Assistant｜>") {
+		t.Fatalf("expected assistant suffix, got %q", gotThinking)
+	}
+	if !strings.Contains(gotThinking, "Continue the conversation from the full prior context") {
+		t.Fatalf("expected continuity instruction in thinking prompt, got %q", gotThinking)
+	}
+	if !strings.Contains(gotThinking, "final user-facing answer only in reasoning") {
+		t.Fatalf("expected visible-answer instruction in thinking prompt, got %q", gotThinking)
+	}
+	if strings.Contains(gotPlain, "Continue the conversation from the full prior context") {
+		t.Fatalf("did not expect thinking-only instruction in plain prompt, got %q", gotPlain)
 	}
 }

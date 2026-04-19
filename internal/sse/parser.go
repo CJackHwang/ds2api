@@ -3,6 +3,7 @@ package sse
 import (
 	"bytes"
 	"encoding/json"
+	"regexp"
 	"strings"
 
 	"ds2api/internal/deepseek"
@@ -93,6 +94,11 @@ func ParseSSEChunkForContent(chunk map[string]any, thinkingEnabled bool, current
 	if finished {
 		return nil, true, newType
 	}
+	var transitioned bool
+	parts, transitioned = splitThinkingParts(parts)
+	if transitioned {
+		newType = "text"
+	}
 	return parts, false, newType
 }
 
@@ -166,6 +172,9 @@ func updateTypeFromNestedResponse(path string, v any, newType *string) {
 func resolvePartType(path string, thinkingEnabled bool, newType string) string {
 	switch {
 	case path == "response/thinking_content":
+		if newType == "text" {
+			return "text"
+		}
 		return "thinking"
 	case path == "response/content":
 		return "text"
@@ -242,6 +251,63 @@ func appendContentPart(parts *[]ContentPart, content, kind string) {
 		return
 	}
 	*parts = append(*parts, ContentPart{Text: content, Type: kind})
+}
+
+var thinkClosePattern = regexp.MustCompile(`(?i)</\s*think\s*>`)
+var thinkOpenPattern = regexp.MustCompile(`(?i)<\s*think\s*>`)
+
+// splitThinkingParts detects </think> inside thinking content and
+// auto-transitions everything after it to text. This handles the
+// DeepSeek API bug where the upstream SSE keeps sending
+// reasoning_content even though the model has finished thinking.
+func splitThinkingParts(parts []ContentPart) ([]ContentPart, bool) {
+	var out []ContentPart
+	thinkingDone := false
+	for _, p := range parts {
+		if thinkingDone && p.Type == "thinking" {
+			// Already transitioned — treat remaining thinking as text.
+			cleaned := stripThinkTags(p.Text)
+			if cleaned != "" {
+				out = append(out, ContentPart{Text: cleaned, Type: "text"})
+			}
+			continue
+		}
+		if p.Type != "thinking" {
+			cleaned := stripThinkTags(p.Text)
+			if cleaned != "" {
+				out = append(out, ContentPart{Text: cleaned, Type: p.Type})
+			}
+			continue
+		}
+		loc := thinkClosePattern.FindStringIndex(p.Text)
+		if loc == nil {
+			out = append(out, p)
+			continue
+		}
+		// Split at </think>: before is still thinking, after becomes text.
+		thinkingDone = true
+		before := p.Text[:loc[0]]
+		after := p.Text[loc[1]:]
+		if before != "" {
+			out = append(out, ContentPart{Text: before, Type: "thinking"})
+		}
+		after = stripThinkTags(after)
+		if after != "" {
+			out = append(out, ContentPart{Text: after, Type: "text"})
+		}
+	}
+	if !thinkingDone {
+		// Return 'out' instead of 'parts' because text parts might have been cleaned via stripThinkTags
+		return out, false
+	}
+	return out, true
+}
+
+// stripThinkTags removes any remaining <think> or </think> tags from text.
+func stripThinkTags(s string) string {
+	s = thinkClosePattern.ReplaceAllString(s, "")
+	s = thinkOpenPattern.ReplaceAllString(s, "")
+	return s
 }
 
 func isStatusPath(path string) bool {

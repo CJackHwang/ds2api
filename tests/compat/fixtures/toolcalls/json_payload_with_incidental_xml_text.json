@@ -1,6 +1,0 @@
-{
-  "text": "{\"tool_calls\":[{\"name\":\"search\",\"input\":{\"q\":\"latest <tool_call><tool_name>wrong</tool_name><parameters>{\\\"x\\\":1}</parameters></tool_call>\"}}]}",
-  "tool_names": [
-    "search"
-  ]
-}

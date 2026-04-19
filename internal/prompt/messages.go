@@ -18,8 +18,6 @@ const (
 	endSentenceMarker     = "<｜end▁of▁sentence｜>"
 	endToolResultsMarker  = "<｜end▁of▁toolresults｜>"
 	endInstructionsMarker = "<｜end▁of▁instructions｜>"
-	openThinkMarker       = "<think>"
-	closeThinkMarker      = "</think>"
 )
 
 func MessagesPrepare(messages []map[string]any) string {
@@ -32,6 +30,11 @@ func MessagesPrepareWithThinking(messages []map[string]any, thinkingEnabled bool
 		Text string
 	}
 	processed := make([]block, 0, len(messages))
+	if thinkingEnabled {
+		if instruction := buildConversationContinuityInstructions(thinkingEnabled); strings.TrimSpace(instruction) != "" {
+			processed = append(processed, block{Role: "system", Text: instruction})
+		}
+	}
 	for _, m := range messages {
 		role, _ := m["role"].(string)
 		text := NormalizeContent(m["content"])
@@ -55,7 +58,7 @@ func MessagesPrepareWithThinking(messages []map[string]any, thinkingEnabled bool
 		lastRole = m.Role
 		switch m.Role {
 		case "assistant":
-			parts = append(parts, formatRoleBlock(assistantMarker, closeThinkMarker+m.Text, endSentenceMarker))
+			parts = append(parts, formatRoleBlock(assistantMarker, m.Text, endSentenceMarker))
 		case "tool":
 			if strings.TrimSpace(m.Text) != "" {
 				parts = append(parts, formatRoleBlock(toolMarker, m.Text, endToolResultsMarker))
@@ -65,7 +68,7 @@ func MessagesPrepareWithThinking(messages []map[string]any, thinkingEnabled bool
 				parts = append(parts, formatRoleBlock(systemMarker, text, endInstructionsMarker))
 			}
 		case "user":
-			parts = append(parts, formatRoleBlock(userMarker, m.Text, endSentenceMarker))
+			parts = append(parts, formatRoleBlock(userMarker, m.Text, ""))
 		default:
 			if strings.TrimSpace(m.Text) != "" {
 				parts = append(parts, m.Text)
@@ -73,23 +76,32 @@ func MessagesPrepareWithThinking(messages []map[string]any, thinkingEnabled bool
 		}
 	}
 	if lastRole != "assistant" {
-		thinkPrefix := closeThinkMarker
-		if thinkingEnabled {
-			thinkPrefix = openThinkMarker
-		}
-		parts = append(parts, assistantMarker+thinkPrefix)
+		parts = append(parts, assistantMarker)
 	}
-	out := strings.Join(parts, "\n\n")
+	out := strings.Join(parts, "")
 	return markdownImagePattern.ReplaceAllString(out, `[${1}](${2})`)
 }
 
-// DeepSeek-style turn suffixes stay attached to the same block as the role content.
+// formatRoleBlock produces a single concatenated block: marker + text + endMarker.
+// No whitespace is inserted between marker and text so role boundaries stay
+// compact and predictable for downstream parsers.
 func formatRoleBlock(marker, text, endMarker string) string {
-	out := marker + "\n" + text
+	out := marker + text
 	if strings.TrimSpace(endMarker) != "" {
 		out += endMarker
 	}
 	return out
+}
+
+func buildConversationContinuityInstructions(thinkingEnabled bool) string {
+	lines := []string{
+		"Continue the conversation from the full prior context and the latest tool results.",
+		"Treat earlier messages as binding context; answer the user's current request as a continuation, not a restart.",
+	}
+	if thinkingEnabled {
+		lines = append(lines, "Keep reasoning internal. Do not leave the final user-facing answer only in reasoning; always provide the answer in visible assistant content.")
+	}
+	return strings.Join(lines, "\n")
 }
 
 func NormalizeContent(v any) string {
