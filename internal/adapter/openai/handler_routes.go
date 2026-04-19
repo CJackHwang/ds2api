@@ -44,6 +44,7 @@ func (h *Handler) compatStripReferenceMarkers() bool {
 
 type streamLease struct {
 	Auth      *auth.RequestAuth
+	SessionID string
 	ExpiresAt time.Time
 }
 

@@ -59,14 +59,18 @@ func TestVercelInternalSecret(t *testing.T) {
 
 func TestStreamLeaseLifecycle(t *testing.T) {
 	h := &Handler{}
-	leaseID := h.holdStreamLease(&auth.RequestAuth{UseConfigToken: false})
+	leaseID := h.holdStreamLease(&auth.RequestAuth{UseConfigToken: false}, "session-id")
 	if leaseID == "" {
 		t.Fatalf("expected non-empty lease id")
 	}
-	if ok := h.releaseStreamLease(leaseID); !ok {
+	lease, ok := h.releaseStreamLease(leaseID)
+	if !ok {
 		t.Fatalf("expected lease release success")
 	}
-	if ok := h.releaseStreamLease(leaseID); ok {
+	if lease.SessionID != "session-id" {
+		t.Fatalf("expected lease session id to round-trip, got %q", lease.SessionID)
+	}
+	if _, ok := h.releaseStreamLease(leaseID); ok {
 		t.Fatalf("expected duplicate release to fail")
 	}
 }

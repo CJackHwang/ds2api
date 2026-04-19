@@ -5,13 +5,12 @@ import (
 	"strings"
 
 	authn "ds2api/internal/auth"
-	"ds2api/internal/config"
 )
 
 func (h *Handler) getSettings(w http.ResponseWriter, _ *http.Request) {
 	snap := h.Store.Snapshot()
 	recommended := defaultRuntimeRecommended(len(snap.Accounts), h.Store.RuntimeAccountMaxInflight())
-	needsSync := config.IsVercel() && snap.VercelSyncHash != "" && snap.VercelSyncHash != h.computeSyncHash()
+	needsSync := false
 	writeJSON(w, http.StatusOK, map[string]any{
 		"success": true,
 		"admin": map[string]any{

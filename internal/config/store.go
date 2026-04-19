@@ -14,7 +14,6 @@ type Store struct {
 	mu      sync.RWMutex
 	cfg     Config
 	path    string
-	fromEnv bool
 	redis   *redisConfigStore
 	keyMap  map[string]struct{} // O(1) API key lookup index
 	accMap  map[string]int      // O(1) account lookup: identifier -> slice index
@@ -54,27 +53,21 @@ func loadStore() (*Store, error) {
 			redis: redisStore,
 		}, err
 	}
+	if IsVercel() {
+		return &Store{cfg: Config{}, path: ConfigPath()}, errors.New("redis-only config mode: REDIS_URL is required on Vercel")
+	}
 
-	cfg, fromEnv, err := loadConfig()
+	cfg, _, err := loadConfig()
 	if validateErr := ValidateConfig(cfg); validateErr != nil {
 		err = errors.Join(err, validateErr)
 	}
-	return &Store{cfg: cfg, path: ConfigPath(), fromEnv: fromEnv}, err
+	return &Store{cfg: cfg, path: ConfigPath()}, err
 }
 
 func loadConfig() (Config, bool, error) {
 	cfg, err := loadConfigFromFile(ConfigPath())
 	if err != nil {
-		if IsVercel() {
-			// Vercel one-click deploy may start without a writable/present config file.
-			// Keep an in-memory config so users can bootstrap via WebUI then sync env.
-			return Config{}, true, nil
-		}
 		return Config{}, false, err
-	}
-	if IsVercel() {
-		// Vercel filesystem is ephemeral/read-only for runtime writes; avoid save errors.
-		return cfg, true, nil
 	}
 	return cfg, false, nil
 }
@@ -206,10 +199,6 @@ func (s *Store) Save() error {
 	if s.redis != nil {
 		return s.saveRedisLocked()
 	}
-	if s.fromEnv && (IsVercel() || !envWritebackEnabled()) {
-		Logger.Info("[save_config] source from env, skip write")
-		return nil
-	}
 	persistCfg := s.cfg.Clone()
 	persistCfg.ClearAccountTokens()
 	b, err := json.MarshalIndent(persistCfg, "", "  ")
@@ -219,7 +208,6 @@ func (s *Store) Save() error {
 	if err := writeConfigBytes(s.path, b); err != nil {
 		return err
 	}
-	s.fromEnv = false
 	return nil
 }
 
@@ -227,10 +215,6 @@ func (s *Store) saveLocked() error {
 	if s.redis != nil {
 		return s.saveRedisLocked()
 	}
-	if s.fromEnv && (IsVercel() || !envWritebackEnabled()) {
-		Logger.Info("[save_config] source from env, skip write")
-		return nil
-	}
 	persistCfg := s.cfg.Clone()
 	persistCfg.ClearAccountTokens()
 	b, err := json.MarshalIndent(persistCfg, "", "  ")
@@ -240,7 +224,6 @@ func (s *Store) saveLocked() error {
 	if err := writeConfigBytes(s.path, b); err != nil {
 		return err
 	}
-	s.fromEnv = false
 	return nil
 }
 
@@ -255,9 +238,7 @@ func (s *Store) saveRedisLocked() error {
 }
 
 func (s *Store) IsEnvBacked() bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.fromEnv
+	return false
 }
 
 func (s *Store) SetVercelSync(hash string, ts int64) error {
