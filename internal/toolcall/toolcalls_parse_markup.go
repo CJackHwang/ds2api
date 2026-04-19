@@ -13,7 +13,6 @@ var functionCallPattern = regexp.MustCompile(`(?is)<function_call>\s*([^<]+?)\s*
 var functionParamPattern = regexp.MustCompile(`(?is)<function\s+parameter\s+name="([^"]+)"\s*>\s*(.*?)\s*</function\s+parameter>`)
 var antmlFunctionCallPattern = regexp.MustCompile(`(?is)<(?:[a-z0-9_]+:)?function_call[^>]*(?:name|function)="([^"]+)"[^>]*>\s*(.*?)\s*</(?:[a-z0-9_]+:)?function_call>`)
 var antmlArgumentPattern = regexp.MustCompile(`(?is)<(?:[a-z0-9_]+:)?argument\s+name="([^"]+)"\s*>\s*(.*?)\s*</(?:[a-z0-9_]+:)?argument>`)
-var antmlParametersPattern = regexp.MustCompile(`(?is)<(?:[a-z0-9_]+:)?parameters\s*>\s*(\{.*?\})\s*</(?:[a-z0-9_]+:)?parameters>`)
 var invokeCallPattern = regexp.MustCompile(`(?is)<invoke\s+name="([^"]+)"\s*>(.*?)</invoke>`)
 var invokeParamPattern = regexp.MustCompile(`(?is)<parameter\s+name="([^"]+)"\s*>\s*(.*?)\s*</parameter>`)
 var toolUseFunctionPattern = regexp.MustCompile(`(?is)<tool_use>\s*<function\s+name="([^"]+)"\s*>(.*?)</function>\s*</tool_use>`)
@@ -89,7 +88,6 @@ func parseSingleXMLToolCall(block string) (ParsedToolCall, bool) {
 	name := ""
 	params := extractXMLToolParamsByRegex(inner)
 	dec := xml.NewDecoder(strings.NewReader(block))
-	inParams := false
 	inTool := false
 	for {
 		tok, err := dec.Token()
@@ -108,56 +106,36 @@ func parseSingleXMLToolCall(block string) (ParsedToolCall, bool) {
 					}
 				}
 			case "parameters":
-				inParams = true
 				var node struct {
 					Inner string `xml:",innerxml"`
 				}
 				if err := dec.DecodeElement(&node, &t); err == nil {
 					inner := strings.TrimSpace(node.Inner)
 					if inner != "" {
-						unescapedInner := html.UnescapeString(inner)
-						if parsed := parseToolCallInput(unescapedInner); len(parsed) > 0 {
-							if len(parsed) == 1 {
-								if _, onlyRaw := parsed["_raw"]; onlyRaw {
-									if kv := parseMarkupKVObject(unescapedInner); len(kv) > 0 {
-										for k, vv := range kv {
-											params[k] = vv
-										}
-										break
-									}
-								}
-							}
+						extracted := extractRawTagValue(inner)
+						if parsed := parseStructuredToolCallInput(extracted); len(parsed) > 0 {
 							for k, vv := range parsed {
-								params[k] = vv
-							}
-						} else if kv := parseMarkupKVObject(unescapedInner); len(kv) > 0 {
-							for k, vv := range kv {
 								params[k] = vv
 							}
 						}
 					}
 				}
-				inParams = false
 			case "tool_name", "function_name", "name":
 				var v string
 				if err := dec.DecodeElement(&v, &t); err == nil && strings.TrimSpace(v) != "" {
-					if inParams {
-						params[t.Name.Local] = strings.TrimSpace(v)
-						break
-					}
 					name = strings.TrimSpace(v)
 				}
 			case "input", "arguments", "argument", "args", "params":
 				var v string
 				if err := dec.DecodeElement(&v, &t); err == nil && strings.TrimSpace(v) != "" {
-					if parsed := parseToolCallInput(strings.TrimSpace(v)); len(parsed) > 0 {
+					if parsed := parseStructuredToolCallInput(strings.TrimSpace(v)); len(parsed) > 0 {
 						for k, vv := range parsed {
 							params[k] = vv
 						}
 					}
 				}
 			default:
-				if inParams || inTool {
+				if inTool {
 					var v string
 					if err := dec.DecodeElement(&v, &t); err == nil {
 						params[t.Name.Local] = strings.TrimSpace(html.UnescapeString(v))
@@ -166,9 +144,6 @@ func parseSingleXMLToolCall(block string) (ParsedToolCall, bool) {
 			}
 		case xml.EndElement:
 			tag := strings.ToLower(t.Name.Local)
-			if tag == "parameters" {
-				inParams = false
-			}
 			if tag == "tool" {
 				inTool = false
 			}
@@ -243,9 +218,15 @@ func parseFunctionCallTagStyle(text string) (ParsedToolCall, bool) {
 			continue
 		}
 		key := strings.TrimSpace(pm[1])
-		val := strings.TrimSpace(html.UnescapeString(pm[2]))
+		val := extractRawTagValue(pm[2])
 		if key != "" {
-			input[key] = val
+			if parsed := parseStructuredToolCallInput(val); len(parsed) > 0 {
+				if isOnlyRawValue(parsed, val) {
+					input[key] = val
+				} else {
+					input[key] = parsed
+				}
+			}
 		}
 	}
 	return ParsedToolCall{Name: name, Input: input}, true
@@ -276,15 +257,10 @@ func parseSingleAntmlFunctionCallMatch(m []string) (ParsedToolCall, bool) {
 	if name == "" {
 		return ParsedToolCall{}, false
 	}
-	body := strings.TrimSpace(html.UnescapeString(m[2]))
+	body := strings.TrimSpace(m[2])
 	input := map[string]any{}
 	if strings.HasPrefix(body, "{") {
 		if err := json.Unmarshal([]byte(body), &input); err == nil {
-			return ParsedToolCall{Name: name, Input: input}, true
-		}
-	}
-	if pm := antmlParametersPattern.FindStringSubmatch(body); len(pm) >= 2 {
-		if err := json.Unmarshal([]byte(strings.TrimSpace(pm[1])), &input); err == nil {
 			return ParsedToolCall{Name: name, Input: input}, true
 		}
 	}
@@ -293,9 +269,22 @@ func parseSingleAntmlFunctionCallMatch(m []string) (ParsedToolCall, bool) {
 			continue
 		}
 		k := strings.TrimSpace(am[1])
-		v := strings.TrimSpace(html.UnescapeString(am[2]))
+		v := extractRawTagValue(am[2])
 		if k != "" {
 			input[k] = v
+		}
+	}
+	if len(input) > 0 {
+		return ParsedToolCall{Name: name, Input: input}, true
+	}
+	if paramsRaw := findMarkupTagValue(body, toolCallMarkupArgsTagNames, toolCallMarkupArgsPatternByTag); paramsRaw != "" {
+		if parsed := parseMarkupInput(paramsRaw); len(parsed) > 0 {
+			return ParsedToolCall{Name: name, Input: parsed}, true
+		}
+	}
+	if strings.Contains(body, "<") {
+		if parsed := parseStructuredToolCallInput(body); len(parsed) > 0 && !isOnlyRawValue(parsed, body) {
+			return ParsedToolCall{Name: name, Input: parsed}, true
 		}
 	}
 	return ParsedToolCall{Name: name, Input: input}, true
@@ -316,9 +305,15 @@ func parseInvokeFunctionCallStyle(text string) (ParsedToolCall, bool) {
 			continue
 		}
 		k := strings.TrimSpace(pm[1])
-		v := strings.TrimSpace(html.UnescapeString(pm[2]))
+		v := extractRawTagValue(pm[2])
 		if k != "" {
-			input[k] = v
+			if parsed := parseStructuredToolCallInput(v); len(parsed) > 0 {
+				if isOnlyRawValue(parsed, v) {
+					input[k] = v
+				} else {
+					input[k] = parsed
+				}
+			}
 		}
 	}
 	if len(input) == 0 {
@@ -326,6 +321,8 @@ func parseInvokeFunctionCallStyle(text string) (ParsedToolCall, bool) {
 			input = parseMarkupInput(argsRaw)
 		} else if kv := parseMarkupKVObject(m[2]); len(kv) > 0 {
 			input = kv
+		} else if parsed := parseStructuredToolCallInput(m[2]); len(parsed) > 0 && !isOnlyRawValue(parsed, strings.TrimSpace(html.UnescapeString(m[2]))) {
+			input = parsed
 		}
 	}
 	return ParsedToolCall{Name: name, Input: input}, true
@@ -347,9 +344,15 @@ func parseToolUseFunctionStyle(text string) (ParsedToolCall, bool) {
 			continue
 		}
 		k := strings.TrimSpace(pm[1])
-		v := strings.TrimSpace(html.UnescapeString(pm[2]))
+		v := extractRawTagValue(pm[2])
 		if k != "" {
-			input[k] = v
+			if parsed := parseStructuredToolCallInput(v); len(parsed) > 0 {
+				if isOnlyRawValue(parsed, v) {
+					input[k] = v
+				} else {
+					input[k] = parsed
+				}
+			}
 		}
 	}
 	return ParsedToolCall{Name: name, Input: input}, true
@@ -364,13 +367,11 @@ func parseToolUseNameParametersStyle(text string) (ParsedToolCall, bool) {
 	if name == "" {
 		return ParsedToolCall{}, false
 	}
-	raw := strings.TrimSpace(html.UnescapeString(m[2]))
+	raw := strings.TrimSpace(m[2])
 	input := map[string]any{}
 	if raw != "" {
-		if parsed := parseToolCallInput(raw); len(parsed) > 0 {
+		if parsed := parseStructuredToolCallInput(raw); len(parsed) > 0 {
 			input = parsed
-		} else if kv := parseMarkupKVObject(raw); len(kv) > 0 {
-			input = kv
 		}
 	}
 	return ParsedToolCall{Name: name, Input: input}, true
@@ -385,13 +386,11 @@ func parseToolUseFunctionNameParametersStyle(text string) (ParsedToolCall, bool)
 	if name == "" {
 		return ParsedToolCall{}, false
 	}
-	raw := strings.TrimSpace(html.UnescapeString(m[2]))
+	raw := strings.TrimSpace(m[2])
 	input := map[string]any{}
 	if raw != "" {
-		if parsed := parseToolCallInput(raw); len(parsed) > 0 {
+		if parsed := parseStructuredToolCallInput(raw); len(parsed) > 0 {
 			input = parsed
-		} else if kv := parseMarkupKVObject(raw); len(kv) > 0 {
-			input = kv
 		}
 	}
 	return ParsedToolCall{Name: name, Input: input}, true
@@ -406,14 +405,14 @@ func parseToolUseToolNameBodyStyle(text string) (ParsedToolCall, bool) {
 	if name == "" {
 		return ParsedToolCall{}, false
 	}
-	body := strings.TrimSpace(html.UnescapeString(m[2]))
+	body := strings.TrimSpace(m[2])
 	input := map[string]any{}
 	if body != "" {
 		if kv := parseXMLChildKV(body); len(kv) > 0 {
 			input = kv
 		} else if kv := parseMarkupKVObject(body); len(kv) > 0 {
 			input = kv
-		} else if parsed := parseToolCallInput(body); len(parsed) > 0 {
+		} else if parsed := parseStructuredToolCallInput(body); len(parsed) > 0 {
 			input = parsed
 		}
 	}
@@ -425,32 +424,11 @@ func parseXMLChildKV(body string) map[string]any {
 	if trimmed == "" {
 		return nil
 	}
-	dec := xml.NewDecoder(strings.NewReader("<root>" + trimmed + "</root>"))
-	out := map[string]any{}
-	for {
-		tok, err := dec.Token()
-		if err != nil {
-			break
-		}
-		start, ok := tok.(xml.StartElement)
-		if !ok || strings.EqualFold(start.Name.Local, "root") {
-			continue
-		}
-		var v string
-		if err := dec.DecodeElement(&v, &start); err != nil {
-			continue
-		}
-		key := strings.TrimSpace(start.Name.Local)
-		val := strings.TrimSpace(v)
-		if key == "" || val == "" {
-			continue
-		}
-		out[key] = val
-	}
-	if len(out) == 0 {
+	parsed := parseStructuredToolCallInput(trimmed)
+	if len(parsed) == 0 {
 		return nil
 	}
-	return out
+	return parsed
 }
 
 func asString(v any) string {

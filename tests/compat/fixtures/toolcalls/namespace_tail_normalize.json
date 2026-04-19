@@ -1,6 +1,0 @@
-{
-  "text": "{\"tool_calls\":[{\"name\":\"company.fs.read_file\",\"input\":{\"path\":\"README.MD\"}}]}",
-  "tool_names": [
-    "read_file"
-  ]
-}

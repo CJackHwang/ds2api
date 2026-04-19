@@ -2,6 +2,9 @@ package prompt
 
 import (
 	"encoding/json"
+	"fmt"
+	"regexp"
+	"sort"
 	"strings"
 )
 
@@ -10,6 +13,8 @@ var promptXMLTextEscaper = strings.NewReplacer(
 	"<", "&lt;",
 	">", "&gt;",
 )
+
+var promptXMLNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_.:-]*$`)
 
 // FormatToolCallsForPrompt renders a tool_calls slice into the canonical
 // prompt-visible history block used across adapters.
@@ -87,10 +92,158 @@ func formatToolCallForPrompt(call map[string]any) string {
 		}
 	}
 
+	parameters := formatToolCallParametersForPrompt(argsRaw)
+
 	return "  <tool_call>\n" +
 		"    <tool_name>" + escapeXMLText(name) + "</tool_name>\n" +
-		"    <parameters>" + escapeXMLText(StringifyToolCallArguments(argsRaw)) + "</parameters>\n" +
+		parameters + "\n" +
 		"  </tool_call>"
+}
+
+func formatToolCallParametersForPrompt(raw any) string {
+	value := normalizePromptToolCallValue(raw)
+	body, ok := renderPromptToolXMLBody(value, "      ")
+	if ok {
+		if strings.TrimSpace(body) == "" {
+			return "    <parameters></parameters>"
+		}
+		return "    <parameters>\n" + body + "\n    </parameters>"
+	}
+
+	fallback := StringifyToolCallArguments(raw)
+	if strings.TrimSpace(fallback) == "" {
+		fallback = "{}"
+	}
+	return "    <parameters><content>" + renderPromptXMLText(fallback) + "</content></parameters>"
+}
+
+func normalizePromptToolCallValue(raw any) any {
+	switch x := raw.(type) {
+	case nil:
+		return nil
+	case string:
+		s := strings.TrimSpace(x)
+		if s == "" {
+			return ""
+		}
+		var parsed any
+		if err := json.Unmarshal([]byte(s), &parsed); err == nil {
+			return parsed
+		}
+		return x
+	default:
+		return x
+	}
+}
+
+func renderPromptToolXMLBody(value any, indent string) (string, bool) {
+	switch v := value.(type) {
+	case nil:
+		return "", true
+	case map[string]any:
+		return renderPromptToolXMLMap(v, indent)
+	case []any:
+		return renderPromptToolXMLArray(v, indent)
+	case string:
+		return indent + "<content>" + renderPromptXMLText(v) + "</content>", true
+	case bool, float32, float64, int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
+		return indent + "<value>" + escapeXMLText(fmt.Sprint(v)) + "</value>", true
+	default:
+		return indent + "<value>" + renderPromptXMLText(fmt.Sprint(v)) + "</value>", true
+	}
+}
+
+func renderPromptToolXMLMap(m map[string]any, indent string) (string, bool) {
+	if len(m) == 0 {
+		return "", true
+	}
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		if !isValidPromptXMLName(k) {
+			return "", false
+		}
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	lines := make([]string, 0, len(keys))
+	for _, key := range keys {
+		rendered, ok := renderPromptToolXMLNode(key, m[key], indent)
+		if !ok {
+			return "", false
+		}
+		lines = append(lines, rendered)
+	}
+	return strings.Join(lines, "\n"), true
+}
+
+func renderPromptToolXMLArray(items []any, indent string) (string, bool) {
+	if len(items) == 0 {
+		return "", true
+	}
+	lines := make([]string, 0, len(items))
+	for _, item := range items {
+		rendered, ok := renderPromptToolXMLNode("item", item, indent)
+		if !ok {
+			return "", false
+		}
+		lines = append(lines, rendered)
+	}
+	return strings.Join(lines, "\n"), true
+}
+
+func renderPromptToolXMLNode(name string, value any, indent string) (string, bool) {
+	if !isValidPromptXMLName(name) {
+		return "", false
+	}
+	switch v := value.(type) {
+	case nil:
+		return indent + "<" + name + "></" + name + ">", true
+	case map[string]any:
+		inner, ok := renderPromptToolXMLMap(v, indent+"  ")
+		if !ok {
+			return "", false
+		}
+		if strings.TrimSpace(inner) == "" {
+			return indent + "<" + name + "></" + name + ">", true
+		}
+		return indent + "<" + name + ">\n" + inner + "\n" + indent + "</" + name + ">", true
+	case []any:
+		if len(v) == 0 {
+			return indent + "<" + name + "></" + name + ">", true
+		}
+		lines := make([]string, 0, len(v))
+		for _, item := range v {
+			rendered, ok := renderPromptToolXMLNode(name, item, indent)
+			if !ok {
+				return "", false
+			}
+			lines = append(lines, rendered)
+		}
+		return strings.Join(lines, "\n"), true
+	case string:
+		return indent + "<" + name + ">" + renderPromptXMLText(v) + "</" + name + ">", true
+	case bool, float32, float64, int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
+		return indent + "<" + name + ">" + escapeXMLText(fmt.Sprint(v)) + "</" + name + ">", true
+	default:
+		return indent + "<" + name + ">" + renderPromptXMLText(fmt.Sprint(v)) + "</" + name + ">", true
+	}
+}
+
+// renderPromptXMLText emits CDATA for every string so prompt-visible tool
+// history stays uniform and does not drift back toward ad-hoc escaping.
+func renderPromptXMLText(text string) string {
+	if text == "" {
+		return ""
+	}
+	if strings.Contains(text, "]]>") {
+		return "<![CDATA[" + strings.ReplaceAll(text, "]]>", "]]]]><![CDATA[>") + "]]>"
+	}
+	return "<![CDATA[" + text + "]]>"
+}
+
+func isValidPromptXMLName(name string) bool {
+	return promptXMLNamePattern.MatchString(strings.TrimSpace(name))
 }
 
 func normalizeToolArgumentString(raw string) string {

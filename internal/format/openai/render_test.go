@@ -1,74 +1,9 @@
 package openai
 
 import (
-	"encoding/json"
 	"strings"
 	"testing"
 )
-
-func TestBuildResponseObjectToolCallsFollowChatShape(t *testing.T) {
-	obj := BuildResponseObject(
-		"resp_test",
-		"gpt-4o",
-		"prompt",
-		"",
-		`{"tool_calls":[{"name":"search","input":{"q":"golang"}}]}`,
-		[]string{"search"},
-	)
-
-	outputText, _ := obj["output_text"].(string)
-	if outputText != "" {
-		t.Fatalf("expected output_text to be hidden for tool calls, got %q", outputText)
-	}
-
-	output, _ := obj["output"].([]any)
-	if len(output) != 1 {
-		t.Fatalf("expected function_call output only, got %#v", obj["output"])
-	}
-
-	first, _ := output[0].(map[string]any)
-	if first["type"] != "function_call" {
-		t.Fatalf("expected first output item type function_call, got %#v", first["type"])
-	}
-	if first["call_id"] == "" {
-		t.Fatalf("expected function_call item to have call_id, got %#v", first)
-	}
-	if first["name"] != "search" {
-		t.Fatalf("unexpected function name: %#v", first["name"])
-	}
-	argsRaw, _ := first["arguments"].(string)
-	var args map[string]any
-	if err := json.Unmarshal([]byte(argsRaw), &args); err != nil {
-		t.Fatalf("arguments should be valid json string, got=%q err=%v", argsRaw, err)
-	}
-	if args["q"] != "golang" {
-		t.Fatalf("unexpected arguments: %#v", args)
-	}
-}
-
-func TestBuildResponseObjectPromotesMixedProseToolPayloadToFunctionCall(t *testing.T) {
-	obj := BuildResponseObject(
-		"resp_test",
-		"gpt-4o",
-		"prompt",
-		"",
-		`示例格式：{"tool_calls":[{"name":"search","input":{"q":"golang"}}]}，但这条是普通回答。`,
-		[]string{"search"},
-	)
-
-	outputText, _ := obj["output_text"].(string)
-	if outputText != "" {
-		t.Fatalf("expected output_text hidden for mixed prose tool payload, got %q", outputText)
-	}
-	output, _ := obj["output"].([]any)
-	if len(output) != 1 {
-		t.Fatalf("expected one function_call output item, got %#v", obj["output"])
-	}
-	first, _ := output[0].(map[string]any)
-	if first["type"] != "function_call" {
-		t.Fatalf("expected function_call output type, got %#v", first["type"])
-	}
-}
 
 func TestBuildResponseObjectKeepsFencedToolPayloadAsText(t *testing.T) {
 	obj := BuildResponseObject(

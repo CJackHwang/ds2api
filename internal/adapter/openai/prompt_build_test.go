@@ -74,7 +74,7 @@ func TestBuildOpenAIFinalPrompt_VercelPreparePathKeepsFinalAnswerInstruction(t *
 	}
 
 	finalPrompt, _ := buildOpenAIFinalPrompt(messages, tools, "", false)
-	if !strings.Contains(finalPrompt, "Remember: Output ONLY the <tool_calls>...</tool_calls> XML block when calling tools.") {
+	if !strings.Contains(finalPrompt, "Remember: The ONLY valid way to use tools is the <tool_calls> XML block at the end of your response.") {
 		t.Fatalf("vercel prepare finalPrompt missing final tool-call anchor instruction: %q", finalPrompt)
 	}
 	if !strings.Contains(finalPrompt, "TOOL CALL FORMAT") {
@@ -85,5 +85,19 @@ func TestBuildOpenAIFinalPrompt_VercelPreparePathKeepsFinalAnswerInstruction(t *
 	}
 	if strings.Contains(finalPrompt, "```json") {
 		t.Fatalf("vercel prepare finalPrompt should not require fenced tool calls: %q", finalPrompt)
+	}
+}
+
+func TestBuildOpenAIFinalPromptWithThinkingAddsContinuationContract(t *testing.T) {
+	messages := []any{
+		map[string]any{"role": "user", "content": "继续回答上一个问题"},
+	}
+
+	finalPrompt, _ := buildOpenAIFinalPrompt(messages, nil, "", true)
+	if !strings.Contains(finalPrompt, "Continue the conversation from the full prior context") {
+		t.Fatalf("expected continuation contract in thinking prompt, got=%q", finalPrompt)
+	}
+	if !strings.Contains(finalPrompt, "final user-facing answer only in reasoning") {
+		t.Fatalf("expected visible-answer contract in thinking prompt, got=%q", finalPrompt)
 	}
 }

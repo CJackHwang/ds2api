@@ -5,89 +5,6 @@ import (
 	"testing"
 )
 
-func TestParseToolCalls(t *testing.T) {
-	text := `prefix {"tool_calls":[{"name":"search","input":{"q":"golang"}}]} suffix`
-	calls := ParseToolCalls(text, []string{"search"})
-	if len(calls) != 1 {
-		t.Fatalf("expected 1 call, got %d", len(calls))
-	}
-	if calls[0].Name != "search" {
-		t.Fatalf("unexpected tool name: %s", calls[0].Name)
-	}
-	if calls[0].Input["q"] != "golang" {
-		t.Fatalf("unexpected args: %#v", calls[0].Input)
-	}
-}
-
-func TestParseToolCallsIgnoresFencedJSON(t *testing.T) {
-	text := "I will call tools now\n```json\n{\"tool_calls\":[{\"name\":\"search\",\"input\":{\"q\":\"news\"}}]}\n```"
-	calls := ParseToolCalls(text, []string{"search"})
-	if len(calls) != 0 {
-		t.Fatalf("expected fenced tool_call payload to be ignored, got %#v", calls)
-	}
-}
-
-func TestParseToolCallsWithFunctionArgumentsString(t *testing.T) {
-	text := `{"tool_calls":[{"function":{"name":"get_weather","arguments":"{\"city\":\"beijing\"}"}}]}`
-	calls := ParseToolCalls(text, []string{"get_weather"})
-	if len(calls) != 1 {
-		t.Fatalf("expected 1 call, got %d", len(calls))
-	}
-	if calls[0].Name != "get_weather" {
-		t.Fatalf("unexpected tool name: %s", calls[0].Name)
-	}
-	if calls[0].Input["city"] != "beijing" {
-		t.Fatalf("unexpected args: %#v", calls[0].Input)
-	}
-}
-
-func TestParseToolCallsKeepsUnknownToolName(t *testing.T) {
-	text := `{"tool_calls":[{"name":"unknown","input":{}}]}`
-	calls := ParseToolCalls(text, []string{"search"})
-	if len(calls) != 1 || calls[0].Name != "unknown" {
-		t.Fatalf("expected unknown tool to be preserved, got %#v", calls)
-	}
-}
-
-func TestParseToolCallsKeepsOriginalToolNameCase(t *testing.T) {
-	text := `{"tool_calls":[{"name":"Bash","input":{"command":"ls -al"}}]}`
-	calls := ParseToolCalls(text, []string{"bash"})
-	if len(calls) != 1 {
-		t.Fatalf("expected 1 call, got %#v", calls)
-	}
-	if calls[0].Name != "Bash" {
-		t.Fatalf("expected original tool name Bash, got %q", calls[0].Name)
-	}
-}
-
-func TestParseToolCallsDetailedDoesNotRejectByPolicy(t *testing.T) {
-	text := `{"tool_calls":[{"name":"unknown","input":{}}]}`
-	res := ParseToolCallsDetailed(text, []string{"search"})
-	if !res.SawToolCallSyntax {
-		t.Fatalf("expected SawToolCallSyntax=true, got %#v", res)
-	}
-	if res.RejectedByPolicy {
-		t.Fatalf("expected RejectedByPolicy=false, got %#v", res)
-	}
-	if len(res.Calls) != 1 || res.Calls[0].Name != "unknown" {
-		t.Fatalf("expected call to be preserved, got %#v", res.Calls)
-	}
-}
-
-func TestParseToolCallsDetailedAllowsWhenAllowListEmpty(t *testing.T) {
-	text := `{"tool_calls":[{"name":"search","input":{"q":"go"}}]}`
-	res := ParseToolCallsDetailed(text, nil)
-	if !res.SawToolCallSyntax {
-		t.Fatalf("expected SawToolCallSyntax=true, got %#v", res)
-	}
-	if res.RejectedByPolicy {
-		t.Fatalf("expected RejectedByPolicy=false, got %#v", res)
-	}
-	if len(res.Calls) != 1 || res.Calls[0].Name != "search" {
-		t.Fatalf("expected calls when allow-list is empty, got %#v", res.Calls)
-	}
-}
-
 func TestFormatOpenAIToolCalls(t *testing.T) {
 	formatted := FormatOpenAIToolCalls([]ParsedToolCall{{Name: "search", Input: map[string]any{"q": "x"}}})
 	if len(formatted) != 1 {
@@ -96,55 +13,6 @@ func TestFormatOpenAIToolCalls(t *testing.T) {
 	fn, _ := formatted[0]["function"].(map[string]any)
 	if fn["name"] != "search" {
 		t.Fatalf("unexpected function name: %#v", fn)
-	}
-}
-
-func TestParseStandaloneToolCallsSupportsMixedProsePayload(t *testing.T) {
-	mixed := `这里是示例：{"tool_calls":[{"name":"search","input":{"q":"go"}}]}`
-	if calls := ParseStandaloneToolCalls(mixed, []string{"search"}); len(calls) != 1 {
-		t.Fatalf("expected standalone parser to parse mixed prose payload, got %#v", calls)
-	}
-
-	standalone := `{"tool_calls":[{"name":"search","input":{"q":"go"}}]}`
-	calls := ParseStandaloneToolCalls(standalone, []string{"search"})
-	if len(calls) != 1 {
-		t.Fatalf("expected standalone parser to match, got %#v", calls)
-	}
-}
-
-func TestParseStandaloneToolCallsIgnoresFencedCodeBlock(t *testing.T) {
-	fenced := "```json\n{\"tool_calls\":[{\"name\":\"search\",\"input\":{\"q\":\"go\"}}]}\n```"
-	if calls := ParseStandaloneToolCalls(fenced, []string{"search"}); len(calls) != 0 {
-		t.Fatalf("expected fenced tool_call payload to be ignored, got %#v", calls)
-	}
-}
-
-func TestParseStandaloneToolCallsIgnoresChatTranscriptEnvelope(t *testing.T) {
-	transcript := `[{"role":"user","content":"请展示完整会话"},{"role":"assistant","content":null,"tool_calls":[{"function":{"name":"search","arguments":"{\"q\":\"go\"}"}}]}]`
-	if calls := ParseStandaloneToolCalls(transcript, []string{"search"}); len(calls) != 0 {
-		t.Fatalf("expected transcript envelope not to trigger tool call parse, got %#v", calls)
-	}
-}
-
-func TestParseToolCallsAllowsQualifiedToolName(t *testing.T) {
-	text := `{"tool_calls":[{"name":"mcp.search_web","input":{"q":"golang"}}]}`
-	calls := ParseToolCalls(text, []string{"search_web"})
-	if len(calls) != 1 {
-		t.Fatalf("expected 1 call, got %#v", calls)
-	}
-	if calls[0].Name != "mcp.search_web" {
-		t.Fatalf("expected original tool name mcp.search_web, got %q", calls[0].Name)
-	}
-}
-
-func TestParseToolCallsAllowsPunctuationVariantToolName(t *testing.T) {
-	text := `{"tool_calls":[{"name":"read-file","input":{"path":"README.md"}}]}`
-	calls := ParseToolCalls(text, []string{"read_file"})
-	if len(calls) != 1 {
-		t.Fatalf("expected 1 call, got %#v", calls)
-	}
-	if calls[0].Name != "read-file" {
-		t.Fatalf("expected original tool name read-file, got %q", calls[0].Name)
 	}
 }
 
@@ -159,6 +27,30 @@ func TestParseToolCallsSupportsClaudeXMLToolCall(t *testing.T) {
 	}
 	if calls[0].Input["command"] != "pwd" {
 		t.Fatalf("expected command argument, got %#v", calls[0].Input)
+	}
+}
+
+func TestParseToolCallsSupportsMultilineCDATAAndRepeatedXMLTags(t *testing.T) {
+	text := `<tool_call><tool_name>write_file</tool_name><parameters><path>script.sh</path><content><![CDATA[#!/bin/bash
+echo "hello"
+]]></content><item>first</item><item>second</item></parameters></tool_call>`
+	calls := ParseToolCalls(text, []string{"write_file"})
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 call, got %#v", calls)
+	}
+	if calls[0].Name != "write_file" {
+		t.Fatalf("expected tool name write_file, got %q", calls[0].Name)
+	}
+	if calls[0].Input["path"] != "script.sh" {
+		t.Fatalf("expected path argument, got %#v", calls[0].Input)
+	}
+	content, _ := calls[0].Input["content"].(string)
+	if !strings.Contains(content, "#!/bin/bash") || !strings.Contains(content, "echo \"hello\"") {
+		t.Fatalf("expected multiline CDATA content to be preserved, got %#v", calls[0].Input["content"])
+	}
+	items, ok := calls[0].Input["item"].([]any)
+	if !ok || len(items) != 2 {
+		t.Fatalf("expected repeated XML tags to become an array, got %#v", calls[0].Input["item"])
 	}
 }
 
@@ -220,20 +112,6 @@ func TestParseToolCallsDoesNotTreatParameterNameTagAsToolName(t *testing.T) {
 	}
 	if calls[0].Input["name"] != "file.txt" {
 		t.Fatalf("expected parameter name preserved, got %#v", calls[0].Input)
-	}
-}
-
-func TestParseToolCallsPrefersJSONPayloadOverIncidentalXMLInString(t *testing.T) {
-	text := `{"tool_calls":[{"name":"search","input":{"q":"latest <tool_call><tool_name>wrong</tool_name><parameters>{\"x\":1}</parameters></tool_call>"}}]}`
-	calls := ParseToolCallsDetailed(text, []string{"search"}).Calls
-	if len(calls) != 1 {
-		t.Fatalf("expected 1 call, got %#v", calls)
-	}
-	if calls[0].Name != "search" {
-		t.Fatalf("expected tool name search, got %q", calls[0].Name)
-	}
-	if calls[0].Input["q"] == nil {
-		t.Fatalf("expected q argument from json payload, got %#v", calls[0].Input)
 	}
 }
 
@@ -315,34 +193,6 @@ func TestParseToolCallsSupportsInvokeFunctionCallStyle(t *testing.T) {
 	}
 	if calls[0].Input["command"] != "pwd" {
 		t.Fatalf("expected command argument, got %#v", calls[0].Input)
-	}
-}
-
-func TestParseToolCallsSupportsGeminiFunctionCallJSON(t *testing.T) {
-	text := `{"functionCall":{"name":"search_web","args":{"query":"latest"}}}`
-	calls := ParseToolCalls(text, []string{"search_web"})
-	if len(calls) != 1 {
-		t.Fatalf("expected 1 call, got %#v", calls)
-	}
-	if calls[0].Name != "search_web" {
-		t.Fatalf("expected search_web, got %q", calls[0].Name)
-	}
-	if calls[0].Input["query"] != "latest" {
-		t.Fatalf("expected query argument, got %#v", calls[0].Input)
-	}
-}
-
-func TestParseToolCallsSupportsClaudeToolUseJSON(t *testing.T) {
-	text := `{"type":"tool_use","name":"read_file","input":{"path":"README.md"}}`
-	calls := ParseToolCalls(text, []string{"read_file"})
-	if len(calls) != 1 {
-		t.Fatalf("expected 1 call, got %#v", calls)
-	}
-	if calls[0].Name != "read_file" {
-		t.Fatalf("expected read_file, got %q", calls[0].Name)
-	}
-	if calls[0].Input["path"] != "README.md" {
-		t.Fatalf("expected path argument, got %#v", calls[0].Input)
 	}
 }
 
@@ -495,104 +345,6 @@ func TestRepairLooseJSON(t *testing.T) {
 	}
 }
 
-func TestParseToolCallsWithUnquotedKeys(t *testing.T) {
-	text := `这里是列表：{tool_calls: [{"name": "todowrite", "input": {"todos": "test"}}]}`
-	availableTools := []string{"todowrite"}
-
-	parsed := ParseToolCalls(text, availableTools)
-	if len(parsed) != 1 {
-		t.Fatalf("expected 1 tool call, got %d", len(parsed))
-	}
-	if parsed[0].Name != "todowrite" {
-		t.Errorf("expected tool todowrite, got %s", parsed[0].Name)
-	}
-}
-
-func TestParseToolCallsWithInvalidBackslashes(t *testing.T) {
-	// DeepSeek sometimes outputs Windows paths with single backslashes in JSON strings
-	// Note: using raw string to simulate what AI actually sends in the stream
-	text := `好的，执行以下命令：{"name": "execute_command", "input": "{\"command\": \"cd D:\git_codes && dir\"}"}`
-	availableTools := []string{"execute_command"}
-
-	parsed := ParseToolCalls(text, availableTools)
-	// If standard JSON fails, buildToolCallCandidates should still extract the object,
-	// and parseToolCallsPayload should repair it.
-	if len(parsed) != 1 {
-		// If it still fails, let's see why
-		candidates := buildToolCallCandidates(text)
-		t.Logf("Candidates: %v", candidates)
-		t.Fatalf("expected 1 tool call, got %d", len(parsed))
-	}
-
-	cmd, ok := parsed[0].Input["command"].(string)
-	if !ok {
-		t.Fatalf("expected command string in input, got %v", parsed[0].Input)
-	}
-
-	expected := "cd D:\\git_codes && dir"
-	if cmd != expected {
-		t.Errorf("expected command %q, got %q", expected, cmd)
-	}
-}
-
-func TestParseToolCallsWithDeepSeekHallucination(t *testing.T) {
-	// 模拟 DeepSeek 典型的幻觉输出：未加引号的键名 + 包含 Windows 路径的嵌套 JSON 字符串 + 漏掉列表的方括号
-	text := `检测到实施意图——实现经典算法。需在misc/目录创建Python文件。
-关键约束:
-1. Windows UTF-8编码处理
-2. 必须用绝对路径导入
-3. 禁止write覆盖已有文件（misc/目录允许创建新文件）
-将任务分解并委托：
-- 研究8皇后算法模式（并行探索）
-- 实现带可视化输出的解决方案（unspecified-high）
-先创建todo列表追踪步骤。
-{tool_calls: [{"name": "todowrite", "input": {"todos": {"content": "研究8皇后问题算法模式（回溯法）和输出格式", "status": "pending", "priority": "high"}, {"content": "在misc/目录创建8皇后Python脚本，包含完整解决方案和可视化输出", "status": "pending", "priority": "high"}, {"content": "验证脚本正确性（运行测试）", "status": "pending", "priority": "medium"}}}]}`
-
-	availableTools := []string{"todowrite"}
-	parsed := ParseToolCalls(text, availableTools)
-
-	if len(parsed) != 1 {
-		cands := buildToolCallCandidates(text)
-		for i, c := range cands {
-			t.Logf("CAND %d: %s", i, c)
-			repaired := RepairLooseJSON(c)
-			t.Logf("  REPAIRED: %s", repaired)
-		}
-		t.Fatalf("expected 1 tool call, got %d. Candidates: %v", len(parsed), buildToolCallCandidates(text))
-	}
-
-	if parsed[0].Name != "todowrite" {
-		t.Errorf("expected tool name 'todowrite', got %q", parsed[0].Name)
-	}
-
-	todos, ok := parsed[0].Input["todos"].([]any)
-	if !ok {
-		t.Fatalf("expected 'todos' to be parsed as a list, got %T: %#v", parsed[0].Input["todos"], parsed[0].Input["todos"])
-	}
-	if len(todos) != 3 {
-		t.Errorf("expected 3 todo items, got %d", len(todos))
-	}
-}
-
-func TestParseToolCallsWithMixedWindowsPaths(t *testing.T) {
-	// 更复杂的案例：嵌套 JSON 字符串中的反斜杠未转义
-	text := `关键约束: 1. Windows UTF-8编码处理 2. 必须用绝对路径导入 D:\git_codes\ds2api\misc
-{tool_calls: [{"name": "write_file", "input": "{\"path\": \"D:\\git_codes\\ds2api\\misc\\queens.py\", \"content\": \"print('hello')\"}"}]}`
-
-	availableTools := []string{"write_file"}
-	parsed := ParseToolCalls(text, availableTools)
-
-	if len(parsed) != 1 {
-		t.Fatalf("expected 1 tool call from mixed text with paths, got %d", len(parsed))
-	}
-
-	path, _ := parsed[0].Input["path"].(string)
-	// 在解析后的 Go map 中，反斜杠应该被还原
-	if !strings.Contains(path, "D:\\git_codes") && !strings.Contains(path, "D:/git_codes") {
-		t.Errorf("expected path to contain Windows style separators, got %q", path)
-	}
-}
-
 func TestParseToolCallInputRepairsControlCharsInPath(t *testing.T) {
 	in := `{"path":"D:\tmp\new\readme.txt","content":"line1\nline2"}`
 	parsed := parseToolCallInput(in)
@@ -704,14 +456,32 @@ func TestParseToolCallsUnescapesHTMLEntityArguments(t *testing.T) {
 	}
 }
 
-func TestParseToolCallsJSONPayloadKeepsLiteralEntities(t *testing.T) {
-	text := `{"tool_calls":[{"name":"bash","input":{"command":"echo &gt; literally"}}]}`
-	calls := ParseToolCalls(text, []string{"bash"})
-	if len(calls) != 1 {
-		t.Fatalf("expected one call, got %#v", calls)
+func TestParseToolCallsIgnoresXMLInsideFencedCodeBlock(t *testing.T) {
+	text := "Here is an example:\n```xml\n<tool_call><tool_name>read_file</tool_name><parameters>{\"path\":\"README.md\"}</parameters></tool_call>\n```\nDo not execute it."
+	res := ParseToolCallsDetailed(text, []string{"read_file"})
+	if len(res.Calls) != 0 {
+		t.Fatalf("expected no parsed calls for fenced example, got %#v", res.Calls)
 	}
-	cmd, _ := calls[0].Input["command"].(string)
-	if cmd != "echo &gt; literally" {
-		t.Fatalf("expected json payload to keep literal entities, got %q", cmd)
+}
+
+func TestParseToolCallsParsesOnlyNonFencedXMLToolCall(t *testing.T) {
+	text := "```xml\n<tool_call><tool_name>read_file</tool_name><parameters>{\"path\":\"README.md\"}</parameters></tool_call>\n```\n<tool_call><tool_name>search</tool_name><parameters>{\"q\":\"golang\"}</parameters></tool_call>"
+	res := ParseToolCallsDetailed(text, []string{"read_file", "search"})
+	if len(res.Calls) != 1 {
+		t.Fatalf("expected exactly one parsed call outside fence, got %#v", res.Calls)
+	}
+	if res.Calls[0].Name != "search" {
+		t.Fatalf("expected non-fenced tool call to be parsed, got %#v", res.Calls[0])
+	}
+}
+
+func TestParseToolCallsParsesAfterFourBacktickFence(t *testing.T) {
+	text := "````markdown\n```xml\n<tool_call><tool_name>read_file</tool_name><parameters>{\"path\":\"README.md\"}</parameters></tool_call>\n```\n````\n<tool_call><tool_name>search</tool_name><parameters>{\"q\":\"outside\"}</parameters></tool_call>"
+	res := ParseToolCallsDetailed(text, []string{"read_file", "search"})
+	if len(res.Calls) != 1 {
+		t.Fatalf("expected exactly one parsed call outside four-backtick fence, got %#v", res.Calls)
+	}
+	if res.Calls[0].Name != "search" {
+		t.Fatalf("expected non-fenced tool call to be parsed, got %#v", res.Calls[0])
 	}
 }

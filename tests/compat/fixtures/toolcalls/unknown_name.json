@@ -1,4 +1,0 @@
-{
-  "text": "{\"tool_calls\":[{\"name\":\"unknown_tool\",\"input\":{\"x\":1}}]}",
-  "tool_names": ["read_file"]
-}

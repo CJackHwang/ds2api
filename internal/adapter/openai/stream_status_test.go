@@ -146,53 +146,6 @@ func TestResponsesStreamStatusCapturedAs200(t *testing.T) {
 	}
 }
 
-func TestResponsesNonStreamMixedProseToolPayloadHandlerPath(t *testing.T) {
-	statuses := make([]int, 0, 1)
-	content, _ := json.Marshal(map[string]any{
-		"p": "response/content",
-		"v": "我来调用工具\n{\"tool_calls\":[{\"name\":\"read_file\",\"input\":{\"path\":\"README.MD\"}}]}",
-	})
-	h := &Handler{
-		Store: mockOpenAIConfig{wideInput: true},
-		Auth:  streamStatusAuthStub{},
-		DS:    streamStatusDSStub{resp: makeOpenAISSEHTTPResponse("data: "+string(content), "data: [DONE]")},
-	}
-	r := chi.NewRouter()
-	r.Use(captureStatusMiddleware(&statuses))
-	RegisterRoutes(r, h)
-
-	reqBody := `{"model":"deepseek-chat","input":"请调用工具","tools":[{"type":"function","function":{"name":"read_file","description":"read","parameters":{"type":"object","properties":{"path":{"type":"string"}}}}}],"stream":false}`
-	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(reqBody))
-	req.Header.Set("Authorization", "Bearer direct-token")
-	req.Header.Set("Content-Type", "application/json")
-	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
-	}
-	if len(statuses) != 1 || statuses[0] != http.StatusOK {
-		t.Fatalf("expected captured status 200, got %#v", statuses)
-	}
-
-	var out map[string]any
-	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
-		t.Fatalf("decode response failed: %v body=%s", err, rec.Body.String())
-	}
-	outputText, _ := out["output_text"].(string)
-	if outputText != "" {
-		t.Fatalf("expected output_text hidden for mixed prose tool payload, got %q", outputText)
-	}
-	output, _ := out["output"].([]any)
-	if len(output) != 1 {
-		t.Fatalf("expected one output item, got %#v", output)
-	}
-	first, _ := output[0].(map[string]any)
-	if first["type"] != "function_call" {
-		t.Fatalf("expected function_call output item, got %#v", output)
-	}
-}
-
 func TestChatCompletionsStreamContentFilterStopsNormallyWithoutLeak(t *testing.T) {
 	statuses := make([]int, 0, 1)
 	h := &Handler{

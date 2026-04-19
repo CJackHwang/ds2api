@@ -22,6 +22,9 @@ var toolCallMarkupNamePatternByTag = map[string]*regexp.Regexp{
 	"name":     regexp.MustCompile(`(?is)<(?:[a-z0-9_:-]+:)?name\b[^>]*>(.*?)</(?:[a-z0-9_:-]+:)?name>`),
 	"function": regexp.MustCompile(`(?is)<(?:[a-z0-9_:-]+:)?function\b[^>]*>(.*?)</(?:[a-z0-9_:-]+:)?function>`),
 }
+
+// cdataPattern matches a standalone CDATA section.
+var cdataPattern = regexp.MustCompile(`(?is)^<!\[CDATA\[(.*?)]]>$`)
 var toolCallMarkupArgsTagNames = []string{"input", "arguments", "argument", "parameters", "parameter", "args", "params"}
 var toolCallMarkupArgsPatternByTag = map[string]*regexp.Regexp{
 	"input":      regexp.MustCompile(`(?is)<(?:[a-z0-9_:-]+:)?input\b[^>]*>(.*?)</(?:[a-z0-9_:-]+:)?input>`),
@@ -68,8 +71,31 @@ func parseMarkupToolCalls(text string) []ParsedToolCall {
 }
 
 func parseMarkupSingleToolCall(attrs string, inner string) ParsedToolCall {
-	if parsed := parseToolCallsPayload(inner); len(parsed) > 0 {
-		return parsed[0]
+	// Try parsing inner content as a JSON tool call object.
+	if raw := strings.TrimSpace(inner); raw != "" && strings.HasPrefix(raw, "{") {
+		var obj map[string]any
+		if err := json.Unmarshal([]byte(raw), &obj); err == nil {
+			name, _ := obj["name"].(string)
+			if name == "" {
+				if fn, ok := obj["function"].(map[string]any); ok {
+					name, _ = fn["name"].(string)
+				}
+			}
+			if name == "" {
+				if fc, ok := obj["functionCall"].(map[string]any); ok {
+					name, _ = fc["name"].(string)
+				}
+			}
+			if strings.TrimSpace(name) != "" {
+				input := parseToolCallInput(obj["input"])
+				if len(input) == 0 {
+					if args, ok := obj["arguments"]; ok {
+						input = parseToolCallInput(args)
+					}
+				}
+				return ParsedToolCall{Name: strings.TrimSpace(name), Input: input}
+			}
+		}
 	}
 
 	name := ""
@@ -93,17 +119,7 @@ func parseMarkupSingleToolCall(attrs string, inner string) ParsedToolCall {
 }
 
 func parseMarkupInput(raw string) map[string]any {
-	raw = strings.TrimSpace(html.UnescapeString(raw))
-	if raw == "" {
-		return map[string]any{}
-	}
-	if parsed := parseToolCallInput(raw); len(parsed) > 0 {
-		return parsed
-	}
-	if kv := parseMarkupKVObject(raw); len(kv) > 0 {
-		return kv
-	}
-	return map[string]any{"_raw": html.UnescapeString(stripTagText(raw))}
+	return parseStructuredToolCallInput(raw)
 }
 
 func parseMarkupKVObject(text string) map[string]any {
@@ -124,21 +140,77 @@ func parseMarkupKVObject(text string) map[string]any {
 		if !strings.EqualFold(key, endKey) {
 			continue
 		}
-		value := strings.TrimSpace(html.UnescapeString(stripTagText(m[2])))
-		if value == "" {
+		value := parseMarkupValue(m[2])
+		if value == nil {
 			continue
 		}
-		var jsonValue any
-		if json.Unmarshal([]byte(value), &jsonValue) == nil {
-			out[key] = jsonValue
-			continue
-		}
-		out[key] = value
+		appendMarkupValue(out, key, value)
 	}
 	if len(out) == 0 {
 		return nil
 	}
 	return out
+}
+
+func parseMarkupValue(inner string) any {
+	value := strings.TrimSpace(extractRawTagValue(inner))
+	if value == "" {
+		return ""
+	}
+
+	if strings.Contains(value, "<") && strings.Contains(value, ">") {
+		if parsed := parseStructuredToolCallInput(value); len(parsed) > 0 {
+			if len(parsed) == 1 {
+				if raw, ok := parsed["_raw"].(string); ok {
+					return raw
+				}
+			}
+			return parsed
+		}
+	}
+
+	var jsonValue any
+	if json.Unmarshal([]byte(value), &jsonValue) == nil {
+		return jsonValue
+	}
+	return value
+}
+
+func appendMarkupValue(out map[string]any, key string, value any) {
+	if existing, ok := out[key]; ok {
+		switch current := existing.(type) {
+		case []any:
+			out[key] = append(current, value)
+		default:
+			out[key] = []any{current, value}
+		}
+		return
+	}
+	out[key] = value
+}
+
+// extractRawTagValue treats the inner content of a tag robustly.
+// It detects CDATA and strips it, otherwise it unescapes standard HTML entities.
+// It avoids over-aggressive tag stripping that might break user content.
+func extractRawTagValue(inner string) string {
+	trimmed := strings.TrimSpace(inner)
+	if trimmed == "" {
+		return ""
+	}
+
+	// 1. Check for CDATA - if present, it's the ultimate "safe" container.
+	if cdataMatches := cdataPattern.FindStringSubmatch(trimmed); len(cdataMatches) >= 2 {
+		return cdataMatches[1] // Return raw content between CDATA brackets
+	}
+
+	// 2. If no CDATA, we still want to be robust.
+	// We unescape standard HTML entities (like &lt; &gt; &amp;)
+	// but we DON'T recursively strip tags unless they are actually valid XML tags
+	// at the start/end (which should have been handled by the outer matcher anyway).
+
+	// If it contains what looks like a single tag and no other text, it might be nested XML
+	// but for KV objects we usually want the value.
+	return html.UnescapeString(inner)
 }
 
 func stripTagText(text string) string {
@@ -152,7 +224,7 @@ func findMarkupTagValue(text string, tagNames []string, patternByTag map[string]
 			continue
 		}
 		if m := pattern.FindStringSubmatch(text); len(m) >= 2 {
-			value := strings.TrimSpace(m[1])
+			value := extractRawTagValue(m[1])
 			if value != "" {
 				return value
 			}

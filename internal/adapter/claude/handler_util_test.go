@@ -96,7 +96,7 @@ func TestNormalizeClaudeMessagesToolUseToAssistantToolCalls(t *testing.T) {
 	if !containsStr(content, "<tool_calls>") || !containsStr(content, "<tool_name>search_web</tool_name>") {
 		t.Fatalf("expected assistant content to include XML tool call history, got %q", content)
 	}
-	if !containsStr(content, `<parameters>{"query":"latest"}</parameters>`) {
+	if !containsStr(content, "<parameters>\n      <query><![CDATA[latest]]></query>\n    </parameters>") {
 		t.Fatalf("expected assistant content to include serialized parameters, got %q", content)
 	}
 }
