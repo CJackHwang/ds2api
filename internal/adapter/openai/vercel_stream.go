@@ -99,6 +99,7 @@ func (h *Handler) handleVercelStreamPrepare(w http.ResponseWriter, r *http.Reque
 	writeJSON(w, http.StatusOK, map[string]any{
 		"session_id":       sessionID,
 		"lease_id":         leaseID,
+		"auto_delete_mode": h.Store.AutoDeleteMode(),
 		"model":            stdReq.ResponseModel,
 		"final_prompt":     stdReq.FinalPrompt,
 		"thinking_enabled": stdReq.Thinking,
@@ -142,7 +143,9 @@ func (h *Handler) handleVercelStreamRelease(w http.ResponseWriter, r *http.Reque
 		writeOpenAIError(w, http.StatusNotFound, "stream lease not found")
 		return
 	}
-	h.autoDeleteRemoteSession(r.Context(), lease.Auth, lease.SessionID)
+	if !util.ToBool(req["auto_delete_done"]) {
+		h.autoDeleteRemoteSession(r.Context(), lease.Auth, lease.SessionID)
+	}
 	if h.Auth != nil {
 		h.Auth.Release(lease.Auth)
 	}

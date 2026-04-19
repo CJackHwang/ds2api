@@ -76,3 +76,32 @@ func TestVercelReleaseAppliesAutoDeleteMode(t *testing.T) {
 	}
 }
 
+func TestVercelReleaseSkipsAutoDeleteWhenNodeAlreadyHandled(t *testing.T) {
+	t.Setenv("VERCEL", "1")
+	t.Setenv("DS2API_VERCEL_INTERNAL_SECRET", "stream-secret")
+
+	ds := &autoDeleteModeDSStub{}
+	authStub := &vercelReleaseAuthStub{}
+	h := &Handler{
+		Store: mockOpenAIConfig{autoDeleteMode: "all"},
+		Auth:  authStub,
+		DS:    ds,
+	}
+
+	leaseID := h.holdStreamLease(&auth.RequestAuth{DeepSeekToken: "token", AccountID: "acct"}, "session-id")
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions?__stream_release=1", strings.NewReader(`{"lease_id":"`+leaseID+`","auto_delete_done":true}`))
+	req.Header.Set("X-Ds2-Internal-Token", "stream-secret")
+	rec := httptest.NewRecorder()
+
+	h.handleVercelStreamRelease(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	if ds.singleCalls != 0 || ds.allCalls != 0 {
+		t.Fatalf("expected release to skip auto-delete, single=%d all=%d", ds.singleCalls, ds.allCalls)
+	}
+	if authStub.released != 1 {
+		t.Fatalf("expected auth release once, got %d", authStub.released)
+	}
+}

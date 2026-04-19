@@ -25,6 +25,7 @@ const {
   isAbortError,
   fetchStreamPrepare,
   relayPreparedFailure,
+  safeReadText,
   createLeaseReleaser,
 } = require('./http_internal');
 const {
@@ -32,6 +33,8 @@ const {
 } = require('./dedupe');
 
 const DEEPSEEK_COMPLETION_URL = 'https://chat.deepseek.com/api/v0/chat/completion';
+const DEEPSEEK_DELETE_SESSION_URL = 'https://chat.deepseek.com/api/v0/chat_session/delete';
+const DEEPSEEK_DELETE_ALL_SESSIONS_URL = 'https://chat.deepseek.com/api/v0/chat_session/delete_all';
 
 async function handleVercelStream(req, res, rawBody, payload) {
   const prep = await fetchStreamPrepare(req, rawBody);
@@ -49,6 +52,7 @@ async function handleVercelStream(req, res, rawBody, payload) {
   const finalPrompt = asString(prep.body.final_prompt);
   const thinkingEnabled = toBool(prep.body.thinking_enabled);
   const searchEnabled = toBool(prep.body.search_enabled);
+  const autoDeleteMode = normalizeAutoDeleteMode(prep.body.auto_delete_mode);
   const toolPolicy = resolveToolcallPolicy(prep.body, payload.tools);
   const toolNames = toolPolicy.toolNames;
   const emitEarlyToolDeltas = toolPolicy.emitEarlyToolDeltas;
@@ -60,6 +64,7 @@ async function handleVercelStream(req, res, rawBody, payload) {
   }
 
   const releaseLease = createLeaseReleaser(req, leaseID);
+  let autoDeleteDone = false;
   const upstreamController = new AbortController();
   let clientClosed = false;
   let reader = null;
@@ -147,8 +152,11 @@ async function handleVercelStream(req, res, rawBody, payload) {
         return;
       }
       ended = true;
+      if (!autoDeleteDone) {
+        autoDeleteDone = await deleteRemoteSessions(autoDeleteMode, deepseekToken, sessionID);
+      }
       if (clientClosed || res.writableEnded || res.destroyed) {
-        await releaseLease();
+        await releaseLease({ autoDeleteDone });
         return;
       }
       const detected = parseStandaloneToolCalls(outputText, toolNames);
@@ -182,7 +190,7 @@ async function handleVercelStream(req, res, rawBody, payload) {
       if (!res.writableEnded && !res.destroyed) {
         res.write('data: [DONE]\n\n');
       }
-      await releaseLease();
+      await releaseLease({ autoDeleteDone });
       if (!res.writableEnded && !res.destroyed) {
         res.end();
       }
@@ -304,12 +312,68 @@ async function handleVercelStream(req, res, rawBody, payload) {
   } finally {
     req.removeListener('aborted', onReqAborted);
     res.removeListener('close', onResClose);
-    await releaseLease();
+    await releaseLease({ autoDeleteDone });
   }
 }
 
 function toBool(v) {
   return v === true;
+}
+
+function normalizeAutoDeleteMode(v) {
+  const mode = asString(v).toLowerCase();
+  if (mode === 'single' || mode === 'all') {
+    return mode;
+  }
+  return 'none';
+}
+
+async function deleteRemoteSessions(mode, token, sessionID) {
+  const normalized = normalizeAutoDeleteMode(mode);
+  if (normalized === 'none' || !token) {
+    return false;
+  }
+
+  let targetURL = DEEPSEEK_DELETE_ALL_SESSIONS_URL;
+  let payload = {};
+  if (normalized === 'single') {
+    if (!sessionID) {
+      return false;
+    }
+    targetURL = DEEPSEEK_DELETE_SESSION_URL;
+    payload = { chat_session_id: sessionID };
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 2000);
+  try {
+    const resp = await fetch(targetURL, {
+      method: 'POST',
+      headers: {
+        ...BASE_HEADERS,
+        authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+    if (!resp.ok) {
+      return false;
+    }
+    const text = await safeReadText(resp);
+    if (!text) {
+      return true;
+    }
+    try {
+      const body = JSON.parse(text);
+      return Number(body && body.code) === 0;
+    } catch (_err) {
+      return true;
+    }
+  } catch (_err) {
+    return false;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 module.exports = {
