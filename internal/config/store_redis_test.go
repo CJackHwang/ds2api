@@ -36,8 +36,26 @@ func TestLoadStoreBootstrapsLegacyConfigIntoRedis(t *testing.T) {
 	if err := json.Unmarshal([]byte(raw), &persisted); err != nil {
 		t.Fatalf("unmarshal redis config: %v", err)
 	}
-	if len(persisted.Accounts) != 1 || persisted.Accounts[0].Token != "" {
-		t.Fatalf("expected persisted redis config to clear runtime tokens, got %+v", persisted.Accounts)
+	if len(persisted.Accounts) != 0 {
+		t.Fatalf("expected redis config key to keep only system config, got %+v", persisted.Accounts)
+	}
+
+	indexRaw, err := redisServer.Get("test:config:accounts:index")
+	if err != nil {
+		t.Fatalf("redis account index missing: %v", err)
+	}
+	var identifiers []string
+	if err := json.Unmarshal([]byte(indexRaw), &identifiers); err != nil {
+		t.Fatalf("unmarshal redis account index: %v", err)
+	}
+	if len(identifiers) != 1 || identifiers[0] != "user@example.com" {
+		t.Fatalf("unexpected redis account index: %#v", identifiers)
+	}
+
+	reloaded := LoadStore()
+	accounts := reloaded.Accounts()
+	if len(accounts) != 1 || accounts[0].Identifier() != "user@example.com" {
+		t.Fatalf("expected account to reload from split redis storage, got %+v", accounts)
 	}
 }
 

@@ -7,9 +7,9 @@ func (s *Store) rebuildIndexes() {
 	for _, k := range s.cfg.Keys {
 		s.keyMap[k] = struct{}{}
 	}
-	s.accMap = make(map[string]int, len(s.cfg.Accounts))
-	s.accTest = make(map[string]string, len(s.cfg.Accounts))
-	for i, acc := range s.cfg.Accounts {
+	s.accMap = make(map[string]int, len(s.accounts))
+	s.accTest = make(map[string]string, len(s.accounts))
+	for i, acc := range s.accounts {
 		id := acc.Identifier()
 		if id != "" {
 			s.accMap[id] = i
@@ -22,12 +22,12 @@ func (s *Store) rebuildIndexes() {
 
 // findAccountIndexLocked expects the store lock to already be held.
 func (s *Store) findAccountIndexLocked(identifier string) (int, bool) {
-	if idx, ok := s.accMap[identifier]; ok && idx >= 0 && idx < len(s.cfg.Accounts) {
+	if idx, ok := s.accMap[identifier]; ok && idx >= 0 && idx < len(s.accounts) {
 		return idx, true
 	}
 	// Fallback for token-only accounts whose derived identifier changed after
 	// a token refresh; this preserves correctness on map misses.
-	for i, acc := range s.cfg.Accounts {
+	for i, acc := range s.accounts {
 		if acc.Identifier() == identifier {
 			return i, true
 		}

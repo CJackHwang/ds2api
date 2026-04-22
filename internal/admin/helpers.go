@@ -77,6 +77,28 @@ func fieldString(m map[string]any, key string) string {
 	return strings.TrimSpace(fmt.Sprintf("%v", v))
 }
 
+func accountListItem(acc config.Account, testStatus string) map[string]any {
+	token := strings.TrimSpace(acc.Token)
+	preview := ""
+	if token != "" {
+		if len(token) > 20 {
+			preview = token[:20] + "..."
+		} else {
+			preview = token
+		}
+	}
+	return map[string]any{
+		"identifier":    acc.Identifier(),
+		"email":         acc.Email,
+		"mobile":        acc.Mobile,
+		"proxy_id":      acc.ProxyID,
+		"has_password":  strings.TrimSpace(acc.Password) != "",
+		"has_token":     token != "",
+		"token_preview": preview,
+		"test_status":   testStatus,
+	}
+}
+
 func statusOr(v int, d int) int {
 	if v == 0 {
 		return d

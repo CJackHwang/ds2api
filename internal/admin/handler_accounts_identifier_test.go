@@ -21,6 +21,7 @@ func newAdminTestHandler(t *testing.T, raw string) *Handler {
 	return &Handler{
 		Store: store,
 		Pool:  account.NewPool(store),
+		DS:    &testingDSMock{},
 	}
 }
 

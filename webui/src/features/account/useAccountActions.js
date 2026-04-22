@@ -1,6 +1,24 @@
 import { useState } from 'react'
 
-export function useAccountActions({ apiFetch, t, onMessage, onRefresh, config, fetchAccounts, resolveAccountIdentifier }) {
+function settleBackground(promiseLike) {
+    if (!promiseLike || typeof promiseLike.then !== 'function') {
+        return
+    }
+    promiseLike.catch(() => {})
+}
+
+export function useAccountActions({
+    apiFetch,
+    t,
+    onMessage,
+    onRefresh,
+    config,
+    fetchAccounts,
+    fetchQueueStatus,
+    resolveAccountIdentifier,
+    addAccountLocally,
+    removeAccountLocally,
+}) {
     const [showAddKey, setShowAddKey] = useState(false)
     const [showAddAccount, setShowAddAccount] = useState(false)
     const [newKey, setNewKey] = useState('')
@@ -13,6 +31,12 @@ export function useAccountActions({ apiFetch, t, onMessage, onRefresh, config, f
     const [sessionCounts, setSessionCounts] = useState({})
     const [deletingSessions, setDeletingSessions] = useState({})
     const [updatingProxy, setUpdatingProxy] = useState({})
+
+    const refreshAccountSurfaces = (targetPage) => {
+        settleBackground(fetchAccounts ? fetchAccounts(targetPage) : null)
+        settleBackground(fetchQueueStatus ? fetchQueueStatus() : null)
+        settleBackground(onRefresh ? Promise.resolve(onRefresh()) : null)
+    }
 
     const addKey = async () => {
         if (!newKey.trim()) return
@@ -27,12 +51,12 @@ export function useAccountActions({ apiFetch, t, onMessage, onRefresh, config, f
                 onMessage('success', t('accountManager.addKeySuccess'))
                 setNewKey('')
                 setShowAddKey(false)
-                onRefresh()
+                refreshAccountSurfaces()
             } else {
                 const data = await res.json()
                 onMessage('error', data.detail || t('messages.failedToAdd'))
             }
-        } catch (e) {
+        } catch (_e) {
             onMessage('error', t('messages.networkError'))
         } finally {
             setLoading(false)
@@ -45,11 +69,11 @@ export function useAccountActions({ apiFetch, t, onMessage, onRefresh, config, f
             const res = await apiFetch(`/admin/keys/${encodeURIComponent(key)}`, { method: 'DELETE' })
             if (res.ok) {
                 onMessage('success', t('messages.deleted'))
-                onRefresh()
+                refreshAccountSurfaces()
             } else {
                 onMessage('error', t('messages.deleteFailed'))
             }
-        } catch (e) {
+        } catch (_e) {
             onMessage('error', t('messages.networkError'))
         }
     }
@@ -66,17 +90,19 @@ export function useAccountActions({ apiFetch, t, onMessage, onRefresh, config, f
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(newAccount),
             })
+            const data = await res.json()
             if (res.ok) {
+                if (data.account) {
+                    addAccountLocally?.(data.account)
+                }
                 onMessage('success', t('accountManager.addAccountSuccess'))
                 setNewAccount({ email: '', mobile: '', password: '' })
                 setShowAddAccount(false)
-                fetchAccounts(1)
-                onRefresh()
+                refreshAccountSurfaces(1)
             } else {
-                const data = await res.json()
                 onMessage('error', data.detail || t('messages.failedToAdd'))
             }
-        } catch (e) {
+        } catch (_e) {
             onMessage('error', t('messages.networkError'))
         } finally {
             setLoading(false)
@@ -93,13 +119,14 @@ export function useAccountActions({ apiFetch, t, onMessage, onRefresh, config, f
         try {
             const res = await apiFetch(`/admin/accounts/${encodeURIComponent(identifier)}`, { method: 'DELETE' })
             if (res.ok) {
+                removeAccountLocally?.(identifier)
                 onMessage('success', t('messages.deleted'))
-                fetchAccounts()
-                onRefresh()
+                refreshAccountSurfaces()
             } else {
-                onMessage('error', t('messages.deleteFailed'))
+                const data = await res.json()
+                onMessage('error', data.detail || t('messages.deleteFailed'))
             }
-        } catch (e) {
+        } catch (_e) {
             onMessage('error', t('messages.networkError'))
         }
     }
@@ -118,18 +145,16 @@ export function useAccountActions({ apiFetch, t, onMessage, onRefresh, config, f
                 body: JSON.stringify({ identifier: accountID }),
             })
             const data = await res.json()
-            
-            // 更新会话数
+
             if (data.session_count !== undefined) {
                 setSessionCounts(prev => ({ ...prev, [accountID]: data.session_count }))
             }
-            
+
             const statusMessage = data.success
                 ? t('apiTester.testSuccess', { account: accountID, time: data.response_time })
                 : `${accountID}: ${data.message}`
             onMessage(data.success ? 'success' : 'error', statusMessage)
-            fetchAccounts()
-            onRefresh()
+            refreshAccountSurfaces()
         } catch (e) {
             onMessage('error', t('accountManager.testFailed', { error: e.message }))
         } finally {
@@ -174,8 +199,7 @@ export function useAccountActions({ apiFetch, t, onMessage, onRefresh, config, f
         }
 
         onMessage('success', t('accountManager.testAllCompleted', { success: successCount, total: allAccounts.length }))
-        fetchAccounts()
-        onRefresh()
+        refreshAccountSurfaces()
         setTestingAll(false)
     }
 
@@ -186,7 +210,7 @@ export function useAccountActions({ apiFetch, t, onMessage, onRefresh, config, f
             return
         }
         if (!confirm(t('accountManager.deleteAllSessionsConfirm'))) return
-        
+
         setDeletingSessions(prev => ({ ...prev, [accountID]: true }))
         try {
             const res = await apiFetch('/admin/accounts/sessions/delete-all', {
@@ -195,19 +219,18 @@ export function useAccountActions({ apiFetch, t, onMessage, onRefresh, config, f
                 body: JSON.stringify({ identifier: accountID }),
             })
             const data = await res.json()
-            
+
             if (data.success) {
                 onMessage('success', t('accountManager.deleteAllSessionsSuccess'))
-                // 清除会话数显示
                 setSessionCounts(prev => {
-                    const newCounts = { ...prev }
-                    delete newCounts[accountID]
-                    return newCounts
+                    const next = { ...prev }
+                    delete next[accountID]
+                    return next
                 })
             } else {
                 onMessage('error', data.message || t('messages.requestFailed'))
             }
-        } catch (e) {
+        } catch (_e) {
             onMessage('error', t('messages.networkError'))
         } finally {
             setDeletingSessions(prev => ({ ...prev, [accountID]: false }))
@@ -233,8 +256,7 @@ export function useAccountActions({ apiFetch, t, onMessage, onRefresh, config, f
                 return
             }
             onMessage('success', t('accountManager.proxyUpdateSuccess'))
-            fetchAccounts()
-            onRefresh()
+            refreshAccountSurfaces()
         } catch (_err) {
             onMessage('error', t('messages.networkError'))
         } finally {

@@ -18,7 +18,9 @@ import (
 
 type testingDSMock struct {
 	loginCalls                 int
+	loginError                 error
 	createSessionCalls         int
+	createSessionError         error
 	getPowCalls                int
 	callCompletionCalls        int
 	deleteAllSessionsCalls     int
@@ -27,11 +29,17 @@ type testingDSMock struct {
 }
 
 func (m *testingDSMock) Login(_ context.Context, _ config.Account) (string, error) {
+	if m.loginError != nil {
+		return "", m.loginError
+	}
 	m.loginCalls++
 	return "new-token", nil
 }
 
 func (m *testingDSMock) CreateSession(_ context.Context, _ *auth.RequestAuth, _ int) (string, error) {
+	if m.createSessionError != nil {
+		return "", m.createSessionError
+	}
 	m.createSessionCalls++
 	return "session-id", nil
 }

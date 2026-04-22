@@ -16,6 +16,7 @@ import (
 type Store struct {
 	mu       sync.RWMutex
 	cfg      Config
+	accounts []Account
 	path     string
 	fromEnv  bool
 	backend  storageBackend
@@ -32,7 +33,7 @@ func LoadStore() *Store {
 	if err != nil {
 		Logger.Warn("[config] load failed", "error", err)
 	}
-	if len(store.cfg.Keys) == 0 && len(store.cfg.Accounts) == 0 {
+	if len(store.cfg.Keys) == 0 && len(store.accounts) == 0 {
 		Logger.Warn("[config] empty config loaded")
 	}
 	store.rebuildIndexes()
@@ -54,8 +55,10 @@ func loadStore() (*Store, error) {
 	if validateErr := ValidateConfig(cfg); validateErr != nil {
 		err = errors.Join(err, validateErr)
 	}
+	baseCfg, accounts := splitConfigAccounts(cfg)
 	return &Store{
-		cfg:      cfg,
+		cfg:      baseCfg,
+		accounts: accounts,
 		path:     ConfigPath(),
 		fromEnv:  fromEnv,
 		backend:  backend,
@@ -73,20 +76,42 @@ func loadConfigWithBackend(redisState *redisRuntime) (Config, bool, storageBacke
 	if redisState != nil {
 		ctx, cancel := redisState.context()
 		defer cancel()
-		cfg, found, err := redisState.loadConfig(ctx)
-		if err != nil {
-			Logger.Warn("[config] redis load failed, falling back", "error", err)
+
+		cfg, configFound, cfgErr := redisState.loadConfig(ctx)
+		accounts, accountsFound, accountsErr := redisState.loadAccounts(ctx)
+
+		if cfgErr != nil {
+			Logger.Warn("[config] redis config load failed, falling back", "error", cfgErr)
 		}
-		if err == nil && found {
-			return cfg, false, storageBackendRedis, nil
+		if accountsErr != nil {
+			Logger.Warn("[config] redis accounts load failed, falling back", "error", accountsErr)
+		}
+
+		if cfgErr == nil && accountsErr == nil && (configFound || accountsFound || len(cfg.Accounts) > 0) {
+			if !accountsFound && len(cfg.Accounts) > 0 {
+				accounts = slices.Clone(cfg.Accounts)
+			}
+			baseCfg, splitAccounts := splitConfigAccounts(cfg)
+			if len(splitAccounts) == 0 {
+				splitAccounts = normalizeStoreAccounts(accounts)
+			}
+			if len(cfg.Accounts) > 0 || (!accountsFound && len(splitAccounts) > 0) {
+				saveCtx, saveCancel := redisState.context()
+				defer saveCancel()
+				if saveErr := redisState.saveState(saveCtx, baseCfg, splitAccounts); saveErr != nil {
+					Logger.Warn("[config] redis account split migration failed", "error", saveErr)
+				}
+			}
+			return mergeConfigAccounts(baseCfg, splitAccounts), false, storageBackendRedis, nil
 		}
 
 		cfg, fromEnv, backend, fallbackErr := loadConfigFromLegacySources()
 		if fallbackErr == nil && backend != storageBackendMemory {
-			ctx, cancel = redisState.context()
-			defer cancel()
-			if saveErr := redisState.saveConfig(ctx, cfg); saveErr == nil {
-				return cfg, false, storageBackendRedis, nil
+			baseCfg, accounts := splitConfigAccounts(cfg)
+			saveCtx, saveCancel := redisState.context()
+			defer saveCancel()
+			if saveErr := redisState.saveState(saveCtx, baseCfg, accounts); saveErr == nil {
+				return mergeConfigAccounts(baseCfg, accounts), false, storageBackendRedis, nil
 			} else {
 				Logger.Warn("[config] redis bootstrap failed", "error", saveErr)
 			}
@@ -169,10 +194,61 @@ func loadConfigFromFile(path string) (Config, error) {
 	return cfg, nil
 }
 
+func splitConfigAccounts(cfg Config) (Config, []Account) {
+	cloned := cfg.Clone()
+	accounts := normalizeStoreAccounts(cloned.Accounts)
+	cloned.Accounts = nil
+	return cloned, accounts
+}
+
+func mergeConfigAccounts(cfg Config, accounts []Account) Config {
+	cloned := cfg.Clone()
+	cloned.Accounts = slices.Clone(accounts)
+	return cloned
+}
+
+func normalizeStoreAccounts(accounts []Account) []Account {
+	if len(accounts) == 0 {
+		return nil
+	}
+	out := make([]Account, 0, len(accounts))
+	seen := make(map[string]struct{}, len(accounts))
+	for _, acc := range accounts {
+		acc.Email = strings.TrimSpace(acc.Email)
+		acc.Mobile = NormalizeMobileForStorage(acc.Mobile)
+		acc.Password = strings.TrimSpace(acc.Password)
+		acc.ProxyID = strings.TrimSpace(acc.ProxyID)
+		key := storeAccountDedupKey(acc)
+		if key == "" {
+			continue
+		}
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, acc)
+	}
+	return out
+}
+
+func storeAccountDedupKey(acc Account) string {
+	if email := strings.TrimSpace(acc.Email); email != "" {
+		return "email:" + email
+	}
+	if mobile := CanonicalMobileKey(acc.Mobile); mobile != "" {
+		return "mobile:" + mobile
+	}
+	return ""
+}
+
+func (s *Store) snapshotLocked() Config {
+	return mergeConfigAccounts(s.cfg, s.accounts)
+}
+
 func (s *Store) Snapshot() Config {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.cfg.Clone()
+	return s.snapshotLocked()
 }
 
 func (s *Store) HasAPIKey(k string) bool {
@@ -191,7 +267,7 @@ func (s *Store) Keys() []string {
 func (s *Store) Accounts() []Account {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return slices.Clone(s.cfg.Accounts)
+	return slices.Clone(s.accounts)
 }
 
 func (s *Store) FindAccount(identifier string) (Account, bool) {
@@ -199,7 +275,7 @@ func (s *Store) FindAccount(identifier string) (Account, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if idx, ok := s.findAccountIndexLocked(identifier); ok {
-		return s.cfg.Accounts[idx], true
+		return s.accounts[idx], true
 	}
 	return Account{}, false
 }
@@ -212,7 +288,7 @@ func (s *Store) UpdateAccountTestStatus(identifier, status string) error {
 	if !ok {
 		return errors.New("account not found")
 	}
-	s.setAccountTestStatusLocked(s.cfg.Accounts[idx], status, identifier)
+	s.setAccountTestStatusLocked(s.accounts[idx], status, identifier)
 	return nil
 }
 
@@ -235,9 +311,9 @@ func (s *Store) UpdateAccountToken(identifier, token string) error {
 	if !ok {
 		return errors.New("account not found")
 	}
-	oldID := s.cfg.Accounts[idx].Identifier()
-	s.cfg.Accounts[idx].Token = token
-	newID := s.cfg.Accounts[idx].Identifier()
+	oldID := s.accounts[idx].Identifier()
+	s.accounts[idx].Token = token
+	newID := s.accounts[idx].Identifier()
 	if identifier != "" {
 		s.accMap[identifier] = idx
 	}
@@ -247,13 +323,18 @@ func (s *Store) UpdateAccountToken(identifier, token string) error {
 	if newID != "" {
 		s.accMap[newID] = idx
 	}
+	if s.redis != nil {
+		return nil
+	}
 	return s.saveLocked()
 }
 
 func (s *Store) Replace(cfg Config) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.cfg = cfg.Clone()
+	baseCfg, accounts := splitConfigAccounts(cfg)
+	s.cfg = baseCfg
+	s.accounts = accounts
 	s.rebuildIndexes()
 	return s.saveLocked()
 }
@@ -261,11 +342,13 @@ func (s *Store) Replace(cfg Config) error {
 func (s *Store) Update(mutator func(*Config) error) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	cfg := s.cfg.Clone()
+	cfg := s.snapshotLocked()
 	if err := mutator(&cfg); err != nil {
 		return err
 	}
-	s.cfg = cfg
+	baseCfg, accounts := splitConfigAccounts(cfg)
+	s.cfg = baseCfg
+	s.accounts = accounts
 	s.rebuildIndexes()
 	return s.saveLocked()
 }
@@ -289,7 +372,7 @@ func (s *Store) saveLocked() error {
 		Logger.Info("[save_config] source from env, skip write")
 		return nil
 	}
-	persistCfg := s.cfg.Clone()
+	persistCfg := s.snapshotLocked()
 	persistCfg.ClearAccountTokens()
 	b, err := json.MarshalIndent(persistCfg, "", "  ")
 	if err != nil {
@@ -306,7 +389,7 @@ func (s *Store) saveLocked() error {
 func (s *Store) saveRedisLocked() error {
 	ctx, cancel := s.redis.context()
 	defer cancel()
-	return s.redis.saveConfig(ctx, s.cfg)
+	return s.redis.saveState(ctx, s.cfg, s.accounts)
 }
 
 func (s *Store) IsEnvBacked() bool {
@@ -353,7 +436,7 @@ func (s *Store) SetVercelSync(hash string, ts int64) error {
 func (s *Store) ExportJSONAndBase64() (string, string, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	exportCfg := s.cfg.Clone()
+	exportCfg := s.snapshotLocked()
 	exportCfg.ClearAccountTokens()
 	b, err := json.Marshal(exportCfg)
 	if err != nil {
@@ -485,6 +568,7 @@ func saveConfigJSONToRedis(ctx context.Context, rawJSON, redisURL, key string, f
 	}
 	cfg.DropInvalidAccounts()
 	cfg.ClearAccountTokens()
+	baseCfg, accounts := splitConfigAccounts(cfg)
 
 	redisState := fallback
 	if strings.TrimSpace(redisURL) != "" {
@@ -500,5 +584,5 @@ func saveConfigJSONToRedis(ctx context.Context, rawJSON, redisURL, key string, f
 	if redisState == nil {
 		return errors.New("redis is not configured")
 	}
-	return redisState.saveConfig(ctx, cfg)
+	return redisState.saveState(ctx, baseCfg, accounts)
 }

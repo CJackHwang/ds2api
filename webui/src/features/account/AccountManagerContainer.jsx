@@ -22,10 +22,13 @@ export default function AccountManagerContainer({ config, onRefresh, onMessage, 
         totalAccounts,
         loadingAccounts,
         fetchAccounts,
+        fetchQueueStatus,
         changePageSize,
         resolveAccountIdentifier,
         searchQuery,
         handleSearchChange,
+        addAccountLocally,
+        removeAccountLocally,
     } = useAccountsData({ apiFetch })
 
     const {
@@ -61,7 +64,10 @@ export default function AccountManagerContainer({ config, onRefresh, onMessage, 
         onRefresh,
         config,
         fetchAccounts,
+        fetchQueueStatus,
         resolveAccountIdentifier,
+        addAccountLocally,
+        removeAccountLocally,
     })
 
     return (

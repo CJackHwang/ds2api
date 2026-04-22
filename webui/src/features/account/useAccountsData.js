@@ -1,5 +1,16 @@
 import { useEffect, useState } from 'react'
 
+function matchesAccountQuery(acc, query) {
+    const q = String(query || '').trim().toLowerCase()
+    if (!q) {
+        return true
+    }
+    const identifier = String(acc?.identifier || acc?.email || acc?.mobile || '').toLowerCase()
+    const email = String(acc?.email || '').toLowerCase()
+    const mobile = String(acc?.mobile || '').toLowerCase()
+    return identifier.includes(q) || email.includes(q) || mobile.includes(q)
+}
+
 export function useAccountsData({ apiFetch }) {
     const [queueStatus, setQueueStatus] = useState(null)
     const [keysExpanded, setKeysExpanded] = useState(false)
@@ -60,6 +71,56 @@ export function useAccountsData({ apiFetch }) {
         }
     }
 
+    const updateFilteredCount = (delta) => {
+        setTotalAccounts(prev => {
+            const next = Math.max(0, prev + delta)
+            const nextPages = Math.max(1, Math.ceil(next / pageSize))
+            setTotalPages(nextPages)
+            setPage(current => Math.min(current, nextPages))
+            return next
+        })
+    }
+
+    const updateQueueCount = (delta) => {
+        setQueueStatus(prev => {
+            if (!prev) {
+                return prev
+            }
+            return {
+                ...prev,
+                total: Math.max(0, (prev.total || 0) + delta),
+                available: Math.max(0, (prev.available || 0) + delta),
+            }
+        })
+    }
+
+    const addAccountLocally = (account) => {
+        const identifier = resolveAccountIdentifier(account)
+        if (!identifier) {
+            return
+        }
+        updateQueueCount(1)
+        if (!matchesAccountQuery(account, searchQuery)) {
+            return
+        }
+        updateFilteredCount(1)
+        setPage(1)
+        setAccounts(prev => {
+            const next = [account, ...prev.filter(item => resolveAccountIdentifier(item) !== identifier)]
+            return next.slice(0, pageSize)
+        })
+    }
+
+    const removeAccountLocally = (identifier) => {
+        const accountID = String(identifier || '').trim()
+        if (!accountID) {
+            return
+        }
+        updateQueueCount(-1)
+        setAccounts(prev => prev.filter(item => resolveAccountIdentifier(item) !== accountID))
+        updateFilteredCount(-1)
+    }
+
     useEffect(() => {
         fetchAccounts()
         fetchQueueStatus()
@@ -78,9 +139,12 @@ export function useAccountsData({ apiFetch }) {
         totalAccounts,
         loadingAccounts,
         fetchAccounts,
+        fetchQueueStatus,
         changePageSize,
         resolveAccountIdentifier,
         searchQuery,
         handleSearchChange,
+        addAccountLocally,
+        removeAccountLocally,
     }
 }

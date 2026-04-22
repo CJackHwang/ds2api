@@ -43,6 +43,8 @@ type CallMetrics struct {
 type redisRuntime struct {
 	client                *redis.Client
 	configKey             string
+	accountsIndexKey      string
+	accountKeyPrefix      string
 	metricsKey            string
 	autoDeleteLeasePrefix string
 }
@@ -74,6 +76,8 @@ func newRedisRuntime(rawURL, configKey string) *redisRuntime {
 	return &redisRuntime{
 		client:                client,
 		configKey:             configKey,
+		accountsIndexKey:      configKey + ":accounts:index",
+		accountKeyPrefix:      configKey + ":accounts:",
 		metricsKey:            configKey + ":metrics",
 		autoDeleteLeasePrefix: configKey + ":auto_delete_lease:",
 	}
@@ -129,12 +133,144 @@ func (r *redisRuntime) saveConfig(ctx context.Context, cfg Config) error {
 		return nil
 	}
 	persistCfg := cfg.Clone()
+	persistCfg.Accounts = nil
 	persistCfg.ClearAccountTokens()
 	b, err := json.Marshal(persistCfg)
 	if err != nil {
 		return err
 	}
 	return r.client.Set(ctx, r.configKey, b, 0).Err()
+}
+
+func (r *redisRuntime) loadAccounts(ctx context.Context) ([]Account, bool, error) {
+	if r == nil || r.client == nil {
+		return nil, false, nil
+	}
+	identifiers, err := r.readAccountsIndex(ctx)
+	if err != nil {
+		return nil, false, err
+	}
+	if len(identifiers) == 0 {
+		return nil, false, nil
+	}
+
+	keys := make([]string, 0, len(identifiers))
+	for _, identifier := range identifiers {
+		keys = append(keys, r.accountStorageKey(identifier))
+	}
+	values, err := r.client.MGet(ctx, keys...).Result()
+	if err != nil {
+		return nil, true, err
+	}
+
+	accounts := make([]Account, 0, len(values))
+	for _, value := range values {
+		raw, ok := value.(string)
+		if !ok || strings.TrimSpace(raw) == "" {
+			continue
+		}
+		var acc Account
+		if err := json.Unmarshal([]byte(raw), &acc); err != nil {
+			return nil, true, err
+		}
+		acc.Token = ""
+		accounts = append(accounts, acc)
+	}
+	return normalizeStoreAccounts(accounts), true, nil
+}
+
+func (r *redisRuntime) saveAccounts(ctx context.Context, accounts []Account) error {
+	if r == nil || r.client == nil {
+		return nil
+	}
+	existingIdentifiers, err := r.readAccountsIndex(ctx)
+	if err != nil {
+		return err
+	}
+
+	accounts = normalizeStoreAccounts(accounts)
+	nextIdentifiers := make([]string, 0, len(accounts))
+	nextSet := make(map[string]struct{}, len(accounts))
+
+	pipe := r.client.TxPipeline()
+	for _, acc := range accounts {
+		identifier := acc.Identifier()
+		if identifier == "" {
+			continue
+		}
+		nextIdentifiers = append(nextIdentifiers, identifier)
+		nextSet[identifier] = struct{}{}
+
+		persistAcc := acc
+		persistAcc.Token = ""
+		b, err := json.Marshal(persistAcc)
+		if err != nil {
+			return err
+		}
+		pipe.Set(ctx, r.accountStorageKey(identifier), b, 0)
+	}
+	for _, identifier := range existingIdentifiers {
+		if _, ok := nextSet[identifier]; ok {
+			continue
+		}
+		pipe.Del(ctx, r.accountStorageKey(identifier))
+	}
+	if len(nextIdentifiers) == 0 {
+		pipe.Del(ctx, r.accountsIndexKey)
+	} else {
+		b, err := json.Marshal(nextIdentifiers)
+		if err != nil {
+			return err
+		}
+		pipe.Set(ctx, r.accountsIndexKey, b, 0)
+	}
+	_, err = pipe.Exec(ctx)
+	return err
+}
+
+func (r *redisRuntime) saveState(ctx context.Context, cfg Config, accounts []Account) error {
+	if r == nil || r.client == nil {
+		return nil
+	}
+	if err := r.saveConfig(ctx, cfg); err != nil {
+		return err
+	}
+	return r.saveAccounts(ctx, accounts)
+}
+
+func (r *redisRuntime) readAccountsIndex(ctx context.Context) ([]string, error) {
+	if r == nil || r.client == nil {
+		return nil, nil
+	}
+	raw, err := r.client.Get(ctx, r.accountsIndexKey).Result()
+	if errors.Is(err, redis.Nil) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var identifiers []string
+	if err := json.Unmarshal([]byte(raw), &identifiers); err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(identifiers))
+	seen := make(map[string]struct{}, len(identifiers))
+	for _, identifier := range identifiers {
+		identifier = strings.TrimSpace(identifier)
+		if identifier == "" {
+			continue
+		}
+		if _, ok := seen[identifier]; ok {
+			continue
+		}
+		seen[identifier] = struct{}{}
+		out = append(out, identifier)
+	}
+	return out, nil
+}
+
+func (r *redisRuntime) accountStorageKey(identifier string) string {
+	return r.accountKeyPrefix + stableRedisKeyFragment(identifier)
 }
 
 func (r *redisRuntime) loadCallMetrics(ctx context.Context) (CallMetrics, error) {
