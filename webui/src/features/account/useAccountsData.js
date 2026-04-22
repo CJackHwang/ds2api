@@ -63,7 +63,7 @@ export function useAccountsData({ apiFetch }) {
     useEffect(() => {
         fetchAccounts()
         fetchQueueStatus()
-        const interval = setInterval(fetchQueueStatus, 5000)
+        const interval = setInterval(fetchQueueStatus, 3000)
         return () => clearInterval(interval)
     }, [])
 

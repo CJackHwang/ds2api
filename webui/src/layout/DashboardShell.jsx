@@ -58,7 +58,11 @@ export default function DashboardShell({ token, onLogout, config, fetchConfig, s
             ...options.headers,
             'Authorization': `Bearer ${token}`
         }
-        const res = await fetch(url, { ...options, headers })
+        const res = await fetch(url, {
+            ...options,
+            cache: 'no-store',
+            headers,
+        })
 
         if (res.status === 401) {
             onLogout()

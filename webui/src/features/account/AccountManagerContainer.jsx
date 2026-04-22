@@ -87,7 +87,7 @@ export default function AccountManagerContainer({ config, onRefresh, onMessage, 
                 </div>
             )}
 
-            <QueueCards queueStatus={queueStatus} t={t} />
+            <QueueCards queueStatus={queueStatus} t={t} config={config} />
 
             <ApiKeysPanel
                 t={t}

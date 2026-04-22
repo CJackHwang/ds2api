@@ -1,24 +1,17 @@
 import { useCallback, useEffect, useState } from 'react'
 
-const MAX_POLL_FAILURES = 3
+const POLL_INTERVAL_MS = 8000
 
-function pollDelayMs(attempt) {
-    if (attempt <= 0) return 15000
-    if (attempt === 1) return 30000
-    return 60000
-}
-
-export function useVercelSyncState({ apiFetch, onMessage, t, isVercel = false }) {
+export function useVercelSyncState({ apiFetch, onMessage, t }) {
     const [vercelToken, setVercelToken] = useState('')
     const [projectId, setProjectId] = useState('')
     const [teamId, setTeamId] = useState('')
+    const [redisURL, setRedisURL] = useState('')
+    const [redisKey, setRedisKey] = useState('')
     const [loading, setLoading] = useState(false)
     const [result, setResult] = useState(null)
     const [preconfig, setPreconfig] = useState(null)
     const [syncStatus, setSyncStatus] = useState(null)
-    const [pollPaused, setPollPaused] = useState(false)
-    const [pollFailures, setPollFailures] = useState(0)
-    const [nextRetryAt, setNextRetryAt] = useState(null)
 
     const fetchSyncStatus = useCallback(async ({ manual = false } = {}) => {
         try {
@@ -28,75 +21,55 @@ export function useVercelSyncState({ apiFetch, onMessage, t, isVercel = false })
             }
             const data = await res.json()
             setSyncStatus(data)
-            setPollFailures(0)
-            setPollPaused(false)
-            setNextRetryAt(null)
         } catch (e) {
-            setPollFailures((prev) => {
-                const next = prev + 1
-                if (isVercel) {
-                    if (next >= MAX_POLL_FAILURES) {
-                        setPollPaused(true)
-                        setNextRetryAt(null)
-                    } else {
-                        setNextRetryAt(Date.now() + pollDelayMs(next))
-                    }
-                }
-                return next
-            })
             if (manual) {
                 onMessage('error', t('vercel.networkError'))
             }
             // eslint-disable-next-line no-console
             console.error('Failed to fetch sync status:', e)
         }
-    }, [apiFetch, isVercel, onMessage, t])
+    }, [apiFetch, onMessage, t])
 
     useEffect(() => {
+        let mounted = true
+
         const loadPreconfig = async () => {
             try {
                 const res = await apiFetch('/admin/vercel/config')
-                if (res.ok) {
-                    const data = await res.json()
-                    setPreconfig(data)
-                    if (data.project_id) setProjectId(data.project_id)
-                    if (data.team_id) setTeamId(data.team_id)
-                }
+                if (!res.ok) return
+                const data = await res.json()
+                if (!mounted) return
+                setPreconfig(data)
+                if (data.project_id) setProjectId(data.project_id)
+                if (data.team_id) setTeamId(data.team_id)
+                if (data.redis_key) setRedisKey(data.redis_key)
             } catch (e) {
                 // eslint-disable-next-line no-console
                 console.error('Failed to load preconfig:', e)
             }
         }
+
         loadPreconfig()
         fetchSyncStatus()
+
+        const interval = setInterval(() => {
+            fetchSyncStatus()
+        }, POLL_INTERVAL_MS)
+
+        return () => {
+            mounted = false
+            clearInterval(interval)
+        }
     }, [apiFetch, fetchSyncStatus])
 
-    useEffect(() => {
-        if (!isVercel) {
-            const interval = setInterval(() => {
-                fetchSyncStatus()
-            }, 15000)
-            return () => clearInterval(interval)
-        }
-        if (pollPaused) {
-            return undefined
-        }
-        const delay = nextRetryAt && nextRetryAt > Date.now() ? nextRetryAt - Date.now() : pollDelayMs(pollFailures)
-        const timer = setTimeout(() => {
-            fetchSyncStatus()
-        }, Math.max(1000, delay))
-        return () => clearTimeout(timer)
-    }, [fetchSyncStatus, isVercel, nextRetryAt, pollFailures, pollPaused])
-
     const handleManualRefresh = useCallback(() => {
-        setPollPaused(false)
-        setPollFailures(0)
-        setNextRetryAt(null)
         fetchSyncStatus({ manual: true })
     }, [fetchSyncStatus])
 
     const handleSync = useCallback(async () => {
         const tokenToUse = preconfig?.has_token && !vercelToken ? '__USE_PRECONFIG__' : vercelToken
+        const redisURLToUse = preconfig?.has_redis_url && !redisURL ? '' : redisURL
+        const redisKeyToUse = redisKey || preconfig?.redis_runtime_key || preconfig?.redis_key || 'ds2api:config'
 
         if (!tokenToUse && !preconfig?.has_token) {
             onMessage('error', t('vercel.tokenRequired'))
@@ -104,6 +77,10 @@ export function useVercelSyncState({ apiFetch, onMessage, t, isVercel = false })
         }
         if (!projectId) {
             onMessage('error', t('vercel.projectRequired'))
+            return
+        }
+        if (!redisURLToUse && !preconfig?.has_redis_url) {
+            onMessage('error', t('vercel.redisRequired'))
             return
         }
 
@@ -117,6 +94,8 @@ export function useVercelSyncState({ apiFetch, onMessage, t, isVercel = false })
                     vercel_token: tokenToUse,
                     project_id: projectId,
                     team_id: teamId || undefined,
+                    redis_url: redisURLToUse || undefined,
+                    redis_key: redisKeyToUse,
                 }),
             })
             const data = await res.json()
@@ -133,7 +112,7 @@ export function useVercelSyncState({ apiFetch, onMessage, t, isVercel = false })
         } finally {
             setLoading(false)
         }
-    }, [apiFetch, fetchSyncStatus, onMessage, preconfig?.has_token, projectId, t, teamId, vercelToken])
+    }, [apiFetch, fetchSyncStatus, onMessage, preconfig, projectId, redisKey, redisURL, t, teamId, vercelToken])
 
     return {
         vercelToken,
@@ -142,12 +121,14 @@ export function useVercelSyncState({ apiFetch, onMessage, t, isVercel = false })
         setProjectId,
         teamId,
         setTeamId,
+        redisURL,
+        setRedisURL,
+        redisKey,
+        setRedisKey,
         loading,
         result,
         preconfig,
         syncStatus,
-        pollPaused,
-        pollFailures,
         handleManualRefresh,
         handleSync,
     }

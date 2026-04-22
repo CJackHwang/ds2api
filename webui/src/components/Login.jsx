@@ -19,6 +19,7 @@ export default function Login({ onLogin, onMessage }) {
         try {
             const res = await fetch('/admin/login', {
                 method: 'POST',
+                cache: 'no-store',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ admin_key: adminKey }),
             })

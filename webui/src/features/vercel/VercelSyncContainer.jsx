@@ -15,20 +15,20 @@ export default function VercelSyncContainer({ onMessage, authFetch, isVercel = f
         setProjectId,
         teamId,
         setTeamId,
+        redisURL,
+        setRedisURL,
+        redisKey,
+        setRedisKey,
         loading,
         result,
         preconfig,
         syncStatus,
-        pollPaused,
-        pollFailures,
         handleManualRefresh,
         handleSync,
     } = useVercelSyncState({
         apiFetch,
         onMessage,
         t,
-        isVercel,
-        config,
     })
 
     return (
@@ -36,8 +36,6 @@ export default function VercelSyncContainer({ onMessage, authFetch, isVercel = f
             <VercelSyncForm
                 t={t}
                 syncStatus={syncStatus}
-                pollPaused={pollPaused}
-                pollFailures={pollFailures}
                 onManualRefresh={handleManualRefresh}
                 preconfig={preconfig}
                 vercelToken={vercelToken}
@@ -46,13 +44,17 @@ export default function VercelSyncContainer({ onMessage, authFetch, isVercel = f
                 setProjectId={setProjectId}
                 teamId={teamId}
                 setTeamId={setTeamId}
+                redisURL={redisURL}
+                setRedisURL={setRedisURL}
+                redisKey={redisKey}
+                setRedisKey={setRedisKey}
                 loading={loading}
                 onSync={handleSync}
             />
 
             <div className="space-y-6">
                 <VercelSyncStatus t={t} result={result} />
-                <VercelGuide t={t} />
+                <VercelGuide t={t} syncStatus={syncStatus} preconfig={preconfig} config={config} isVercel={isVercel} />
             </div>
         </div>
     )

@@ -62,8 +62,14 @@ func (h *Handler) verify(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) getVercelConfig(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
-		"has_token":  strings.TrimSpace(os.Getenv("VERCEL_TOKEN")) != "",
-		"project_id": strings.TrimSpace(os.Getenv("VERCEL_PROJECT_ID")),
-		"team_id":    nilIfEmpty(strings.TrimSpace(os.Getenv("VERCEL_TEAM_ID"))),
+		"has_token":          strings.TrimSpace(os.Getenv("VERCEL_TOKEN")) != "",
+		"project_id":         strings.TrimSpace(os.Getenv("VERCEL_PROJECT_ID")),
+		"team_id":            nilIfEmpty(strings.TrimSpace(os.Getenv("VERCEL_TEAM_ID"))),
+		"has_redis_url":      strings.TrimSpace(os.Getenv("DS2API_REDIS_URL")) != "" || strings.TrimSpace(os.Getenv("KV_URL")) != "" || strings.TrimSpace(os.Getenv("REDIS_URL")) != "" || strings.TrimSpace(os.Getenv("UPSTASH_REDIS_URL")) != "",
+		"redis_key":          nilIfEmpty(strings.TrimSpace(os.Getenv("DS2API_REDIS_KEY"))),
+		"storage_backend":    h.Store.StorageBackend(),
+		"persistent_storage": h.Store.IsPersistentStorage(),
+		"redis_configured":   h.Store.IsRedisConfigured(),
+		"redis_runtime_key":  nilIfEmpty(h.Store.RedisConfigKey()),
 	})
 }

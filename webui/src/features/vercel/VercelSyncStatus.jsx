@@ -1,4 +1,4 @@
-import { CheckCircle2, ExternalLink, XCircle } from 'lucide-react'
+import { CheckCircle2, Database, ExternalLink, XCircle } from 'lucide-react'
 
 export default function VercelSyncStatus({ t, result }) {
     if (!result) {
@@ -17,11 +17,18 @@ export default function VercelSyncStatus({ t, result }) {
                         <XCircle className="w-6 h-6" />
                     </div>
                 )}
-                <div className="space-y-1">
+                <div className="space-y-2">
                     <h3 className={`font-semibold text-lg ${result.success ? 'text-emerald-500' : 'text-destructive'}`}>
                         {result.success ? t('vercel.syncSucceeded') : t('vercel.syncFailedLabel')}
                     </h3>
                     <p className="text-sm opacity-90">{result.message}</p>
+
+                    {result.storage_backend === 'redis' && (
+                        <div className="inline-flex items-center gap-2 rounded-full border border-emerald-500/20 bg-background/80 px-3 py-1 text-xs text-muted-foreground">
+                            <Database className="w-3.5 h-3.5" />
+                            <span>{t('vercel.syncedToRedis', { key: result.redis_key || 'ds2api:config' })}</span>
+                        </div>
+                    )}
 
                     {result.deployment_url && (
                         <div className="pt-3 mt-3 border-t border-emerald-500/20">

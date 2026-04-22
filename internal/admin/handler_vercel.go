@@ -28,36 +28,58 @@ func (h *Handler) syncVercel(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"detail": err.Error()})
 		return
 	}
+
 	validated, failed := h.validateAccountsForVercelSync(r.Context(), opts.AutoValidate)
-	cfgJSON, cfgB64, err := h.exportSyncConfig(req)
+	cfgJSON, _, err := h.exportSyncConfig(req)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"detail": err.Error()})
 		return
 	}
+	if err := h.Store.SaveConfigToRedis(r.Context(), cfgJSON, opts.RedisURL, opts.RedisKey); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"detail": "save config to redis failed: " + err.Error()})
+		return
+	}
+
 	client := &http.Client{Timeout: 30 * time.Second}
 	params := buildVercelParams(opts.TeamID)
 	headers := map[string]string{"Authorization": "Bearer " + opts.VercelToken}
 
 	envResp, status, err := vercelRequest(r.Context(), client, http.MethodGet, "https://api.vercel.com/v9/projects/"+opts.ProjectID+"/env", params, headers, nil)
 	if err != nil || status != http.StatusOK {
-		writeJSON(w, statusOr(status, http.StatusInternalServerError), map[string]any{"detail": "获取环境变量失败"})
+		writeJSON(w, statusOr(status, http.StatusInternalServerError), map[string]any{"detail": "failed to fetch vercel envs"})
 		return
 	}
 	envs, _ := envResp["envs"].([]any)
-	status, err = upsertVercelEnv(r.Context(), client, opts.ProjectID, params, headers, envs, "DS2API_CONFIG_JSON", cfgB64)
+
+	status, err = upsertVercelEnv(r.Context(), client, opts.ProjectID, params, headers, envs, "DS2API_REDIS_URL", opts.RedisURL)
 	if err != nil || (status != http.StatusOK && status != http.StatusCreated) {
-		writeJSON(w, statusOr(status, http.StatusInternalServerError), map[string]any{"detail": "更新环境变量失败"})
+		writeJSON(w, statusOr(status, http.StatusInternalServerError), map[string]any{"detail": "failed to sync redis url"})
 		return
 	}
+	status, err = upsertVercelEnv(r.Context(), client, opts.ProjectID, params, headers, envs, "DS2API_REDIS_KEY", opts.RedisKey)
+	if err != nil || (status != http.StatusOK && status != http.StatusCreated) {
+		writeJSON(w, statusOr(status, http.StatusInternalServerError), map[string]any{"detail": "failed to sync redis key"})
+		return
+	}
+	if err := deleteVercelEnv(r.Context(), client, opts.ProjectID, params, headers, envs, "DS2API_CONFIG_JSON"); err != nil {
+		config.Logger.Warn("[vercel_sync] failed to delete legacy env", "error", err)
+	}
+
 	savedCreds := h.saveVercelProjectCredentials(r.Context(), client, opts, params, headers, envs)
 	manual, deployURL := triggerVercelDeployment(r.Context(), client, opts.ProjectID, params, headers)
 	_ = h.Store.SetVercelSync(syncHashForJSON(cfgJSON), time.Now().Unix())
-	result := map[string]any{"success": true, "validated_accounts": validated}
+
+	result := map[string]any{
+		"success":            true,
+		"validated_accounts": validated,
+		"storage_backend":    "redis",
+		"redis_key":          opts.RedisKey,
+	}
 	if manual {
-		result["message"] = "配置已同步到 Vercel，请手动触发重新部署"
+		result["message"] = "Config synced to Redis and Vercel. Trigger a redeploy manually."
 		result["manual_deploy_required"] = true
 	} else {
-		result["message"] = "配置已同步，正在重新部署..."
+		result["message"] = "Config synced to Redis. Vercel redeploy has been triggered."
 		result["deployment_url"] = deployURL
 	}
 	if len(failed) > 0 {
@@ -73,6 +95,8 @@ type vercelSyncOptions struct {
 	VercelToken  string
 	ProjectID    string
 	TeamID       string
+	RedisURL     string
+	RedisKey     string
 	AutoValidate bool
 	SaveCreds    bool
 	UsePreconfig bool
@@ -82,6 +106,9 @@ func parseVercelSyncOptions(req map[string]any) (vercelSyncOptions, error) {
 	vercelToken, _ := req["vercel_token"].(string)
 	projectID, _ := req["project_id"].(string)
 	teamID, _ := req["team_id"].(string)
+	redisURL, _ := req["redis_url"].(string)
+	redisKey, _ := req["redis_key"].(string)
+
 	autoValidate := true
 	if v, ok := req["auto_validate"].(bool); ok {
 		autoValidate = v
@@ -90,6 +117,7 @@ func parseVercelSyncOptions(req map[string]any) (vercelSyncOptions, error) {
 	if v, ok := req["save_credentials"].(bool); ok {
 		saveCreds = v
 	}
+
 	usePreconfig := vercelToken == "__USE_PRECONFIG__" || strings.TrimSpace(vercelToken) == ""
 	if usePreconfig {
 		vercelToken = strings.TrimSpace(os.Getenv("VERCEL_TOKEN"))
@@ -100,16 +128,38 @@ func parseVercelSyncOptions(req map[string]any) (vercelSyncOptions, error) {
 	if strings.TrimSpace(teamID) == "" {
 		teamID = strings.TrimSpace(os.Getenv("VERCEL_TEAM_ID"))
 	}
+	if strings.TrimSpace(redisURL) == "" {
+		redisURL = firstNonEmptyRedisURL()
+	}
+	if strings.TrimSpace(redisKey) == "" {
+		redisKey = strings.TrimSpace(os.Getenv("DS2API_REDIS_KEY"))
+		if redisKey == "" {
+			redisKey = "ds2api:config"
+		}
+	}
+
 	vercelToken = strings.TrimSpace(vercelToken)
 	projectID = strings.TrimSpace(projectID)
 	teamID = strings.TrimSpace(teamID)
+	redisURL = strings.TrimSpace(redisURL)
+	redisKey = strings.TrimSpace(redisKey)
+
 	if vercelToken == "" || projectID == "" {
-		return vercelSyncOptions{}, fmt.Errorf("需要 Vercel Token 和 Project ID")
+		return vercelSyncOptions{}, fmt.Errorf("vercel token and project id are required")
 	}
+	if redisURL == "" {
+		return vercelSyncOptions{}, fmt.Errorf("redis url is required")
+	}
+	if redisKey == "" {
+		return vercelSyncOptions{}, fmt.Errorf("redis key is required")
+	}
+
 	return vercelSyncOptions{
 		VercelToken:  vercelToken,
 		ProjectID:    projectID,
 		TeamID:       teamID,
+		RedisURL:     redisURL,
+		RedisKey:     redisKey,
 		AutoValidate: autoValidate,
 		SaveCreds:    saveCreds,
 		UsePreconfig: usePreconfig,
@@ -158,6 +208,21 @@ func upsertVercelEnv(ctx context.Context, client *http.Client, projectID string,
 		"target": []string{"production", "preview"},
 	})
 	return status, err
+}
+
+func deleteVercelEnv(ctx context.Context, client *http.Client, projectID string, params url.Values, headers map[string]string, envs []any, key string) error {
+	existingID := findEnvID(envs, key)
+	if existingID == "" {
+		return nil
+	}
+	_, status, err := vercelRequest(ctx, client, http.MethodDelete, "https://api.vercel.com/v9/projects/"+projectID+"/env/"+existingID, params, headers, nil)
+	if err != nil {
+		return err
+	}
+	if status != http.StatusOK && status != http.StatusNoContent {
+		return fmt.Errorf("delete env status=%d", status)
+	}
+	return nil
 }
 
 func (h *Handler) saveVercelProjectCredentials(ctx context.Context, client *http.Client, opts vercelSyncOptions, params url.Values, headers map[string]string, envs []any) []string {
@@ -229,14 +294,18 @@ func (h *Handler) vercelStatus(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"synced":            synced,
-		"last_sync_time":    nilIfZero(snap.VercelSyncTime),
-		"has_synced_before": snap.VercelSyncHash != "",
-		"env_backed":        h.Store.IsEnvBacked(),
-		"config_hash":       current,
-		"last_synced_hash":  snap.VercelSyncHash,
-		"draft_hash":        draftHash,
-		"draft_differs":     draftDiffers,
+		"synced":             synced,
+		"last_sync_time":     nilIfZero(snap.VercelSyncTime),
+		"has_synced_before":  snap.VercelSyncHash != "",
+		"env_backed":         h.Store.IsEnvBacked(),
+		"storage_backend":    h.Store.StorageBackend(),
+		"persistent_storage": h.Store.IsPersistentStorage(),
+		"redis_configured":   h.Store.IsRedisConfigured(),
+		"redis_config_key":   nilIfEmpty(h.Store.RedisConfigKey()),
+		"config_hash":        current,
+		"last_synced_hash":   snap.VercelSyncHash,
+		"draft_hash":         draftHash,
+		"draft_differs":      draftDiffers,
 	})
 }
 
@@ -320,6 +389,15 @@ func findEnvID(envs []any, key string) string {
 		if k, _ := m["key"].(string); k == key {
 			id, _ := m["id"].(string)
 			return id
+		}
+	}
+	return ""
+}
+
+func firstNonEmptyRedisURL() string {
+	for _, key := range []string{"DS2API_REDIS_URL", "KV_URL", "REDIS_URL", "UPSTASH_REDIS_URL"} {
+		if value := strings.TrimSpace(os.Getenv(key)); value != "" {
+			return value
 		}
 	}
 	return ""

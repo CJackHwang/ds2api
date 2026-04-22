@@ -40,6 +40,7 @@ export function useAdminAuth({ isProduction, location, t }) {
             if (storedToken && expiresAt > Date.now()) {
                 try {
                     const res = await fetch('/admin/verify', {
+                        cache: 'no-store',
                         headers: { 'Authorization': `Bearer ${storedToken}` }
                     })
                     if (res.ok) {

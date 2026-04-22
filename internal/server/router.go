@@ -1,9 +1,12 @@
 package server
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -60,6 +63,8 @@ func NewApp() (*App, error) {
 	r.Use(middleware.Recoverer)
 	r.Use(cors)
 	r.Use(timeout(0))
+	r.Use(adminNoStore)
+	r.Use(trackAPICallMetrics(store))
 
 	healthzHandler := func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -116,4 +121,104 @@ func WriteUnhandledError(w http.ResponseWriter, err error) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusInternalServerError)
 	_ = json.NewEncoder(w).Encode(map[string]any{"error": map[string]any{"type": "api_error", "message": "Internal Server Error", "detail": err.Error()}})
+}
+
+func adminNoStore(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/admin") && !strings.HasPrefix(r.URL.Path, "/admin/assets/") {
+			w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+			w.Header().Set("Pragma", "no-cache")
+			w.Header().Set("Expires", "0")
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func trackAPICallMetrics(store *config.Store) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if !shouldTrackAPICall(r) || store == nil {
+				next.ServeHTTP(w, r)
+				return
+			}
+			rec := &statusCapturingResponseWriter{ResponseWriter: w}
+			next.ServeHTTP(rec, r)
+			status := rec.status
+			if status == 0 {
+				status = http.StatusOK
+			}
+			store.RecordCall(status < http.StatusBadRequest)
+		})
+	}
+}
+
+func shouldTrackAPICall(r *http.Request) bool {
+	if r == nil || r.Method != http.MethodPost {
+		return false
+	}
+	switch r.URL.Path {
+	case "/v1/chat/completions",
+		"/v1/responses",
+		"/v1/files",
+		"/v1/embeddings",
+		"/anthropic/v1/messages",
+		"/v1/messages",
+		"/messages":
+		return true
+	}
+	return strings.Contains(r.URL.Path, ":generateContent") || strings.Contains(r.URL.Path, ":streamGenerateContent")
+}
+
+type statusCapturingResponseWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func (w *statusCapturingResponseWriter) Unwrap() http.ResponseWriter {
+	return w.ResponseWriter
+}
+
+func (w *statusCapturingResponseWriter) WriteHeader(status int) {
+	w.status = status
+	w.ResponseWriter.WriteHeader(status)
+}
+
+func (w *statusCapturingResponseWriter) Write(p []byte) (int, error) {
+	if w.status == 0 {
+		w.status = http.StatusOK
+	}
+	return w.ResponseWriter.Write(p)
+}
+
+func (w *statusCapturingResponseWriter) Flush() {
+	if flusher, ok := w.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
+}
+
+func (w *statusCapturingResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	hijacker, ok := w.ResponseWriter.(http.Hijacker)
+	if !ok {
+		return nil, nil, fmt.Errorf("response writer does not support hijack")
+	}
+	return hijacker.Hijack()
+}
+
+func (w *statusCapturingResponseWriter) Push(target string, opts *http.PushOptions) error {
+	pusher, ok := w.ResponseWriter.(http.Pusher)
+	if !ok {
+		return http.ErrNotSupported
+	}
+	return pusher.Push(target, opts)
+}
+
+func (w *statusCapturingResponseWriter) ReadFrom(r io.Reader) (int64, error) {
+	readerFrom, ok := w.ResponseWriter.(io.ReaderFrom)
+	if !ok {
+		return io.Copy(w.ResponseWriter, r)
+	}
+	if w.status == 0 {
+		w.status = http.StatusOK
+	}
+	return readerFrom.ReadFrom(r)
 }

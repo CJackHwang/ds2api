@@ -141,3 +141,25 @@ func TestAutoDeleteRemoteSessionIgnoresCanceledParentContext(t *testing.T) {
 		t.Fatalf("delete ctx should not inherit cancellation, got %v", ds.lastCtxErr)
 	}
 }
+
+func TestAutoDeleteRemoteSessionSkipsDuplicateBulkDeleteWhenLeaseHeld(t *testing.T) {
+	ds := &autoDeleteModeDSStub{}
+	h := &Handler{
+		Store: mockOpenAIConfig{
+			wideInput:          true,
+			autoDeleteMode:     "all",
+			autoDeleteLeaseSet: true,
+			autoDeleteLease:    false,
+		},
+		DS: ds,
+	}
+
+	h.autoDeleteRemoteSession(context.Background(), &auth.RequestAuth{
+		DeepSeekToken: "token",
+		AccountID:     "acct",
+	}, "session-id")
+
+	if ds.allCalls != 0 {
+		t.Fatalf("all delete calls=%d want=0", ds.allCalls)
+	}
+}

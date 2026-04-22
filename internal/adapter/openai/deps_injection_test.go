@@ -3,13 +3,15 @@ package openai
 import "testing"
 
 type mockOpenAIConfig struct {
-	aliases        map[string]string
-	wideInput      bool
-	autoDeleteMode string
-	toolMode       string
-	earlyEmit      string
-	responsesTTL   int
-	embedProv      string
+	aliases            map[string]string
+	wideInput          bool
+	autoDeleteMode     string
+	autoDeleteLeaseSet bool
+	autoDeleteLease    bool
+	toolMode           string
+	earlyEmit          string
+	responsesTTL       int
+	embedProv          string
 }
 
 func (m mockOpenAIConfig) ModelAliases() map[string]string { return m.aliases }
@@ -28,6 +30,12 @@ func (m mockOpenAIConfig) AutoDeleteMode() string {
 	return m.autoDeleteMode
 }
 func (m mockOpenAIConfig) AutoDeleteSessions() bool { return false }
+func (m mockOpenAIConfig) AcquireAutoDeleteAllLease(string) bool {
+	if m.autoDeleteLeaseSet {
+		return m.autoDeleteLease
+	}
+	return true
+}
 
 func TestNormalizeOpenAIChatRequestWithConfigInterface(t *testing.T) {
 	cfg := mockOpenAIConfig{

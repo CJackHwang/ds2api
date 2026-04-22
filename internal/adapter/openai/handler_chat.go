@@ -114,6 +114,10 @@ func (h *Handler) autoDeleteRemoteSession(ctx context.Context, a *auth.RequestAu
 		}
 		config.Logger.Debug("[auto_delete_sessions] success", "account", a.AccountID, "mode", mode, "session_id", sessionID)
 	case "all":
+		if !h.Store.AcquireAutoDeleteAllLease(a.AccountID) {
+			config.Logger.Debug("[auto_delete_sessions] skipped duplicate bulk delete", "account", a.AccountID, "mode", mode)
+			return
+		}
 		if err := h.DS.DeleteAllSessionsForToken(deleteCtx, a.DeepSeekToken); err != nil {
 			config.Logger.Warn("[auto_delete_sessions] failed", "account", a.AccountID, "mode", mode, "error", err)
 			return

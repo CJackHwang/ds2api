@@ -21,10 +21,16 @@ type ConfigStore interface {
 	Update(mutator func(*config.Config) error) error
 	ExportJSONAndBase64() (string, string, error)
 	IsEnvBacked() bool
+	StorageBackend() string
+	IsPersistentStorage() bool
+	IsRedisConfigured() bool
+	RedisConfigKey() string
 	IsEnvWritebackEnabled() bool
 	HasEnvConfigSource() bool
 	ConfigPath() string
 	SetVercelSync(hash string, ts int64) error
+	CallMetrics() config.CallMetrics
+	SaveConfigToRedis(ctx context.Context, rawJSON, redisURL, key string) error
 	AdminPasswordHash() string
 	AdminJWTExpireHours() int
 	AdminJWTValidAfterUnix() int64

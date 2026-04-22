@@ -34,6 +34,7 @@ type ConfigReader interface {
 	EmbeddingsProvider() string
 	AutoDeleteMode() string
 	AutoDeleteSessions() bool
+	AcquireAutoDeleteAllLease(accountID string) bool
 }
 
 var _ AuthResolver = (*auth.Resolver)(nil)
