@@ -50,11 +50,11 @@ export default function ApiTesterContainer({ config, onMessage, authFetch }) {
     const customKeyManaged = customKeyActive && configuredKeys.includes(trimmedApiKey)
 
     const models = [
-        { id: 'deepseek-chat', name: 'deepseek-chat', icon: 'MessageSquare', desc: t('apiTester.models.chat'), color: 'text-amber-500' },
+        { id: 'deepseek-v4-flash', name: 'deepseek-v4-flash', icon: 'MessageSquare', desc: t('apiTester.models.chat'), color: 'text-amber-500' },
         { id: 'deepseek-reasoner', name: 'deepseek-reasoner', icon: 'Cpu', desc: t('apiTester.models.reasoner'), color: 'text-amber-600' },
         { id: 'deepseek-chat-search', name: 'deepseek-chat-search', icon: 'SearchIcon', desc: t('apiTester.models.chatSearch'), color: 'text-cyan-500' },
         { id: 'deepseek-reasoner-search', name: 'deepseek-reasoner-search', icon: 'SearchIcon', desc: t('apiTester.models.reasonerSearch'), color: 'text-cyan-600' },
-        { id: 'deepseek-expert-chat', name: 'deepseek-expert-chat', icon: 'MessageSquare', desc: t('apiTester.models.expertChat'), color: 'text-emerald-500' },
+        { id: 'deepseek-v4-pro', name: 'deepseek-v4-pro', icon: 'MessageSquare', desc: t('apiTester.models.expertChat'), color: 'text-emerald-500' },
         { id: 'deepseek-expert-reasoner', name: 'deepseek-expert-reasoner', icon: 'Cpu', desc: t('apiTester.models.expertReasoner'), color: 'text-emerald-600' },
         { id: 'deepseek-expert-chat-search', name: 'deepseek-expert-chat-search', icon: 'SearchIcon', desc: t('apiTester.models.expertChatSearch'), color: 'text-teal-500' },
         { id: 'deepseek-expert-reasoner-search', name: 'deepseek-expert-reasoner-search', icon: 'SearchIcon', desc: t('apiTester.models.expertReasonerSearch'), color: 'text-teal-600' },

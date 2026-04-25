@@ -18,7 +18,7 @@ const DEFAULT_FORM = {
     embeddings: { provider: '' },
     auto_delete: { mode: 'none' },
     history_split: { enabled: true, trigger_after_turns: 1 },
-    claude_mapping_text: '{\n  "fast": "deepseek-chat",\n  "slow": "deepseek-reasoner"\n}',
+    claude_mapping_text: '{\n  "fast": "deepseek-v4-flash",\n  "slow": "deepseek-v4-pro"\n}',
     model_aliases_text: '{}',
 }
 
