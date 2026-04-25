@@ -219,11 +219,11 @@
     "apiTester": {
         "defaultMessage": "Hello, please introduce yourself in one sentence.",
         "models": {
-            "chat": "Non-reasoning model",
+            "chat": "Quick mode",
             "reasoner": "Reasoning model",
             "chatSearch": "Non-reasoning model (with search)",
             "reasonerSearch": "Reasoning model (with search)",
-            "expertChat": "Non-reasoning expert mode",
+            "expertChat": "Expert mode",
             "expertReasoner": "Reasoning expert mode",
             "expertChatSearch": "Non-reasoning expert mode (with search)",
             "expertReasonerSearch": "Reasoning expert mode (with search)",

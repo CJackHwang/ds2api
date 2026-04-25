@@ -121,6 +121,8 @@ func IsSupportedDeepSeekModel(model string) bool {
 
 func DefaultModelAliases() map[string]string {
 	return map[string]string{
+		"deepseek-v4-flash":      "deepseek-chat",
+		"deepseek-v4-pro":        "deepseek-expert-chat",
 		"gpt-4o":                 "deepseek-chat",
 		"gpt-4.1":                "deepseek-chat",
 		"gpt-4.1-mini":           "deepseek-chat",

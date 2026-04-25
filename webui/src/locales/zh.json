@@ -219,11 +219,11 @@
     "apiTester": {
         "defaultMessage": "你好，请用一句话介绍你自己。",
         "models": {
-            "chat": "非思考模型",
+            "chat": "快速模式",
             "reasoner": "思考模型",
             "chatSearch": "非思考模型 (带搜索)",
             "reasonerSearch": "思考模型 (带搜索)",
-            "expertChat": "非思考专家模式",
+            "expertChat": "专家模式",
             "expertReasoner": "思考专家模式",
             "expertChatSearch": "非思考专家模式 (带搜索)",
             "expertReasonerSearch": "思考专家模式 (带搜索)",

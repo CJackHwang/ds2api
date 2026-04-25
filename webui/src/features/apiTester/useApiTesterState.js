@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 
 export function useApiTesterState({ t }) {
-    const [model, setModel] = useState('deepseek-chat')
+    const [model, setModel] = useState('deepseek-v4-flash')
     const defaultMessage = t('apiTester.defaultMessage')
     const [message, setMessage] = useState(defaultMessage)
     const [apiKey, setApiKey] = useState('')
