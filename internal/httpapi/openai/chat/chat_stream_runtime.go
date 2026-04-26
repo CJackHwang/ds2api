@@ -141,7 +141,7 @@ func (s *chatStreamRuntime) finalize(finishReason string) {
 		thinkingDetected := toolcall.ParseStandaloneToolCallsDetailed(finalThinking, s.toolNames)
 		if len(thinkingDetected.Calls) > 0 {
 			detected = thinkingDetected
-			finalThinking = shared.cleanToolCallXML(finalThinking)
+			finalThinking = shared.CleanToolCallXML(finalThinking)
 		}
 	}
 	s.finalThinking = finalThinking

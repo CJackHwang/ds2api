@@ -14,7 +14,7 @@ func BuildChatCompletion(completionID, model, finalPrompt, finalThinking, finalT
 	if len(detected.Calls) == 0 && strings.Contains(finalThinking, "<tool_calls") {
 		detected = toolcall.ParseStandaloneToolCallsDetailed(finalThinking, toolNames)
 		if len(detected.Calls) > 0 {
-			finalThinking = cleanToolCallXML(finalThinking)
+			finalThinking = shared.CleanToolCallXML(finalThinking)
 		}
 	}
 	finishReason := "stop"

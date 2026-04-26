@@ -169,7 +169,7 @@ func (h *Handler) handleNonStream(w http.ResponseWriter, resp *http.Response, co
 		if strings.Contains(finalThinking, "<tool_calls") {
 			detected := toolcall.ParseStandaloneToolCallsDetailed(finalThinking, toolNames)
 			if len(detected.Calls) > 0 {
-				finalThinking = shared.cleanToolCallXML(finalThinking)
+				finalThinking = shared.CleanToolCallXML(finalThinking)
 			} else {
 				status, message, code := upstreamEmptyOutputDetail(result.ContentFilter, finalText, finalThinking)
 				if historySession != nil {

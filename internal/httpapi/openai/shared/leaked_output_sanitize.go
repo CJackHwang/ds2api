@@ -41,10 +41,10 @@ var leakedAgentResultTagPattern = regexp.MustCompile(`(?is)</?result>`)
 // that raw XML is stripped from reasoning_content before it reaches the client.
 var leakedToolCallXMLPattern = regexp.MustCompile(`(?is)<tool_calls>.*?</tool_calls>`)
 
-// cleanToolCallXML removes <tool_calls>...</tool_calls> blocks from the given text.
+// CleanToolCallXML removes <tool_calls>...</tool_calls> blocks from the given text.
 // This should only be called AFTER tool calls have been detected and extracted,
 // to prevent the raw XML from leaking into reasoning_content exposed to the client.
-func cleanToolCallXML(text string) string {
+func CleanToolCallXML(text string) string {
 	return leakedToolCallXMLPattern.ReplaceAllString(text, "")
 }
 
@@ -59,7 +59,7 @@ func sanitizeLeakedOutput(text string) string {
 	out = leakedThinkTagPattern.ReplaceAllString(out, "")
 	out = leakedBOSMarkerPattern.ReplaceAllString(out, "")
 	out = leakedMetaMarkerPattern.ReplaceAllString(out, "")
-	out = cleanToolCallXML(out)
+	out = CleanToolCallXML(out)
 	out = sanitizeLeakedAgentXMLBlocks(out)
 	return out
 }

@@ -143,7 +143,7 @@ func (s *responsesStreamRuntime) finalize() {
 		thinkingParsed := toolcall.ParseStandaloneToolCallsDetailed(finalThinking, s.toolNames)
 		if len(thinkingParsed.Calls) > 0 {
 			detected = thinkingParsed.Calls
-			finalThinking = shared.cleanToolCallXML(finalThinking)
+			finalThinking = shared.CleanToolCallXML(finalThinking)
 		}
 	}
 

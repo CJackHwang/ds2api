@@ -141,7 +141,7 @@ func (h *Handler) handleResponsesNonStream(w http.ResponseWriter, resp *http.Res
 		if strings.Contains(sanitizedThinking, "<tool_calls") {
 			detected := toolcall.ParseStandaloneToolCallsDetailed(sanitizedThinking, toolNames)
 			if len(detected.Calls) > 0 {
-				sanitizedThinking = shared.cleanToolCallXML(sanitizedThinking)
+				sanitizedThinking = shared.CleanToolCallXML(sanitizedThinking)
 			} else {
 				return
 			}
