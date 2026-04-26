@@ -18,7 +18,7 @@ func BuildResponseObject(responseID, model, finalPrompt, finalThinking, finalTex
 	if len(detected.Calls) == 0 && strings.Contains(finalThinking, "<tool_calls") {
 		detected = toolcall.ParseStandaloneToolCallsDetailed(finalThinking, toolNames)
 		if len(detected.Calls) > 0 {
-			finalThinking = shared.cleanToolCallXML(finalThinking)
+			finalThinking = shared.CleanToolCallXML(finalThinking)
 		}
 	}
 	exposedOutputText := finalText
