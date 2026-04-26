@@ -32,11 +32,12 @@ type chatStreamRuntime struct {
 	toolCallsEmitted     bool
 	toolCallsDoneEmitted bool
 
-	toolSieve         toolStreamSieveState
-	streamToolCallIDs map[int]string
-	streamToolNames   map[int]string
-	thinking          strings.Builder
-	text              strings.Builder
+	toolSieve           toolStreamSieveState
+	emittedToolCallKeys map[string]struct{}
+	streamToolCallIDs   map[int]string
+	streamToolNames     map[int]string
+	thinking            strings.Builder
+	text                strings.Builder
 
 	finalThinking     string
 	finalText         string
@@ -76,6 +77,7 @@ func newChatStreamRuntime(
 		stripReferenceMarkers: stripReferenceMarkers,
 		bufferToolContent:     bufferToolContent,
 		emitEarlyToolDeltas:   emitEarlyToolDeltas,
+		emittedToolCallKeys:   map[string]struct{}{},
 		streamToolCallIDs:     map[int]string{},
 		streamToolNames:       map[int]string{},
 	}
@@ -129,11 +131,12 @@ func (s *chatStreamRuntime) resetStreamToolCallState() {
 
 func (s *chatStreamRuntime) finalize(finishReason string) {
 	finalThinking := s.thinking.String()
-	finalText := cleanVisibleOutput(s.text.String(), s.stripReferenceMarkers)
+	finalText := stripVisibleToolCallMarkup(cleanVisibleOutput(s.text.String(), s.stripReferenceMarkers))
 	s.finalThinking = finalThinking
 	s.finalText = finalText
 	detected := toolcall.ParseStandaloneToolCallsDetailed(finalText, s.toolNames)
-	if len(detected.Calls) > 0 && !s.toolCallsDoneEmitted {
+	detected.Calls = filterNewParsedToolCalls(detected.Calls, s.emittedToolCallKeys)
+	if len(detected.Calls) > 0 {
 		finishReason = "tool_calls"
 		delta := map[string]any{
 			"tool_calls": formatFinalStreamToolCallsWithStableIDs(detected.Calls, s.streamToolCallIDs),
@@ -154,11 +157,15 @@ func (s *chatStreamRuntime) finalize(finishReason string) {
 	} else if s.bufferToolContent {
 		for _, evt := range flushToolSieve(&s.toolSieve, s.toolNames) {
 			if len(evt.ToolCalls) > 0 {
+				filteredCalls := filterNewParsedToolCalls(evt.ToolCalls, s.emittedToolCallKeys)
+				if len(filteredCalls) == 0 {
+					continue
+				}
 				finishReason = "tool_calls"
 				s.toolCallsEmitted = true
 				s.toolCallsDoneEmitted = true
 				tcDelta := map[string]any{
-					"tool_calls": formatFinalStreamToolCallsWithStableIDs(evt.ToolCalls, s.streamToolCallIDs),
+					"tool_calls": formatFinalStreamToolCallsWithStableIDs(filteredCalls, s.streamToolCallIDs),
 				}
 				if !s.firstChunkSent {
 					tcDelta["role"] = "assistant"
@@ -176,7 +183,7 @@ func (s *chatStreamRuntime) finalize(finishReason string) {
 			if evt.Content == "" {
 				continue
 			}
-			cleaned := cleanVisibleOutput(evt.Content, s.stripReferenceMarkers)
+			cleaned := stripVisibleToolCallMarkup(cleanVisibleOutput(evt.Content, s.stripReferenceMarkers))
 			if cleaned == "" {
 				continue
 			}
@@ -248,7 +255,7 @@ func (s *chatStreamRuntime) onParsed(parsed sse.LineResult) streamengine.ParsedD
 	newChoices := make([]map[string]any, 0, len(parsed.Parts))
 	contentSeen := false
 	for _, p := range parsed.Parts {
-		cleanedText := cleanVisibleOutput(p.Text, s.stripReferenceMarkers)
+		cleanedText := stripVisibleToolCallMarkup(cleanVisibleOutput(p.Text, s.stripReferenceMarkers))
 		if s.searchEnabled && sse.IsCitation(cleanedText) {
 			continue
 		}
@@ -305,10 +312,14 @@ func (s *chatStreamRuntime) onParsed(parsed sse.LineResult) streamengine.ParsedD
 						continue
 					}
 					if len(evt.ToolCalls) > 0 {
+						filteredCalls := filterNewParsedToolCalls(evt.ToolCalls, s.emittedToolCallKeys)
+						if len(filteredCalls) == 0 {
+							continue
+						}
 						s.toolCallsEmitted = true
 						s.toolCallsDoneEmitted = true
 						tcDelta := map[string]any{
-							"tool_calls": formatFinalStreamToolCallsWithStableIDs(evt.ToolCalls, s.streamToolCallIDs),
+							"tool_calls": formatFinalStreamToolCallsWithStableIDs(filteredCalls, s.streamToolCallIDs),
 						}
 						if !s.firstChunkSent {
 							tcDelta["role"] = "assistant"

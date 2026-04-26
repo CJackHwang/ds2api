@@ -41,7 +41,7 @@ func (s *responsesStreamRuntime) sendDone() {
 
 func (s *responsesStreamRuntime) processToolStreamEvents(events []toolStreamEvent, emitContent bool, resetAfterToolCalls bool) {
 	for _, evt := range events {
-		if emitContent && evt.Content != "" {
+		if emitContent && evt.Content != "" { cleaned := stripVisibleToolCallMarkup(cleanVisibleOutput(evt.Content, s.stripReferenceMarkers)); if cleaned != "" { s.emitTextDelta(cleaned) } }
 			s.emitTextDelta(evt.Content)
 		}
 		if len(evt.ToolCallDeltas) > 0 {
@@ -54,7 +54,7 @@ func (s *responsesStreamRuntime) processToolStreamEvents(events []toolStreamEven
 			}
 			s.emitFunctionCallDeltaEvents(filtered)
 		}
-		if len(evt.ToolCalls) > 0 {
+		if len(evt.ToolCalls) > 0 { filteredCalls := filterNewParsedToolCalls(evt.ToolCalls, s.emittedToolCallKeys); if len(filteredCalls) == 0 { continue } s.emitFunctionCallDoneEvents(filteredCalls); if resetAfterToolCalls { s.resetStreamToolCallState() } }
 			s.emitFunctionCallDoneEvents(evt.ToolCalls)
 			if resetAfterToolCalls {
 				s.resetStreamToolCallState()

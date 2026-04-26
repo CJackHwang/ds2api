@@ -33,6 +33,7 @@ type responsesStreamRuntime struct {
 	toolCallsEmitted     bool
 	toolCallsDoneEmitted bool
 
+	emittedToolCallKeys map[string]struct{}
 	sieve             toolStreamSieveState
 	thinking          strings.Builder
 	text              strings.Builder
@@ -85,6 +86,7 @@ func newResponsesStreamRuntime(
 		toolNames:             toolNames,
 		bufferToolContent:     bufferToolContent,
 		emitEarlyToolDeltas:   emitEarlyToolDeltas,
+		emittedToolCallKeys: map[string]struct{}{},
 		streamToolCallIDs:     map[int]string{},
 		functionItemIDs:       map[int]string{},
 		functionOutputIDs:     map[int]int{},
@@ -125,14 +127,15 @@ func (s *responsesStreamRuntime) failResponse(message, code string) {
 
 func (s *responsesStreamRuntime) finalize() {
 	finalThinking := s.thinking.String()
-	finalText := cleanVisibleOutput(s.text.String(), s.stripReferenceMarkers)
+	rawFinalText := cleanVisibleOutput(s.text.String(), s.stripReferenceMarkers)
 
 	if s.bufferToolContent {
 		s.processToolStreamEvents(flushToolSieve(&s.sieve, s.toolNames), true, true)
+		finalText := stripVisibleToolCallMarkup(cleanVisibleOutput(s.visibleText.String(), s.stripReferenceMarkers))
 	}
 
-	textParsed := toolcall.ParseStandaloneToolCallsDetailed(finalText, s.toolNames)
-	detected := textParsed.Calls
+	textParsed := toolcall.ParseStandaloneToolCallsDetailed(rawFinalText, s.toolNames)
+	detected := filterNewParsedToolCalls(textParsed.Calls, s.emittedToolCallKeys)
 	s.logToolPolicyRejections(textParsed)
 
 	if len(detected) > 0 {
@@ -221,8 +224,11 @@ func (s *responsesStreamRuntime) onParsed(parsed sse.LineResult) streamengine.Pa
 		}
 		s.text.WriteString(trimmed)
 		if !s.bufferToolContent {
-			s.emitTextDelta(trimmed)
-			continue
+		 visible := stripVisibleToolCallMarkup(trimmed)
+		 if visible != "" {
+		 s.emitTextDelta(visible)
+		 }
+		 continue
 		}
 		s.processToolStreamEvents(processToolSieveChunk(&s.sieve, trimmed, s.toolNames), true, true)
 	}

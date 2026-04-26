@@ -35,6 +35,8 @@ var leakedAgentWrapperTagPattern = regexp.MustCompile(`(?is)</?(?:attempt_comple
 var leakedAgentWrapperPlusResultOpenPattern = regexp.MustCompile(`(?is)<(?:attempt_completion|ask_followup_question|new_task)\b[^>]*>\s*<result>`)
 var leakedAgentResultPlusWrapperClosePattern = regexp.MustCompile(`(?is)</result>\s*</(?:attempt_completion|ask_followup_question|new_task)\b[^>]*>`)
 var leakedAgentResultTagPattern = regexp.MustCompile(`(?is)</?result>`)
+var leakedToolCallsWrapperFragmentPattern = regexp.MustCompile(`(?im)^\s*(?:</?tool_calls>|tool_calls>)\s*$`)
+var leakedToolCallClosingFragmentPattern = regexp.MustCompile(`(?im)^\s*(?:</tool_call>|</parameter>|</parameters>|</tool_name>|</function_name>)\s*$`)
 
 func sanitizeLeakedOutput(text string) string {
 	if text == "" {
@@ -48,6 +50,8 @@ func sanitizeLeakedOutput(text string) string {
 	out = leakedBOSMarkerPattern.ReplaceAllString(out, "")
 	out = leakedMetaMarkerPattern.ReplaceAllString(out, "")
 	out = sanitizeLeakedAgentXMLBlocks(out)
+	out = leakedToolCallsWrapperFragmentPattern.ReplaceAllString(out, "")
+	out = leakedToolCallClosingFragmentPattern.ReplaceAllString(out, "")
 	return out
 }
 

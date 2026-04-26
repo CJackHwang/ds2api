@@ -33,6 +33,53 @@ const {
 } = require('./dedupe');
 
 const DEEPSEEK_COMPLETION_URL = 'https://chat.deepseek.com/api/v0/chat/completion';
+const LEAKED_TOOL_WRAPPER_FRAGMENT_PATTERN = /^\s*(?:<\/tool_calls>|<tool_calls>|tool_calls>)\s*$/i;
+
+function sanitizeVisibleChunkText(text) {
+  const value = typeof text === 'string' ? text : '';
+  if (!value) {
+    return '';
+  }
+  if (LEAKED_TOOL_WRAPPER_FRAGMENT_PATTERN.test(value)) {
+    return '';
+  }
+  return value;
+}
+
+function toolCallKey(call) {
+  if (!call || typeof call !== 'object') {
+    return '';
+  }
+  const name = typeof call.name === 'string' ? call.name.trim() : '';
+  const input = call.input && typeof call.input === 'object' && !Array.isArray(call.input) ? call.input : {};
+  try {
+    return `${name}::${JSON.stringify(input)}`;
+  } catch (_err) {
+    return `${name}::`;
+  }
+}
+
+function filterNewToolCalls(calls, emittedKeys) {
+  if (!Array.isArray(calls) || calls.length === 0) {
+    return [];
+  }
+  const out = [];
+  for (const call of calls) {
+    const key = toolCallKey(call);
+    if (!key) {
+      out.push(call);
+      continue;
+    }
+    if (emittedKeys && emittedKeys.has(key)) {
+      continue;
+    }
+    if (emittedKeys) {
+      emittedKeys.add(key);
+    }
+    out.push(call);
+  }
+  return out;
+}
 
 async function handleVercelStream(req, res, rawBody, payload) {
   const prep = await fetchStreamPrepare(req, rawBody);
@@ -129,6 +176,7 @@ async function handleVercelStream(req, res, rawBody, payload) {
     const toolSieveEnabled = toolPolicy.toolSieveEnabled;
     const toolSieveState = createToolSieveState();
     let toolCallsEmitted = false;
+    const emittedToolCallKeys = new Set();
     const streamToolCallIDs = new Map();
     const streamToolNames = new Map();
     const decoder = new TextDecoder();
@@ -152,21 +200,26 @@ async function handleVercelStream(req, res, rawBody, payload) {
         await releaseLease();
         return;
       }
-      const detected = parseStandaloneToolCalls(outputText, toolNames);
-      if (detected.length > 0 && !toolCallsEmitted) {
+      const detected = filterNewToolCalls(parseStandaloneToolCalls(outputText, toolNames), emittedToolCallKeys);
+      if (detected.length > 0) {
         toolCallsEmitted = true;
         sendDeltaFrame({ tool_calls: formatOpenAIStreamToolCalls(detected, streamToolCallIDs) });
       } else if (toolSieveEnabled) {
         const tailEvents = flushToolSieve(toolSieveState, toolNames);
         for (const evt of tailEvents) {
           if (evt.type === 'tool_calls' && Array.isArray(evt.calls) && evt.calls.length > 0) {
+            const filteredCalls = filterNewToolCalls(evt.calls, emittedToolCallKeys);
+            if (filteredCalls.length === 0) {
+              continue;
+            }
             toolCallsEmitted = true;
-            sendDeltaFrame({ tool_calls: formatOpenAIStreamToolCalls(evt.calls, streamToolCallIDs) });
+            sendDeltaFrame({ tool_calls: formatOpenAIStreamToolCalls(filteredCalls, streamToolCallIDs) });
             resetStreamToolCallState(streamToolCallIDs, streamToolNames);
             continue;
           }
-          if (evt.text) {
-            sendDeltaFrame({ content: evt.text });
+          const cleaned = sanitizeVisibleChunkText(evt.text);
+          if (cleaned) {
+            sendDeltaFrame({ content: cleaned });
           }
         }
       }
@@ -283,13 +336,18 @@ async function handleVercelStream(req, res, rawBody, payload) {
                   continue;
                 }
                 if (evt.type === 'tool_calls') {
+                  const filteredCalls = filterNewToolCalls(evt.calls, emittedToolCallKeys);
+                  if (filteredCalls.length === 0) {
+                    continue;
+                  }
                   toolCallsEmitted = true;
-                  sendDeltaFrame({ tool_calls: formatOpenAIStreamToolCalls(evt.calls, streamToolCallIDs) });
+                  sendDeltaFrame({ tool_calls: formatOpenAIStreamToolCalls(filteredCalls, streamToolCallIDs) });
                   resetStreamToolCallState(streamToolCallIDs, streamToolNames);
                   continue;
                 }
-                if (evt.text) {
-                  sendDeltaFrame({ content: evt.text });
+                const cleaned = sanitizeVisibleChunkText(evt.text);
+                if (cleaned) {
+                  sendDeltaFrame({ content: cleaned });
                 }
               }
             }
