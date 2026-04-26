@@ -12,9 +12,11 @@ import (
 	"ds2api/internal/config"
 	dsprotocol "ds2api/internal/deepseek/protocol"
 	openaifmt "ds2api/internal/format/openai"
+	"ds2api/internal/httpapi/openai/shared"
 	"ds2api/internal/promptcompat"
 	"ds2api/internal/sse"
 	streamengine "ds2api/internal/stream"
+	"ds2api/internal/toolcall"
 )
 
 func (h *Handler) ChatCompletions(w http.ResponseWriter, r *http.Request) {
@@ -163,12 +165,27 @@ func (h *Handler) handleNonStream(w http.ResponseWriter, resp *http.Response, co
 		finalText = replaceCitationMarkersWithLinks(finalText, result.CitationLinks)
 	}
 	if shouldWriteUpstreamEmptyOutputError(finalText) {
-		status, message, code := upstreamEmptyOutputDetail(result.ContentFilter, finalText, finalThinking)
-		if historySession != nil {
-			historySession.error(status, message, code, finalThinking, finalText)
+		// Fallback: check if thinking content contains tool calls
+		if strings.Contains(finalThinking, "<tool_calls") {
+			detected := toolcall.ParseStandaloneToolCallsDetailed(finalThinking, toolNames)
+			if len(detected.Calls) > 0 {
+				finalThinking = shared.cleanToolCallXML(finalThinking)
+			} else {
+				status, message, code := upstreamEmptyOutputDetail(result.ContentFilter, finalText, finalThinking)
+				if historySession != nil {
+					historySession.error(status, message, code, finalThinking, finalText)
+				}
+				writeUpstreamEmptyOutputError(w, finalText, finalThinking, result.ContentFilter)
+				return
+			}
+		} else {
+			status, message, code := upstreamEmptyOutputDetail(result.ContentFilter, finalText, finalThinking)
+			if historySession != nil {
+				historySession.error(status, message, code, finalThinking, finalText)
+			}
+			writeUpstreamEmptyOutputError(w, finalText, finalThinking, result.ContentFilter)
+			return
 		}
-		writeUpstreamEmptyOutputError(w, finalText, finalThinking, result.ContentFilter)
-		return
 	}
 	respBody := openaifmt.BuildChatCompletion(completionID, model, finalPrompt, finalThinking, finalText, toolNames)
 	finishReason := "stop"

@@ -15,6 +15,7 @@ import (
 	"ds2api/internal/config"
 	dsprotocol "ds2api/internal/deepseek/protocol"
 	openaifmt "ds2api/internal/format/openai"
+	"ds2api/internal/httpapi/openai/shared"
 	"ds2api/internal/promptcompat"
 	"ds2api/internal/sse"
 	streamengine "ds2api/internal/stream"
@@ -135,8 +136,18 @@ func (h *Handler) handleResponsesNonStream(w http.ResponseWriter, resp *http.Res
 	if searchEnabled {
 		sanitizedText = replaceCitationMarkersWithLinks(sanitizedText, result.CitationLinks)
 	}
+	// Fallback: if text has no tool calls, check thinking content for <tool_calls> XML
 	if writeUpstreamEmptyOutputError(w, sanitizedText, sanitizedThinking, result.ContentFilter) {
-		return
+		if strings.Contains(sanitizedThinking, "<tool_calls") {
+			detected := toolcall.ParseStandaloneToolCallsDetailed(sanitizedThinking, toolNames)
+			if len(detected.Calls) > 0 {
+				sanitizedThinking = shared.cleanToolCallXML(sanitizedThinking)
+			} else {
+				return
+			}
+		} else {
+			return
+		}
 	}
 	textParsed := toolcall.ParseStandaloneToolCallsDetailed(sanitizedText, toolNames)
 	logResponsesToolPolicyRejection(traceID, toolChoice, textParsed, "text")

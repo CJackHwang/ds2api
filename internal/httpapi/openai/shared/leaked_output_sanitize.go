@@ -36,6 +36,18 @@ var leakedAgentWrapperPlusResultOpenPattern = regexp.MustCompile(`(?is)<(?:attem
 var leakedAgentResultPlusWrapperClosePattern = regexp.MustCompile(`(?is)</result>\s*</(?:attempt_completion|ask_followup_question|new_task)\b[^>]*>`)
 var leakedAgentResultTagPattern = regexp.MustCompile(`(?is)</?result>`)
 
+// leakedToolCallXMLPattern matches complete <tool_calls>...</tool_calls> blocks including
+// nested <invoke>, <parameter>, and CDATA sections. Applied after tool-call detection so
+// that raw XML is stripped from reasoning_content before it reaches the client.
+var leakedToolCallXMLPattern = regexp.MustCompile(`(?is)<tool_calls>.*?</tool_calls>`)
+
+// cleanToolCallXML removes <tool_calls>...</tool_calls> blocks from the given text.
+// This should only be called AFTER tool calls have been detected and extracted,
+// to prevent the raw XML from leaking into reasoning_content exposed to the client.
+func cleanToolCallXML(text string) string {
+	return leakedToolCallXMLPattern.ReplaceAllString(text, "")
+}
+
 func sanitizeLeakedOutput(text string) string {
 	if text == "" {
 		return text
@@ -47,6 +59,7 @@ func sanitizeLeakedOutput(text string) string {
 	out = leakedThinkTagPattern.ReplaceAllString(out, "")
 	out = leakedBOSMarkerPattern.ReplaceAllString(out, "")
 	out = leakedMetaMarkerPattern.ReplaceAllString(out, "")
+	out = cleanToolCallXML(out)
 	out = sanitizeLeakedAgentXMLBlocks(out)
 	return out
 }

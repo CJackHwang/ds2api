@@ -7,6 +7,7 @@ import (
 
 	"ds2api/internal/config"
 	openaifmt "ds2api/internal/format/openai"
+	"ds2api/internal/httpapi/openai/shared"
 	"ds2api/internal/promptcompat"
 	"ds2api/internal/sse"
 	streamengine "ds2api/internal/stream"
@@ -136,6 +137,15 @@ func (s *responsesStreamRuntime) finalize() {
 	textParsed := toolcall.ParseStandaloneToolCallsDetailed(finalText, s.toolNames)
 	detected := textParsed.Calls
 	s.logToolPolicyRejections(textParsed)
+
+	// Fallback: if text has no tool calls, check thinking content.
+	if len(detected) == 0 && strings.Contains(finalThinking, "<tool_calls") {
+		thinkingParsed := toolcall.ParseStandaloneToolCallsDetailed(finalThinking, s.toolNames)
+		if len(thinkingParsed.Calls) > 0 {
+			detected = thinkingParsed.Calls
+			finalThinking = shared.cleanToolCallXML(finalThinking)
+		}
+	}
 
 	if len(detected) > 0 {
 		s.toolCallsEmitted = true

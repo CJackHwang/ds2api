@@ -1,6 +1,7 @@
 package openai
 
 import (
+	"ds2api/internal/httpapi/openai/shared"
 	"ds2api/internal/toolcall"
 	"strings"
 	"time"
@@ -8,6 +9,14 @@ import (
 
 func BuildChatCompletion(completionID, model, finalPrompt, finalThinking, finalText string, toolNames []string) map[string]any {
 	detected := toolcall.ParseStandaloneToolCallsDetailed(finalText, toolNames)
+	// Fallback: if text has no tool calls, check thinking content.
+	// DeepSeek may emit <tool_calls> XML inside thinking fragments.
+	if len(detected.Calls) == 0 && strings.Contains(finalThinking, "<tool_calls") {
+		detected = toolcall.ParseStandaloneToolCallsDetailed(finalThinking, toolNames)
+		if len(detected.Calls) > 0 {
+			finalThinking = cleanToolCallXML(finalThinking)
+		}
+	}
 	finishReason := "stop"
 	messageObj := map[string]any{"role": "assistant", "content": finalText}
 	if strings.TrimSpace(finalThinking) != "" {

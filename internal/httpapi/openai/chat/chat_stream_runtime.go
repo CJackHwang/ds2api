@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	openaifmt "ds2api/internal/format/openai"
+	"ds2api/internal/httpapi/openai/shared"
 	"ds2api/internal/sse"
 	streamengine "ds2api/internal/stream"
 	"ds2api/internal/toolstream"
@@ -131,9 +132,20 @@ func (s *chatStreamRuntime) resetStreamToolCallState() {
 func (s *chatStreamRuntime) finalize(finishReason string) {
 	finalThinking := s.thinking.String()
 	finalText := cleanVisibleOutput(s.text.String(), s.stripReferenceMarkers)
+	s.finalText = finalText
+
+	detected := toolcall.ParseStandaloneToolCallsDetailed(finalText, s.toolNames)
+	// Fallback: if text has no tool calls, check thinking content.
+	// DeepSeek may emit <tool_calls> XML inside thinking fragments.
+	if len(detected.Calls) == 0 && strings.Contains(finalThinking, "<tool_calls") {
+		thinkingDetected := toolcall.ParseStandaloneToolCallsDetailed(finalThinking, s.toolNames)
+		if len(thinkingDetected.Calls) > 0 {
+			detected = thinkingDetected
+			finalThinking = shared.cleanToolCallXML(finalThinking)
+		}
+	}
 	s.finalThinking = finalThinking
 	s.finalText = finalText
-	detected := toolcall.ParseStandaloneToolCallsDetailed(finalText, s.toolNames)
 	if len(detected.Calls) > 0 && !s.toolCallsDoneEmitted {
 		finishReason = "tool_calls"
 		delta := map[string]any{
