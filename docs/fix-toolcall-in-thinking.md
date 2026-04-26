@@ -10,7 +10,7 @@ DeepSeek 模型在推理过程中（thinking/reasoning）输出工具调用时�
 2. 流式路径 `finalize()` 仅对 `s.text` 做工具调用解析，忽略 `s.thinking`
 3. 非流式路径 `BuildChatCompletion()` 仅对 `finalText` 解析
 4. 空输出检查只认 `finalText == ""`，未考虑 thinking 中的工具调用
-5. `sanitizeLeakedOutput()` 未清理 `<tool_calls>` XML
+5. 流式 reasoning 增量直发，未对 `<tool_calls>` XML 做流式筛分
 6. `/v1/responses` 路径同样存在此问题
 
 ## 影响范围
@@ -64,13 +64,13 @@ if len(detected.Calls) == 0 {
 }
 ```
 
-### 步骤 4: leis_resource.go — 添加 cleanToolCallXML 清理
+### 步骤 4: shared/leaked_output_sanitize.go — 添加 `CleanToolCallXML()`
 
-添加 `cleanToolCallXML()` 函数，用正则去除 `<tool_calls>...</tool_calls>` 块。
+添加 `CleanToolCallXML()` 函数，用正则去除 `<tool_calls>...</tool_calls>` 块，但只在**已经成功检测到工具调用之后**用于清理最终暴露的 reasoning 文本。
 
-### 步骤 5: leaked_output_sanitize.go — 增加 XML 清理规则
+### 步骤 5: 流式 thinking 走筛分后再发
 
-新增 `leakedToolCallXMLPattern`，防止任何路径泄露原始工具调用 XML。
+不要把 `<tool_calls>` 清理塞进通用 `sanitizeLeakedOutput()` / `CleanVisibleOutput()` 链路，否则会在检测前把合法工具调用删掉。流式链路应缓存 thinking 原文用于检测，同时只把经筛分后的非工具文本作为 `reasoning_content` 发给客户端。
 
 ### 步骤 6: /v1/responses 路径同步修复
 

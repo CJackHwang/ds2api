@@ -81,10 +81,10 @@ if len(detected.Calls) == 0 {
 // 不发送裸 XML 给客户端
 ```
 
-#### 5. `leaked_output_sanitize.go:39-52` — 增加工具调用 XML 清理
+#### 5. `shared/CleanToolCallXML` + 流式 thinking sieve — 定向清理而不是全局清理
 ```go
 var leakedToolCallXMLPattern = regexp.MustCompile(`(?is)<tool_calls>.*?</tool_calls>`)
-// 在 sanitizeLeakedOutput() 中调用（需在工具调用检测之后）
+// 只在成功检测并提取工具调用后，对最终 exposed thinking 做清理
 ```
 
 #### 6. `/v1/responses` 路径同步修复
@@ -106,7 +106,7 @@ var leakedToolCallXMLPattern = regexp.MustCompile(`(?is)<tool_calls>.*?</tool_ca
 | `internal/httpapi/openai/chat/chat_stream_runtime.go` | 核心修改 |
 | `internal/httpapi/openai/chat/handler_chat.go` | 核心修改 |
 | `internal/format/openai/render_chat.go` | 核心修改 |
-| `internal/httpapi/openai/shared/leaked_output_sanitize.go` | 防泄漏补充 |
+| `internal/httpapi/openai/shared/leaked_output_sanitize.go` | 定向清理补充 |
 | `internal/httpapi/openai/responses/handler.go` | 对称修复 |
 | `internal/httpapi/openai/responses/responses_stream_runtime_core.go` | 对称修复 |
 | `internal/format/openai/render_responses.go` | 对称修复 |

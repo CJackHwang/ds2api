@@ -13,14 +13,7 @@ import (
 func BuildResponseObject(responseID, model, finalPrompt, finalThinking, finalText string, toolNames []string) map[string]any {
 	// Strict mode: only standalone, structured tool-call payloads are treated
 	// as executable tool calls.
-	detected := toolcall.ParseStandaloneToolCallsDetailed(finalText, toolNames)
-	// Fallback: if text has no tool calls, check thinking content.
-	if len(detected.Calls) == 0 && strings.Contains(finalThinking, "<tool_calls") {
-		detected = toolcall.ParseStandaloneToolCallsDetailed(finalThinking, toolNames)
-		if len(detected.Calls) > 0 {
-			finalThinking = shared.CleanToolCallXML(finalThinking)
-		}
-	}
+	detected, finalThinking := shared.DetectToolCallsWithThinkingFallback(finalText, finalThinking, finalThinking, toolNames)
 	exposedOutputText := finalText
 	output := make([]any, 0, 2)
 	if len(detected.Calls) > 0 {

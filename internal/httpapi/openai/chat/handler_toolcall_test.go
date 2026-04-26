@@ -291,6 +291,24 @@ func TestHandleStreamDetectsToolCallInThinkingChannel(t *testing.T) {
 	}
 }
 
+func TestHandleStreamThinkingToolCallDoesNotLeakXML(t *testing.T) {
+	h := &Handler{}
+	resp := makeSSEHTTPResponse(
+		`data: {"p":"response/thinking_content","v":"先读取文件\n<tool_calls>\n  "}`,
+		`data: {"p":"response/thinking_content","v":"<invoke name=\"read_file\">\n    <parameter name=\"path\">README.MD</parameter>\n  </invoke>\n</tool_calls>"}`,
+		`data: [DONE]`,
+	)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+
+	h.handleStream(rec, req, resp, "cid-thinking-split", "deepseek-v4-flash", "prompt", true, false, []string{"read_file"}, nil)
+
+	body := rec.Body.String()
+	if strings.Contains(body, "<tool_calls>") || strings.Contains(body, "<invoke name=\"read_file\">") {
+		t.Fatalf("expected thinking tool XML to stay out of chat SSE body, got %s", body)
+	}
+}
+
 // TestHandleNonStreamDetectsToolCallInThinkingChannel tests non-streaming path
 // for tool calls in thinking content instead of 429 empty output.
 func TestHandleNonStreamDetectsToolCallInThinkingChannel(t *testing.T) {

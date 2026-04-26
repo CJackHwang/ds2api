@@ -232,6 +232,41 @@ func TestHandleResponsesStreamFailsWhenUpstreamHasOnlyThinking(t *testing.T) {
 	}
 }
 
+func TestHandleResponsesStreamDetectsThinkingToolCallWithoutLeakingXML(t *testing.T) {
+	h := &Handler{}
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	rec := httptest.NewRecorder()
+
+	sseLine := func(path, value string) string {
+		b, _ := json.Marshal(map[string]any{
+			"p": path,
+			"v": value,
+		})
+		return "data: " + string(b) + "\n"
+	}
+
+	streamBody := sseLine("response/thinking_content", "先读取文件\n<tool_calls>\n  ") +
+		sseLine("response/thinking_content", "<invoke name=\"read_file\">\n    <parameter name=\"path\">README.MD</parameter>\n  </invoke>\n</tool_calls>") +
+		"data: [DONE]\n"
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       io.NopCloser(strings.NewReader(streamBody)),
+	}
+
+	h.handleResponsesStream(rec, req, resp, "owner-a", "resp_test", "deepseek-v4-pro", "prompt", true, false, []string{"read_file"}, promptcompat.DefaultToolChoicePolicy(), "")
+
+	body := rec.Body.String()
+	if strings.Contains(body, "<tool_calls>") || strings.Contains(body, "<invoke name=\"read_file\">") {
+		t.Fatalf("expected thinking tool XML to stay out of SSE body, got %s", body)
+	}
+	if !strings.Contains(body, "event: response.function_call_arguments.done") {
+		t.Fatalf("expected function call completion event, body=%s", body)
+	}
+	if strings.Contains(body, "event: response.failed") {
+		t.Fatalf("did not expect response.failed, body=%s", body)
+	}
+}
+
 func TestHandleResponsesNonStreamRequiredToolChoiceViolation(t *testing.T) {
 	h := &Handler{}
 	rec := httptest.NewRecorder()
@@ -255,6 +290,54 @@ func TestHandleResponsesNonStreamRequiredToolChoiceViolation(t *testing.T) {
 	errObj, _ := out["error"].(map[string]any)
 	if asString(errObj["code"]) != "tool_choice_violation" {
 		t.Fatalf("expected code=tool_choice_violation, got %#v", out)
+	}
+}
+
+func TestHandleResponsesNonStreamDetectsToolCallInThinkingChannel(t *testing.T) {
+	h := &Handler{}
+	rec := httptest.NewRecorder()
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body: io.NopCloser(strings.NewReader(
+			`data: {"p":"response/thinking_content","v":"先读取文件\n<tool_calls>\n  <invoke name=\"read_file\">\n    <parameter name=\"path\">README.MD</parameter>\n  </invoke>\n</tool_calls>"}` + "\n" +
+				`data: [DONE]` + "\n",
+		)),
+	}
+
+	h.handleResponsesNonStream(rec, resp, "owner-a", "resp_test", "deepseek-v4-flash", "prompt", true, false, []string{"read_file"}, promptcompat.DefaultToolChoicePolicy(), "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 when thinking contains tool calls, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	out := decodeJSONBody(t, rec.Body.String())
+	output, _ := out["output"].([]any)
+	if len(output) == 0 {
+		t.Fatalf("expected output items, got %#v", out)
+	}
+	first, _ := output[0].(map[string]any)
+	if asString(first["type"]) != "function_call" {
+		t.Fatalf("expected function_call output item, got %#v", first)
+	}
+}
+
+func TestHandleResponsesNonStreamRequiredToolChoiceAcceptsThinkingToolCall(t *testing.T) {
+	h := &Handler{}
+	rec := httptest.NewRecorder()
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body: io.NopCloser(strings.NewReader(
+			`data: {"p":"response/thinking_content","v":"<tool_calls>\n  <invoke name=\"read_file\">\n    <parameter name=\"path\">README.MD</parameter>\n  </invoke>\n</tool_calls>"}` + "\n" +
+				`data: [DONE]` + "\n",
+		)),
+	}
+	policy := promptcompat.ToolChoicePolicy{
+		Mode:    promptcompat.ToolChoiceRequired,
+		Allowed: map[string]struct{}{"read_file": {}},
+	}
+
+	h.handleResponsesNonStream(rec, resp, "owner-a", "resp_test", "deepseek-v4-flash", "prompt", true, false, []string{"read_file"}, policy, "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 when required tool_choice is satisfied by thinking tool call, got %d body=%s", rec.Code, rec.Body.String())
 	}
 }
 

@@ -36,7 +36,9 @@ type responsesStreamRuntime struct {
 	toolCallsDoneEmitted bool
 
 	sieve             toolstream.State
-	thinking          strings.Builder
+	thinkingSieve     toolstream.State
+	thinkingRaw       strings.Builder
+	thinkingVisible   strings.Builder
 	text              strings.Builder
 	visibleText       strings.Builder
 	streamToolCallIDs map[int]string
@@ -127,7 +129,9 @@ func (s *responsesStreamRuntime) failResponse(status int, message, code string) 
 }
 
 func (s *responsesStreamRuntime) finalize() {
-	finalThinking := s.thinking.String()
+	s.flushThinking()
+	finalThinkingRaw := s.thinkingRaw.String()
+	finalThinking := s.thinkingVisible.String()
 	finalText := cleanVisibleOutput(s.text.String(), s.stripReferenceMarkers)
 
 	if s.bufferToolContent {
@@ -135,17 +139,9 @@ func (s *responsesStreamRuntime) finalize() {
 	}
 
 	textParsed := toolcall.ParseStandaloneToolCallsDetailed(finalText, s.toolNames)
-	detected := textParsed.Calls
 	s.logToolPolicyRejections(textParsed)
-
-	// Fallback: if text has no tool calls, check thinking content.
-	if len(detected) == 0 && strings.Contains(finalThinking, "<tool_calls") {
-		thinkingParsed := toolcall.ParseStandaloneToolCallsDetailed(finalThinking, s.toolNames)
-		if len(thinkingParsed.Calls) > 0 {
-			detected = thinkingParsed.Calls
-			finalThinking = shared.CleanToolCallXML(finalThinking)
-		}
-	}
+	detectedResult, finalThinking := shared.DetectToolCallsWithThinkingFallback(finalText, finalThinkingRaw, finalThinking, s.toolNames)
+	detected := detectedResult.Calls
 
 	if len(detected) > 0 {
 		s.toolCallsEmitted = true
@@ -211,15 +207,21 @@ func (s *responsesStreamRuntime) onParsed(parsed sse.LineResult) streamengine.Pa
 		}
 		contentSeen = true
 		if p.Type == "thinking" {
-			if !s.thinkingEnabled {
-				continue
-			}
-			trimmed := sse.TrimContinuationOverlap(s.thinking.String(), cleanedText)
+			trimmed := sse.TrimContinuationOverlap(s.thinkingRaw.String(), cleanedText)
 			if trimmed == "" {
 				continue
 			}
-			s.thinking.WriteString(trimmed)
-			s.sendEvent("response.reasoning.delta", openaifmt.BuildResponsesReasoningDeltaPayload(s.responseID, trimmed))
+			s.thinkingRaw.WriteString(trimmed)
+			if !s.thinkingEnabled {
+				continue
+			}
+			for _, evt := range toolstream.ProcessChunk(&s.thinkingSieve, trimmed, s.toolNames) {
+				if evt.Content == "" {
+					continue
+				}
+				s.thinkingVisible.WriteString(evt.Content)
+				s.sendEvent("response.reasoning.delta", openaifmt.BuildResponsesReasoningDeltaPayload(s.responseID, evt.Content))
+			}
 			continue
 		}
 
@@ -236,4 +238,17 @@ func (s *responsesStreamRuntime) onParsed(parsed sse.LineResult) streamengine.Pa
 	}
 
 	return streamengine.ParsedDecision{ContentSeen: contentSeen}
+}
+
+func (s *responsesStreamRuntime) flushThinking() {
+	if !s.thinkingEnabled {
+		return
+	}
+	for _, evt := range toolstream.Flush(&s.thinkingSieve, s.toolNames) {
+		if evt.Content == "" {
+			continue
+		}
+		s.thinkingVisible.WriteString(evt.Content)
+		s.sendEvent("response.reasoning.delta", openaifmt.BuildResponsesReasoningDeltaPayload(s.responseID, evt.Content))
+	}
 }

@@ -136,23 +136,13 @@ func (h *Handler) handleResponsesNonStream(w http.ResponseWriter, resp *http.Res
 	if searchEnabled {
 		sanitizedText = replaceCitationMarkersWithLinks(sanitizedText, result.CitationLinks)
 	}
-	// Fallback: if text has no tool calls, check thinking content for <tool_calls> XML
-	if writeUpstreamEmptyOutputError(w, sanitizedText, sanitizedThinking, result.ContentFilter) {
-		if strings.Contains(sanitizedThinking, "<tool_calls") {
-			detected := toolcall.ParseStandaloneToolCallsDetailed(sanitizedThinking, toolNames)
-			if len(detected.Calls) > 0 {
-				sanitizedThinking = shared.CleanToolCallXML(sanitizedThinking)
-			} else {
-				return
-			}
-		} else {
-			return
-		}
-	}
 	textParsed := toolcall.ParseStandaloneToolCallsDetailed(sanitizedText, toolNames)
 	logResponsesToolPolicyRejection(traceID, toolChoice, textParsed, "text")
-
-	callCount := len(textParsed.Calls)
+	detected, sanitizedThinking := shared.DetectToolCallsWithThinkingFallback(sanitizedText, sanitizedThinking, sanitizedThinking, toolNames)
+	if writeUpstreamEmptyOutputError(w, sanitizedText, sanitizedThinking, result.ContentFilter) && len(detected.Calls) == 0 {
+		return
+	}
+	callCount := len(detected.Calls)
 	if toolChoice.IsRequired() && callCount == 0 {
 		writeOpenAIErrorWithCode(w, http.StatusUnprocessableEntity, "tool_choice requires at least one valid tool call.", "tool_choice_violation")
 		return

@@ -16,7 +16,6 @@ import (
 	"ds2api/internal/promptcompat"
 	"ds2api/internal/sse"
 	streamengine "ds2api/internal/stream"
-	"ds2api/internal/toolcall"
 )
 
 func (h *Handler) ChatCompletions(w http.ResponseWriter, r *http.Request) {
@@ -164,28 +163,14 @@ func (h *Handler) handleNonStream(w http.ResponseWriter, resp *http.Response, co
 	if searchEnabled {
 		finalText = replaceCitationMarkersWithLinks(finalText, result.CitationLinks)
 	}
-	if shouldWriteUpstreamEmptyOutputError(finalText) {
-		// Fallback: check if thinking content contains tool calls
-		if strings.Contains(finalThinking, "<tool_calls") {
-			detected := toolcall.ParseStandaloneToolCallsDetailed(finalThinking, toolNames)
-			if len(detected.Calls) > 0 {
-				finalThinking = shared.CleanToolCallXML(finalThinking)
-			} else {
-				status, message, code := upstreamEmptyOutputDetail(result.ContentFilter, finalText, finalThinking)
-				if historySession != nil {
-					historySession.error(status, message, code, finalThinking, finalText)
-				}
-				writeUpstreamEmptyOutputError(w, finalText, finalThinking, result.ContentFilter)
-				return
-			}
-		} else {
-			status, message, code := upstreamEmptyOutputDetail(result.ContentFilter, finalText, finalThinking)
-			if historySession != nil {
-				historySession.error(status, message, code, finalThinking, finalText)
-			}
-			writeUpstreamEmptyOutputError(w, finalText, finalThinking, result.ContentFilter)
-			return
+	detected, finalThinking := shared.DetectToolCallsWithThinkingFallback(finalText, finalThinking, finalThinking, toolNames)
+	if shouldWriteUpstreamEmptyOutputError(finalText) && len(detected.Calls) == 0 {
+		status, message, code := upstreamEmptyOutputDetail(result.ContentFilter, finalText, finalThinking)
+		if historySession != nil {
+			historySession.error(status, message, code, finalThinking, finalText)
 		}
+		writeUpstreamEmptyOutputError(w, finalText, finalThinking, result.ContentFilter)
+		return
 	}
 	respBody := openaifmt.BuildChatCompletion(completionID, model, finalPrompt, finalThinking, finalText, toolNames)
 	finishReason := "stop"

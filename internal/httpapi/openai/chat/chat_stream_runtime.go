@@ -37,7 +37,9 @@ type chatStreamRuntime struct {
 	toolSieve         toolstream.State
 	streamToolCallIDs map[int]string
 	streamToolNames   map[int]string
-	thinking          strings.Builder
+	thinkingSieve     toolstream.State
+	thinkingRaw       strings.Builder
+	thinkingVisible   strings.Builder
 	text              strings.Builder
 
 	finalThinking     string
@@ -130,20 +132,13 @@ func (s *chatStreamRuntime) resetStreamToolCallState() {
 }
 
 func (s *chatStreamRuntime) finalize(finishReason string) {
-	finalThinking := s.thinking.String()
+	s.flushThinking()
+	finalThinkingRaw := s.thinkingRaw.String()
+	finalThinking := s.thinkingVisible.String()
 	finalText := cleanVisibleOutput(s.text.String(), s.stripReferenceMarkers)
 	s.finalText = finalText
 
-	detected := toolcall.ParseStandaloneToolCallsDetailed(finalText, s.toolNames)
-	// Fallback: if text has no tool calls, check thinking content.
-	// DeepSeek may emit <tool_calls> XML inside thinking fragments.
-	if len(detected.Calls) == 0 && strings.Contains(finalThinking, "<tool_calls") {
-		thinkingDetected := toolcall.ParseStandaloneToolCallsDetailed(finalThinking, s.toolNames)
-		if len(thinkingDetected.Calls) > 0 {
-			detected = thinkingDetected
-			finalThinking = shared.CleanToolCallXML(finalThinking)
-		}
-	}
+	detected, finalThinking := shared.DetectToolCallsWithThinkingFallback(finalText, finalThinkingRaw, finalThinking, s.toolNames)
 	s.finalThinking = finalThinking
 	s.finalText = finalText
 	if len(detected.Calls) > 0 && !s.toolCallsDoneEmitted {
@@ -259,20 +254,29 @@ func (s *chatStreamRuntime) onParsed(parsed sse.LineResult) streamengine.ParsedD
 			continue
 		}
 		contentSeen = true
-		delta := map[string]any{}
-		if !s.firstChunkSent {
-			delta["role"] = "assistant"
-			s.firstChunkSent = true
-		}
 		if p.Type == "thinking" {
-			if s.thinkingEnabled {
-				trimmed := sse.TrimContinuationOverlap(s.thinking.String(), cleanedText)
-				if trimmed == "" {
-					continue
-				}
-				s.thinking.WriteString(trimmed)
-				delta["reasoning_content"] = trimmed
+			trimmed := sse.TrimContinuationOverlap(s.thinkingRaw.String(), cleanedText)
+			if trimmed == "" {
+				continue
 			}
+			s.thinkingRaw.WriteString(trimmed)
+			if s.thinkingEnabled {
+				for _, evt := range toolstream.ProcessChunk(&s.thinkingSieve, trimmed, s.toolNames) {
+					if evt.Content == "" {
+						continue
+					}
+					s.thinkingVisible.WriteString(evt.Content)
+					delta := map[string]any{
+						"reasoning_content": evt.Content,
+					}
+					if !s.firstChunkSent {
+						delta["role"] = "assistant"
+						s.firstChunkSent = true
+					}
+					newChoices = append(newChoices, openaifmt.BuildChatStreamDeltaChoice(0, delta))
+				}
+			}
+			continue
 		} else {
 			trimmed := sse.TrimContinuationOverlap(s.text.String(), cleanedText)
 			if trimmed == "" {
@@ -280,7 +284,13 @@ func (s *chatStreamRuntime) onParsed(parsed sse.LineResult) streamengine.ParsedD
 			}
 			s.text.WriteString(trimmed)
 			if !s.bufferToolContent {
+				delta := map[string]any{}
+				if !s.firstChunkSent {
+					delta["role"] = "assistant"
+					s.firstChunkSent = true
+				}
 				delta["content"] = trimmed
+				newChoices = append(newChoices, openaifmt.BuildChatStreamDeltaChoice(0, delta))
 			} else {
 				events := toolstream.ProcessChunk(&s.toolSieve, trimmed, s.toolNames)
 				for _, evt := range events {
@@ -338,13 +348,36 @@ func (s *chatStreamRuntime) onParsed(parsed sse.LineResult) streamengine.ParsedD
 				}
 			}
 		}
-		if len(delta) > 0 {
-			newChoices = append(newChoices, openaifmt.BuildChatStreamDeltaChoice(0, delta))
-		}
 	}
 
 	if len(newChoices) > 0 {
 		s.sendChunk(openaifmt.BuildChatStreamChunk(s.completionID, s.created, s.model, newChoices, nil))
 	}
 	return streamengine.ParsedDecision{ContentSeen: contentSeen}
+}
+
+func (s *chatStreamRuntime) flushThinking() {
+	if !s.thinkingEnabled {
+		return
+	}
+	for _, evt := range toolstream.Flush(&s.thinkingSieve, s.toolNames) {
+		if evt.Content == "" {
+			continue
+		}
+		s.thinkingVisible.WriteString(evt.Content)
+		delta := map[string]any{
+			"reasoning_content": evt.Content,
+		}
+		if !s.firstChunkSent {
+			delta["role"] = "assistant"
+			s.firstChunkSent = true
+		}
+		s.sendChunk(openaifmt.BuildChatStreamChunk(
+			s.completionID,
+			s.created,
+			s.model,
+			[]map[string]any{openaifmt.BuildChatStreamDeltaChoice(0, delta)},
+			nil,
+		))
+	}
 }

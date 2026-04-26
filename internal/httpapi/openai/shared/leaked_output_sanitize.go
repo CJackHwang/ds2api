@@ -59,7 +59,6 @@ func sanitizeLeakedOutput(text string) string {
 	out = leakedThinkTagPattern.ReplaceAllString(out, "")
 	out = leakedBOSMarkerPattern.ReplaceAllString(out, "")
 	out = leakedMetaMarkerPattern.ReplaceAllString(out, "")
-	out = CleanToolCallXML(out)
 	out = sanitizeLeakedAgentXMLBlocks(out)
 	return out
 }
