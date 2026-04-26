@@ -13,7 +13,15 @@ const XML_TOOL_TAG_PAIRS = [
 
 const XML_TOOL_OPENING_TAGS = XML_TOOL_TAG_PAIRS.map(p => p.open);
 
-function consumeXMLToolCapture(captured, toolNames, trimWrappingJSONFence) {
+function countToolCallOpenTags(text) {
+  return [...(typeof text === 'string' ? text : '').matchAll(/<tool_call\b/gi)].length;
+}
+
+function countToolCallCloseTags(text) {
+  return [...(typeof text === 'string' ? text : '').matchAll(/<\/tool_call>/gi)].length;
+}
+
+function consumeXMLToolCapture(captured, toolNames, trimWrappingJSONFence, finalize = false) {
   const lower = captured.toLowerCase();
   // Find the FIRST matching open/close pair, preferring wrapper tags.
   for (const pair of XML_TOOL_TAG_PAIRS) {
@@ -32,6 +40,9 @@ function consumeXMLToolCapture(captured, toolNames, trimWrappingJSONFence) {
     const xmlBlock = captured.slice(openIdx, closeEnd);
     let prefixPart = captured.slice(0, openIdx);
     let suffixPart = captured.slice(closeEnd);
+    if (!finalize && pair.open === '<tool_calls' && countToolCallOpenTags(xmlBlock) > countToolCallCloseTags(xmlBlock)) {
+      return { ready: false, prefix: '', calls: [], suffix: '' };
+    }
     const parsed = parseToolCalls(xmlBlock, toolNames);
     if (Array.isArray(parsed) && parsed.length > 0) {
       const trimmedFence = trimWrappingJSONFence(prefixPart, suffixPart);

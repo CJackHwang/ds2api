@@ -23,8 +23,29 @@ var xmlToolNamePatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?is)<(?:[a-z0-9_:-]+:)?tool_name\b[^>]*>(.*?)</(?:[a-z0-9_:-]+:)?tool_name>`),
 	regexp.MustCompile(`(?is)<(?:[a-z0-9_:-]+:)?function_name\b[^>]*>(.*?)</(?:[a-z0-9_:-]+:)?function_name>`),
 }
+var xmlToolCallOpenPattern = regexp.MustCompile(`(?is)<tool_call\b[^>]*>`)
+var malformedXMLToolNameTagPattern = regexp.MustCompile(`(?is)<(?:tool_name|function_name)\s*=\s*["']([^<"']+)</(?:tool_name|function_name)>`)
+
+func repairMalformedXMLToolNameTags(text string) string {
+	if text == "" {
+		return text
+	}
+	return malformedXMLToolNameTagPattern.ReplaceAllStringFunc(text, func(match string) string {
+		lower := strings.ToLower(match)
+		tag := "tool_name"
+		if strings.Contains(lower, "<function_name") {
+			tag = "function_name"
+		}
+		submatches := malformedXMLToolNameTagPattern.FindStringSubmatch(match)
+		if len(submatches) < 2 {
+			return match
+		}
+		return "<" + tag + ">" + submatches[1] + "</" + tag + ">"
+	})
+}
 
 func parseXMLToolCalls(text string) []ParsedToolCall {
+	text = repairMalformedXMLToolNameTags(text)
 	matches := xmlToolCallPattern.FindAllString(text, -1)
 	out := make([]ParsedToolCall, 0, len(matches)+1)
 	for _, block := range matches {
@@ -34,8 +55,15 @@ func parseXMLToolCalls(text string) []ParsedToolCall {
 		}
 		out = append(out, call)
 	}
+	repaired := parseRepairedXMLToolCalls(text)
+	if len(repaired) > len(out) {
+		return repaired
+	}
 	if len(out) > 0 {
 		return out
+	}
+	if len(repaired) > 0 {
+		return repaired
 	}
 	if call, ok := parseFunctionCallTagStyle(text); ok {
 		return []ParsedToolCall{call}
@@ -59,6 +87,63 @@ func parseXMLToolCalls(text string) []ParsedToolCall {
 		return []ParsedToolCall{call}
 	}
 	return nil
+}
+
+func parseRepairedXMLToolCalls(text string) []ParsedToolCall {
+	starts := xmlToolCallOpenPattern.FindAllStringIndex(text, -1)
+	if len(starts) == 0 {
+		return nil
+	}
+	lower := strings.ToLower(text)
+	out := make([]ParsedToolCall, 0, len(starts))
+	for i, loc := range starts {
+		start := loc[0]
+		nextStart := len(text)
+		if i+1 < len(starts) {
+			nextStart = starts[i+1][0]
+		}
+
+		explicitEnd := -1
+		if idx := strings.Index(lower[start:], "</tool_call>"); idx >= 0 {
+			explicitEnd = start + idx + len("</tool_call>")
+		}
+		wrapperClose := -1
+		if idx := strings.Index(lower[start:], "</tool_calls>"); idx >= 0 {
+			wrapperClose = start + idx
+		}
+
+		end := len(text)
+		implicitClose := true
+		switch {
+		case explicitEnd >= 0 && explicitEnd <= nextStart && (wrapperClose < 0 || explicitEnd <= wrapperClose):
+			end = explicitEnd
+			implicitClose = false
+		case wrapperClose >= 0 && wrapperClose < nextStart:
+			end = wrapperClose
+		case nextStart < len(text):
+			end = nextStart
+		case explicitEnd >= 0:
+			end = explicitEnd
+			implicitClose = false
+		case wrapperClose >= 0:
+			end = wrapperClose
+		}
+
+		segment := strings.TrimSpace(text[start:end])
+		if segment == "" {
+			continue
+		}
+		if implicitClose && !strings.Contains(strings.ToLower(segment), "</tool_call>") {
+			segment += "</tool_call>"
+		}
+		if call, ok := parseSingleXMLToolCall(segment); ok {
+			out = append(out, call)
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 func parseSingleXMLToolCall(block string) (ParsedToolCall, bool) {
@@ -152,6 +237,7 @@ func parseSingleXMLToolCall(block string) (ParsedToolCall, bool) {
 	if strings.TrimSpace(name) == "" {
 		name = strings.TrimSpace(html.UnescapeString(extractXMLToolNameByRegex(stripTopLevelXMLParameters(inner))))
 	}
+		params = mergeDirectNamedMarkupParams(params, inner)
 	if strings.TrimSpace(name) == "" {
 		return ParsedToolCall{}, false
 	}
@@ -187,6 +273,9 @@ func extractXMLToolNameByRegex(inner string) string {
 				return v
 			}
 		}
+	}
+	if v := strings.TrimSpace(extractMarkupToolName(inner)); v != "" {
+		return v
 	}
 	return ""
 }

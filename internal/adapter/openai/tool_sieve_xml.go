@@ -44,8 +44,37 @@ var xmlToolTagsToDetect = []string{"<tool_calls>", "<tool_calls\n", "<tool_call>
 	// Agent-style tags
 	"<attempt_completion>", "<ask_followup_question>", "<new_task>"}
 
+var xmlToolCallOpenTagPattern = regexp.MustCompile(`(?is)<tool_call\b`)
+
+func countXMLToolCallOpenTags(text string) int {
+	return len(xmlToolCallOpenTagPattern.FindAllStringIndex(text, -1))
+}
+
+func countXMLToolCallCloseTags(text string) int {
+	return strings.Count(strings.ToLower(text), "</tool_call>")
+}
+
+func looksLikeExecutableXMLToolCall(block string) bool {
+	lower := strings.ToLower(block)
+	if !(strings.Contains(lower, "<tool_call") ||
+		strings.Contains(lower, "<tool_calls") ||
+		strings.Contains(lower, "<invoke") ||
+		strings.Contains(lower, "<function_call") ||
+		strings.Contains(lower, "<function_calls") ||
+		strings.Contains(lower, "<tool_use")) {
+		return false
+	}
+	return strings.Contains(lower, "<tool_name") ||
+		strings.Contains(lower, "<function_name") ||
+		strings.Contains(lower, "<parameters") ||
+		strings.Contains(lower, "<parameter") ||
+		strings.Contains(lower, "<arguments") ||
+		strings.Contains(lower, "<argument") ||
+		strings.Contains(lower, " name=")
+}
+
 // consumeXMLToolCapture tries to extract complete XML tool call blocks from captured text.
-func consumeXMLToolCapture(captured string, toolNames []string) (prefix string, calls []toolcall.ParsedToolCall, suffix string, ready bool) {
+func consumeXMLToolCapture(captured string, toolNames []string, finalize bool) (prefix string, calls []toolcall.ParsedToolCall, suffix string, ready bool) {
 	lower := strings.ToLower(captured)
 	// Find the FIRST matching open/close pair, preferring wrapper tags.
 	// Tag pairs are ordered longest-first (e.g. <tool_calls before <tool_call)
@@ -68,10 +97,17 @@ func consumeXMLToolCapture(captured string, toolNames []string) (prefix string, 
 		xmlBlock := captured[openIdx:closeEnd]
 		prefixPart := captured[:openIdx]
 		suffixPart := captured[closeEnd:]
+		if !finalize && pair.open == "<tool_calls" && countXMLToolCallOpenTags(xmlBlock) > countXMLToolCallCloseTags(xmlBlock) {
+			return "", nil, "", false
+		}
 		parsed := toolcall.ParseToolCalls(xmlBlock, toolNames)
 		if len(parsed) > 0 {
 			prefixPart, suffixPart = trimWrappingJSONFence(prefixPart, suffixPart)
 			return prefixPart, parsed, suffixPart, true
+		}
+		if looksLikeExecutableXMLToolCall(xmlBlock) {
+			prefixPart, suffixPart = trimWrappingJSONFence(prefixPart, suffixPart)
+			return prefixPart, nil, suffixPart, true
 		}
 		// If this block failed to become a tool call, pass it through as text.
 		return prefixPart + xmlBlock, nil, suffixPart, true

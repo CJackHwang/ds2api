@@ -26,7 +26,7 @@ func processToolSieveChunk(state *toolStreamSieveState, chunk string, toolNames 
 				state.capture.WriteString(state.pending.String())
 				state.pending.Reset()
 			}
-			prefix, calls, suffix, ready := consumeToolCapture(state, toolNames)
+			prefix, calls, suffix, ready := consumeToolCapture(state, toolNames, false)
 			if !ready {
 				break
 			}
@@ -98,7 +98,7 @@ func flushToolSieve(state *toolStreamSieveState, toolNames []string) []toolStrea
 		state.pendingToolCalls = nil
 	}
 	if state.capturing {
-		consumedPrefix, consumedCalls, consumedSuffix, ready := consumeToolCapture(state, toolNames)
+		consumedPrefix, consumedCalls, consumedSuffix, ready := consumeToolCapture(state, toolNames, true)
 		if ready {
 			if consumedPrefix != "" {
 				state.noteText(consumedPrefix)
@@ -113,9 +113,9 @@ func flushToolSieve(state *toolStreamSieveState, toolNames []string) []toolStrea
 			}
 		} else {
 			content := state.capture.String()
-			if content != "" {
-				// If capture never resolved into a real tool call, release the
-				// buffered text instead of swallowing it.
+			if content != "" && !hasOpenXMLToolTag(content) {
+				// Suppress unterminated XML tool markup at flush time instead of
+				// leaking raw executable-looking tags into visible output.
 				state.noteText(content)
 				events = append(events, toolStreamEvent{Content: content})
 			}
@@ -126,9 +126,11 @@ func flushToolSieve(state *toolStreamSieveState, toolNames []string) []toolStrea
 	}
 	if state.pending.Len() > 0 {
 		content := state.pending.String()
-		// If pending never resolved into a real tool call, release it as text.
-		state.noteText(content)
-		events = append(events, toolStreamEvent{Content: content})
+		// Do not leak trailing partial/open XML tool markup on flush.
+		if !hasOpenXMLToolTag(content) && findPartialXMLToolTagStart(content) < 0 {
+			state.noteText(content)
+			events = append(events, toolStreamEvent{Content: content})
+		}
 		state.pending.Reset()
 	}
 	return events
@@ -179,14 +181,14 @@ func findToolSegmentStart(state *toolStreamSieveState, s string) int {
 	}
 }
 
-func consumeToolCapture(state *toolStreamSieveState, toolNames []string) (prefix string, calls []toolcall.ParsedToolCall, suffix string, ready bool) {
+func consumeToolCapture(state *toolStreamSieveState, toolNames []string, finalize bool) (prefix string, calls []toolcall.ParsedToolCall, suffix string, ready bool) {
 	captured := state.capture.String()
 	if captured == "" {
 		return "", nil, "", false
 	}
 
 	// XML tool call extraction only.
-	if xmlPrefix, xmlCalls, xmlSuffix, xmlReady := consumeXMLToolCapture(captured, toolNames); xmlReady {
+	if xmlPrefix, xmlCalls, xmlSuffix, xmlReady := consumeXMLToolCapture(captured, toolNames, finalize); xmlReady {
 		return xmlPrefix, xmlCalls, xmlSuffix, true
 	}
 	// If XML tags are present but block is incomplete, keep buffering.

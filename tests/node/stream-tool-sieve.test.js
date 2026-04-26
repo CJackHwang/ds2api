@@ -155,6 +155,24 @@ test('sieve passes malformed executable-looking XML through as text', () => {
   assert.equal(leakedText, chunk);
 });
 
+test('sieve repairs malformed repeated tool_calls wrapper closures on flush', () => {
+  const events = runSieve(
+    [
+      '<tool_calls>\n<tool_call>\n<tool_name>exec</tool_name>\n<parameters><command><![CDATA[pwd]]></command></parameters>\n</tool_calls>',
+      '<tool_call>\n<tool_name>memory_search</tool_name>\n<parameters><query><![CDATA[test query]]></query></parameters>\n</tool_calls>',
+    ],
+    ['exec', 'memory_search'],
+  );
+  const leakedText = collectText(events);
+  const finalCalls = events.filter((evt) => evt.type === 'tool_calls').flatMap((evt) => evt.calls || []);
+  assert.equal(leakedText, '');
+  assert.equal(finalCalls.length, 2);
+  assert.equal(finalCalls[0].name, 'exec');
+  assert.equal(finalCalls[0].input.command, 'pwd');
+  assert.equal(finalCalls[1].name, 'memory_search');
+  assert.equal(finalCalls[1].input.query, 'test query');
+});
+
 test('sieve flushes incomplete captured XML tool blocks by falling back to raw text', () => {
   const events = runSieve(
     [

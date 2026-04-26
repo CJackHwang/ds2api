@@ -79,3 +79,24 @@ echo "hello"
 		})
 	}
 }
+
+func TestRegression_RepairsPrematureToolCallsWrapperClosures(t *testing.T) {
+	text := `<tool_calls>
+<tool_call>
+<tool_name>exec</tool_name>
+<parameters><command><![CDATA[pwd]]></command><timeout><![CDATA[30]]></timeout></parameters>
+</tool_calls><tool_call>
+<tool_name>memory_search</tool_name>
+<parameters><query><![CDATA[test query]]></query></parameters>
+</tool_calls>`
+	got := ParseToolCalls(text, []string{"exec", "memory_search"})
+	if len(got) != 2 {
+		t.Fatalf("expected 2 repaired calls, got %#v", got)
+	}
+	if got[0].Name != "exec" || got[0].Input["command"] != "pwd" {
+		t.Fatalf("expected repaired exec call, got %#v", got[0])
+	}
+	if got[1].Name != "memory_search" || got[1].Input["query"] != "test query" {
+		t.Fatalf("expected repaired memory_search call, got %#v", got[1])
+	}
+}

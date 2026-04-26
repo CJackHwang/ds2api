@@ -33,7 +33,7 @@ function processToolSieveChunk(state, chunk, toolNames) {
         state.capture += state.pending;
         state.pending = '';
       }
-      const consumed = consumeToolCapture(state, toolNames);
+      const consumed = consumeToolCapture(state, toolNames, false);
       if (!consumed.ready) {
         break;
       }
@@ -98,7 +98,7 @@ function flushToolSieve(state, toolNames) {
     state.pendingToolCalls = [];
   }
   if (state.capturing) {
-    const consumed = consumeToolCapture(state, toolNames);
+    const consumed = consumeToolCapture(state, toolNames, true);
     if (consumed.ready) {
       if (consumed.prefix) {
         noteText(state, consumed.prefix);
@@ -174,14 +174,14 @@ function findToolSegmentStart(state, s) {
   }
 }
 
-function consumeToolCapture(state, toolNames) {
+function consumeToolCapture(state, toolNames, finalize) {
   const captured = state.capture || '';
   if (!captured) {
     return { ready: false, prefix: '', calls: [], suffix: '' };
   }
 
   // XML-only tool call extraction.
-  const xmlResult = consumeXMLToolCaptureImpl(captured, toolNames, trimWrappingJSONFence);
+  const xmlResult = consumeXMLToolCaptureImpl(captured, toolNames, trimWrappingJSONFence, finalize === true);
   if (xmlResult.ready) {
     return xmlResult;
   }

@@ -2,8 +2,16 @@
 
 const TOOL_CALL_MARKUP_BLOCK_PATTERN = /<(?:[a-z0-9_:-]+:)?(tool_call|function_call|invoke)\b([^>]*)>([\s\S]*?)<\/(?:[a-z0-9_:-]+:)?\1>/gi;
 const TOOL_CALL_MARKUP_SELFCLOSE_PATTERN = /<(?:[a-z0-9_:-]+:)?invoke\b([^>]*)\/>/gi;
-const TOOL_CALL_MARKUP_KV_PATTERN = /<(?:[a-z0-9_:-]+:)?([a-z0-9_.-]+)\b[^>]*>([\s\S]*?)<\/(?:[a-z0-9_:-]+:)?\1>/gi;
-const TOOL_CALL_MARKUP_ATTR_PATTERN = /(name|function|tool)\s*=\s*"([^"]+)"/i;
+const TOOL_CALL_OPEN_TAG_PATTERN = /<tool_call\b[^>]*>/gi;
+const TOOL_CALL_SINGLE_BLOCK_PATTERN = /^<(?:[a-z0-9_:-]+:)?tool_call\b([^>]*)>([\s\S]*?)<\/(?:[a-z0-9_:-]+:)?tool_call>$/i;
+const MALFORMED_TOOL_NAME_TAG_PATTERN = /<(tool_name|function_name)\s*=\s*["']([^<"']+)<\/\1>/gi;
+const TOOL_CALL_MARKUP_KV_PATTERN = /<(?:[a-z0-9_:-]+:)?([a-z0-9_.-]+)\b([^>]*)>([\s\S]*?)<\/(?:[a-z0-9_:-]+:)?([a-z0-9_.-]+)>/gi;
+const TOOL_CALL_MARKUP_ATTR_PATTERN = /(name|function|tool)\s*=\s*["']([^"']+)["']/i;
+const DIRECT_NAMED_MARKUP_PARAM_PATTERN = /<(?:[a-z0-9_:-]+:)?(?:parameter|argument)\b[^>]*\bname\s*=\s*["']([^"']+)["'][^>]*>\s*([\s\S]*?)(?:<\/(?:[a-z0-9_:-]+:)?(?:parameter|argument)>|(?=<(?:[a-z0-9_:-]+:)?(?:parameter|argument)\b)|(?=<(?:[a-z0-9_:-]+:)?tool_call\b)|(?=<\/(?:[a-z0-9_:-]+:)?tool_call>)|(?=<\/(?:[a-z0-9_:-]+:)?tool_calls>)|$)/gi;
+const TOOL_CALL_MARKUP_NAME_ATTR_PATTERNS = [
+  /<(?:[a-z0-9_:-]+:)?tool_name\b[^>]*\bname\s*=\s*["']([^"']+)["'][^>]*>/i,
+  /<(?:[a-z0-9_:-]+:)?function_name\b[^>]*\bname\s*=\s*["']([^"']+)["'][^>]*>/i,
+];
 const TOOL_CALL_MARKUP_NAME_PATTERNS = [
   /<(?:[a-z0-9_:-]+:)?tool_name\b[^>]*>([\s\S]*?)<\/(?:[a-z0-9_:-]+:)?tool_name>/i,
   /<(?:[a-z0-9_:-]+:)?function_name\b[^>]*>([\s\S]*?)<\/(?:[a-z0-9_:-]+:)?function_name>/i,
@@ -34,8 +42,12 @@ function stripFencedCodeBlocks(text) {
   return t.replace(/```[\s\S]*?```/g, ' ');
 }
 
+function repairMalformedToolNameTags(text) {
+  return toStringSafe(text).replace(MALFORMED_TOOL_NAME_TAG_PATTERN, '<$1>$2</$1>');
+}
+
 function parseMarkupToolCalls(text) {
-  const raw = toStringSafe(text).trim();
+  const raw = repairMalformedToolNameTags(toStringSafe(text)).trim();
   if (!raw) {
     return [];
   }
@@ -48,6 +60,64 @@ function parseMarkupToolCalls(text) {
   }
   for (const m of raw.matchAll(TOOL_CALL_MARKUP_SELFCLOSE_PATTERN)) {
     const parsed = parseMarkupSingleToolCall(toStringSafe(m[1]).trim(), '');
+    if (parsed) {
+      out.push(parsed);
+    }
+  }
+  const repaired = parseRepairedToolCallBlocks(raw);
+  if (repaired.length > out.length) {
+    return repaired;
+  }
+  return out;
+}
+
+function parseRepairedToolCallBlocks(text) {
+  const raw = toStringSafe(text).trim();
+  if (!raw) {
+    return [];
+  }
+  const lower = raw.toLowerCase();
+  const starts = [...raw.matchAll(TOOL_CALL_OPEN_TAG_PATTERN)].map((m) => m.index).filter((v) => Number.isInteger(v));
+  if (starts.length === 0) {
+    return [];
+  }
+  const out = [];
+  for (let i = 0; i < starts.length; i += 1) {
+    const start = starts[i];
+    const nextStart = i + 1 < starts.length ? starts[i + 1] : raw.length;
+    const explicitRel = lower.indexOf('</tool_call>', start);
+    const explicitEnd = explicitRel >= 0 ? explicitRel + '</tool_call>'.length : -1;
+    const wrapperRel = lower.indexOf('</tool_calls>', start);
+    const wrapperPos = wrapperRel >= 0 ? wrapperRel : -1;
+
+    let end = raw.length;
+    let implicitClose = true;
+    if (explicitEnd >= 0 && explicitEnd <= nextStart && (wrapperPos < 0 || explicitEnd <= wrapperPos)) {
+      end = explicitEnd;
+      implicitClose = false;
+    } else if (wrapperPos >= 0 && wrapperPos < nextStart) {
+      end = wrapperPos;
+    } else if (nextStart < raw.length) {
+      end = nextStart;
+    } else if (explicitEnd >= 0) {
+      end = explicitEnd;
+      implicitClose = false;
+    } else if (wrapperPos >= 0) {
+      end = wrapperPos;
+    }
+
+    let segment = raw.slice(start, end).trim();
+    if (!segment) {
+      continue;
+    }
+    if (implicitClose && !segment.toLowerCase().includes('</tool_call>')) {
+      segment += '</tool_call>';
+    }
+    const match = segment.match(TOOL_CALL_SINGLE_BLOCK_PATTERN);
+    if (!match) {
+      continue;
+    }
+    const parsed = parseMarkupSingleToolCall(toStringSafe(match[1]).trim(), toStringSafe(match[2]).trim());
     if (parsed) {
       out.push(parsed);
     }
@@ -76,7 +146,7 @@ function parseMarkupSingleToolCall(attrs, inner) {
     name = toStringSafe(attrMatch[2]).trim();
   }
   if (!name) {
-    name = extractRawTagValue(findMarkupTagValue(inner, TOOL_CALL_MARKUP_NAME_PATTERNS));
+    name = extractMarkupToolName(inner);
   }
   if (!name) {
     return null;
@@ -92,6 +162,7 @@ function parseMarkupSingleToolCall(attrs, inner) {
       input = kv;
     }
   }
+  input = mergeDirectNamedMarkupParams(input, inner);
   return { name, input };
 }
 
@@ -124,17 +195,43 @@ function parseMarkupKVObject(text) {
   }
   const out = {};
   for (const m of raw.matchAll(TOOL_CALL_MARKUP_KV_PATTERN)) {
-    const key = toStringSafe(m[1]).trim();
+    let key = toStringSafe(m[1]).trim();
+    const attrs = toStringSafe(m[2]).trim();
+    const endKey = toStringSafe(m[4]).trim();
+    if (!key || key.toLowerCase() !== endKey.toLowerCase()) {
+      continue;
+    }
+    if ((key.toLowerCase() === 'parameter' || key.toLowerCase() === 'argument') && attrs) {
+      const attrMatch = attrs.match(TOOL_CALL_MARKUP_ATTR_PATTERN);
+      if (attrMatch && attrMatch[1] && attrMatch[1].toLowerCase() === 'name' && attrMatch[2]) {
+        key = toStringSafe(attrMatch[2]).trim();
+      }
+    }
     if (!key) {
       continue;
     }
-    const value = parseMarkupValue(m[2]);
+    const value = parseMarkupValue(m[3]);
     if (value === undefined || value === null) {
       continue;
     }
     appendMarkupValue(out, key, value);
   }
   return out;
+}
+
+function extractMarkupToolName(inner) {
+  const direct = extractRawTagValue(findMarkupTagValue(inner, TOOL_CALL_MARKUP_NAME_PATTERNS));
+  if (direct) {
+    return direct;
+  }
+  const raw = toStringSafe(inner);
+  for (const pattern of TOOL_CALL_MARKUP_NAME_ATTR_PATTERNS) {
+    const match = raw.match(pattern);
+    if (match && match[1]) {
+      return toStringSafe(match[1]).trim();
+    }
+  }
+  return '';
 }
 
 function parseMarkupValue(raw) {
@@ -246,6 +343,41 @@ function appendMarkupValue(out, key, value) {
     return;
   }
   out[key] = value;
+}
+
+function clonePlainObject(obj) {
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) {
+    return {};
+  }
+  return { ...obj };
+}
+
+function mergeDirectNamedMarkupParams(base, inner) {
+  const out = clonePlainObject(base);
+  let found = false;
+  for (const match of toStringSafe(inner).matchAll(DIRECT_NAMED_MARKUP_PARAM_PATTERN)) {
+    const key = toStringSafe(match[1]).trim();
+    if (!key) {
+      continue;
+    }
+    const value = extractRawTagValue(match[2]);
+    if (!value) {
+      continue;
+    }
+    const parsed = parseToolCallInput(value);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && Object.keys(parsed).length > 0 && !isOnlyRawValue(parsed)) {
+      if (!Object.prototype.hasOwnProperty.call(out, key) || JSON.stringify(out[key]) !== JSON.stringify(parsed)) {
+        appendMarkupValue(out, key, parsed);
+      }
+    } else if (!Object.prototype.hasOwnProperty.call(out, key) || JSON.stringify(out[key]) !== JSON.stringify(value)) {
+      appendMarkupValue(out, key, value);
+    }
+    found = true;
+  }
+  if (found && Object.prototype.hasOwnProperty.call(out, '_raw') && Object.keys(out).length > 1) {
+    delete out._raw;
+  }
+  return out;
 }
 
 function isOnlyRawValue(obj) {

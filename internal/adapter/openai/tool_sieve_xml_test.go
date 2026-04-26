@@ -164,6 +164,34 @@ func TestProcessToolSieveNonToolXMLKeepsSuffixForToolParsing(t *testing.T) {
 	}
 }
 
+func TestProcessToolSieveRepairsPrematureToolCallsWrapperClosuresOnFlush(t *testing.T) {
+	var state toolStreamSieveState
+	chunks := []string{
+		"<tool_calls>\n<tool_call>\n<tool_name>exec</tool_name>\n<parameters><command><![CDATA[pwd]]></command></parameters>\n</tool_calls>",
+		"<tool_call>\n<tool_name>memory_search</tool_name>\n<parameters><query><![CDATA[test query]]></query></parameters>\n</tool_calls>",
+	}
+	var events []toolStreamEvent
+	for _, c := range chunks {
+		events = append(events, processToolSieveChunk(&state, c, []string{"exec", "memory_search"})...)
+	}
+	events = append(events, flushToolSieve(&state, []string{"exec", "memory_search"})...)
+
+	var textContent strings.Builder
+	var calls []string
+	for _, evt := range events {
+		textContent.WriteString(evt.Content)
+		for _, tc := range evt.ToolCalls {
+			calls = append(calls, tc.Name)
+		}
+	}
+	if textContent.Len() != 0 {
+		t.Fatalf("expected malformed wrapper output to be repaired without text leak, got %q", textContent.String())
+	}
+	if len(calls) != 2 || calls[0] != "exec" || calls[1] != "memory_search" {
+		t.Fatalf("expected repaired tool calls, got %#v events=%#v", calls, events)
+	}
+}
+
 func TestProcessToolSievePassesThroughMalformedExecutableXMLBlock(t *testing.T) {
 	var state toolStreamSieveState
 	chunk := `<tool_call><parameters>{"path":"README.md"}</parameters></tool_call>`

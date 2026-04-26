@@ -3,6 +3,7 @@ package toolcall
 import (
 	"encoding/json"
 	"html"
+	"reflect"
 	"regexp"
 	"strings"
 )
@@ -14,8 +15,13 @@ var toolCallMarkupTagPatternByName = map[string]*regexp.Regexp{
 	"invoke":        regexp.MustCompile(`(?is)<(?:[a-z0-9_:-]+:)?invoke\b([^>]*)>(.*?)</(?:[a-z0-9_:-]+:)?invoke>`),
 }
 var toolCallMarkupSelfClosingPattern = regexp.MustCompile(`(?is)<(?:[a-z0-9_:-]+:)?invoke\b([^>]*)/>`)
-var toolCallMarkupKVPattern = regexp.MustCompile(`(?is)<(?:[a-z0-9_:-]+:)?([a-z0-9_\-.]+)\b[^>]*>(.*?)</(?:[a-z0-9_:-]+:)?([a-z0-9_\-.]+)>`)
-var toolCallMarkupAttrPattern = regexp.MustCompile(`(?is)(name|function|tool)\s*=\s*"([^"]+)"`)
+var toolCallMarkupKVPattern = regexp.MustCompile(`(?is)<(?:[a-z0-9_:-]+:)?([a-z0-9_\-.]+)\b([^>]*)>(.*?)</(?:[a-z0-9_:-]+:)?([a-z0-9_\-.]+)>`)
+var toolCallMarkupAttrPattern = regexp.MustCompile(`(?is)(name|function|tool)\s*=\s*["']([^"']+)["']`)
+var directNamedMarkupParamOpenPattern = regexp.MustCompile(`(?is)<(?:[a-z0-9_:-]+:)?(?:parameter|argument)\b([^>]*)>`)
+var toolCallMarkupInnerNameAttrPatterns = []*regexp.Regexp{
+	regexp.MustCompile(`(?is)<(?:[a-z0-9_:-]+:)?tool_name\b[^>]*\bname\s*=\s*["']([^"']+)["'][^>]*>`),
+	regexp.MustCompile(`(?is)<(?:[a-z0-9_:-]+:)?function_name\b[^>]*\bname\s*=\s*["']([^"']+)["'][^>]*>`),
+}
 var anyTagPattern = regexp.MustCompile(`(?is)<[^>]+>`)
 var toolCallMarkupNameTagNames = []string{"name", "function"}
 var toolCallMarkupNamePatternByTag = map[string]*regexp.Regexp{
@@ -103,7 +109,7 @@ func parseMarkupSingleToolCall(attrs string, inner string) ParsedToolCall {
 		name = strings.TrimSpace(m[2])
 	}
 	if name == "" {
-		name = findMarkupTagValue(inner, toolCallMarkupNameTagNames, toolCallMarkupNamePatternByTag)
+		name = extractMarkupToolName(inner)
 	}
 	if name == "" {
 		return ParsedToolCall{}
@@ -115,6 +121,7 @@ func parseMarkupSingleToolCall(attrs string, inner string) ParsedToolCall {
 	} else if kv := parseMarkupKVObject(inner); len(kv) > 0 {
 		input = kv
 	}
+	input = mergeDirectNamedMarkupParams(input, inner)
 	return ParsedToolCall{Name: name, Input: input}
 }
 
@@ -129,19 +136,25 @@ func parseMarkupKVObject(text string) map[string]any {
 	}
 	out := map[string]any{}
 	for _, m := range matches {
-		if len(m) < 4 {
+		if len(m) < 5 {
 			continue
 		}
 		key := strings.TrimSpace(m[1])
-		endKey := strings.TrimSpace(m[3])
+		attrs := strings.TrimSpace(m[2])
+		endKey := strings.TrimSpace(m[4])
 		if key == "" {
 			continue
 		}
 		if !strings.EqualFold(key, endKey) {
 			continue
 		}
-		value := parseMarkupValue(m[2])
-		if value == nil {
+		if strings.EqualFold(key, "parameter") || strings.EqualFold(key, "argument") {
+			if attrMatch := toolCallMarkupAttrPattern.FindStringSubmatch(attrs); len(attrMatch) >= 3 && strings.EqualFold(attrMatch[1], "name") {
+				key = strings.TrimSpace(attrMatch[2])
+			}
+		}
+		value := parseMarkupValue(m[3])
+		if value == nil || strings.TrimSpace(key) == "" {
 			continue
 		}
 		appendMarkupValue(out, key, value)
@@ -150,6 +163,77 @@ func parseMarkupKVObject(text string) map[string]any {
 		return nil
 	}
 	return out
+}
+
+func extractMarkupToolName(inner string) string {
+	name := findMarkupTagValue(inner, toolCallMarkupNameTagNames, toolCallMarkupNamePatternByTag)
+	if name != "" {
+		return name
+	}
+	for _, pattern := range toolCallMarkupInnerNameAttrPatterns {
+		if m := pattern.FindStringSubmatch(inner); len(m) >= 2 {
+			if v := strings.TrimSpace(html.UnescapeString(m[1])); v != "" {
+				return v
+			}
+		}
+	}
+	return ""
+}
+
+func mergeDirectNamedMarkupParams(base map[string]any, inner string) map[string]any {
+ out := map[string]any{}
+ for k, v := range base {
+ out[k] = v
+ }
+ found := false
+ lower := strings.ToLower(inner)
+ matches := directNamedMarkupParamOpenPattern.FindAllStringSubmatchIndex(inner, -1)
+ for _, loc := range matches {
+ if len(loc) < 4 {
+ continue
+ }
+ attrs := inner[loc[2]:loc[3]]
+ attrMatch := toolCallMarkupAttrPattern.FindStringSubmatch(attrs)
+ if len(attrMatch) < 3 || !strings.EqualFold(strings.TrimSpace(attrMatch[1]), "name") {
+ continue
+ }
+ key := strings.TrimSpace(html.UnescapeString(attrMatch[2]))
+ if key == "" {
+ continue
+ }
+ bodyStart := loc[1]
+ restLower := lower[bodyStart:]
+ end := len(inner)
+ for _, marker := range []string{"</parameter>", "</argument>", "<parameter", "<argument", "<tool_call", "</tool_call>", "</tool_calls>"} {
+ idx := strings.Index(restLower, marker)
+ if idx >= 0 && bodyStart+idx < end {
+ end = bodyStart + idx
+ }
+ }
+ value := extractRawTagValue(inner[bodyStart:end])
+ if parsed := parseStructuredToolCallInput(value); len(parsed) > 0 {
+ if isOnlyRawValue(parsed, value) {
+ if existing, ok := out[key]; !ok || !reflect.DeepEqual(existing, value) {
+ appendMarkupValue(out, key, value)
+ }
+ } else {
+ if existing, ok := out[key]; !ok || !reflect.DeepEqual(existing, parsed) {
+ appendMarkupValue(out, key, parsed)
+ }
+ }
+ } else if strings.TrimSpace(value) != "" {
+ if existing, ok := out[key]; !ok || !reflect.DeepEqual(existing, value) {
+ appendMarkupValue(out, key, value)
+ }
+ }
+ found = true
+ }
+ if found {
+ if _, ok := out["_raw"]; ok && len(out) > 1 {
+ delete(out, "_raw")
+ }
+ }
+ return out
 }
 
 func parseMarkupValue(inner string) any {

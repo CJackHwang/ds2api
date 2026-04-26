@@ -101,7 +101,16 @@ func parseXMLNodeValue(dec *xml.Decoder, start xml.StartElement) (any, error) {
 			if err != nil {
 				return nil, err
 			}
-			appendXMLChildValue(children, t.Name.Local, child)
+			key := t.Name.Local
+			if (strings.EqualFold(key, "parameter") || strings.EqualFold(key, "argument")) && len(t.Attr) > 0 {
+				for _, attr := range t.Attr {
+					if strings.EqualFold(attr.Name.Local, "name") && strings.TrimSpace(attr.Value) != "" {
+						key = strings.TrimSpace(attr.Value)
+						break
+					}
+				}
+			}
+			appendXMLChildValue(children, key, child)
 		case xml.EndElement:
 			if t.Name.Local != start.Name.Local {
 				return nil, errXMLMismatch(start.Name.Local, t.Name.Local)
