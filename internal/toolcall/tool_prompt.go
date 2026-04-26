@@ -54,6 +54,10 @@ RULES:
 6) Numbers, booleans, and null stay plain text.
 7) Use only the parameter names in the tool schema. Do not invent fields.
 8) Do NOT wrap XML in markdown fences. Do NOT output explanations, role markers, or internal monologue.
+9) Every argument must appear as a direct XML child inside exactly ONE <parameters> block.
+10) Never use <parameter name="...">...</parameter>.
+11) Never place arguments outside <parameters>.
+12) Do not use <invoke>, <function_call>, <function>, <tool_use>, or other alternate XML forms.
 
 PARAMETER SHAPES:
 - string => <name><![CDATA[value]]></name>
@@ -73,6 +77,12 @@ Wrong 4 — Markdown code fences:
   ` + "```xml" + `
   <tool_calls>...</tool_calls>
   ` + "```" + `
+Wrong 5 — legacy parameter tag syntax:
+  <tool_call><tool_name>` + ex1 + `</tool_name><parameter name="path">x</parameter></tool_call>
+Wrong 6 — arguments outside <parameters>:
+  <tool_call><tool_name>` + ex1 + `</tool_name><path>x</path></tool_call>
+Wrong 7 — alternate XML wrapper:
+  <invoke name="` + ex1 + `"><parameter name="path">x</parameter></invoke>
 
 Remember: The ONLY valid way to use tools is the <tool_calls> XML block at the end of your response.
 

@@ -15,7 +15,7 @@ function resolveToolcallPolicy(prepBody, payloadTools) {
   return {
     toolNames,
     toolSieveEnabled: toolNames.length > 0,
-    emitEarlyToolDeltas: true,
+    emitEarlyToolDeltas: false,
   };
 }
 
