@@ -1,7 +1,6 @@
 package chat
 
 import (
-	"ds2api/internal/toolcall"
 	"encoding/json"
 	"net/http"
 	"strings"
