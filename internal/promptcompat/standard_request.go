@@ -17,7 +17,22 @@ type StandardRequest struct {
 	Thinking       bool
 	Search         bool
 	RefFileIDs     []string
+	Diagnostics    RequestDiagnostics
 	PassThrough    map[string]any
+}
+
+type RequestDiagnostics struct {
+	CurrentInputUpload *FileUploadDiagnostic
+	HistoryUpload      *FileUploadDiagnostic
+	CurrentInputReason string
+	HistoryReason      string
+	RefFileIDs         []string
+}
+
+type FileUploadDiagnostic struct {
+	Filename string
+	Bytes    int
+	FileID   string
 }
 
 type ToolChoiceMode string
@@ -84,4 +99,31 @@ func (r StandardRequest) CompletionPayload(sessionID string) map[string]any {
 		payload[k] = v
 	}
 	return payload
+}
+
+func (d RequestDiagnostics) Clone() RequestDiagnostics {
+	return RequestDiagnostics{
+		CurrentInputUpload: cloneFileUploadDiagnostic(d.CurrentInputUpload),
+		HistoryUpload:      cloneFileUploadDiagnostic(d.HistoryUpload),
+		CurrentInputReason: d.CurrentInputReason,
+		HistoryReason:      d.HistoryReason,
+		RefFileIDs:         CloneStringSlice(d.RefFileIDs),
+	}
+}
+
+func cloneFileUploadDiagnostic(in *FileUploadDiagnostic) *FileUploadDiagnostic {
+	if in == nil {
+		return nil
+	}
+	out := *in
+	return &out
+}
+
+func CloneStringSlice(in []string) []string {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]string, len(in))
+	copy(out, in)
+	return out
 }

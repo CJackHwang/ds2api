@@ -324,3 +324,54 @@ func TestChatCompletionsHistorySplitPersistsHistoryText(t *testing.T) {
 		t.Fatalf("expected persisted history text to match uploaded HISTORY.txt contents")
 	}
 }
+
+func TestChatCompletionsHistorySplitPersistsUploadDiagnostics(t *testing.T) {
+	historyStore := newTestChatHistoryStore(t)
+	ds := &inlineUploadDSStub{}
+	h := &Handler{
+		Store: mockOpenAIConfig{
+			wideInput:           true,
+			historySplitEnabled: true,
+			historySplitTurns:   1,
+		},
+		Auth:        streamStatusAuthStub{},
+		DS:          ds,
+		ChatHistory: historyStore,
+	}
+
+	longInput := strings.Repeat("0123456789", 1300)
+	reqBody := `{"model":"deepseek-v4-flash","messages":[{"role":"user","content":"earlier turn"},{"role":"assistant","content":"previous answer"},{"role":"user","content":"` + longInput + `"}],"stream":false}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(reqBody))
+	req.Header.Set("Authorization", "Bearer direct-token")
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	h.ChatCompletions(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	snapshot, err := historyStore.Snapshot()
+	if err != nil {
+		t.Fatalf("snapshot failed: %v", err)
+	}
+	if len(snapshot.Items) != 1 {
+		t.Fatalf("expected one history item, got %d", len(snapshot.Items))
+	}
+	full, err := historyStore.Get(snapshot.Items[0].ID)
+	if err != nil {
+		t.Fatalf("expected detail item, got %v", err)
+	}
+	if full.Diagnostics == nil {
+		t.Fatal("expected diagnostics to be persisted")
+	}
+	if full.Diagnostics.CurrentInputUpload == nil || full.Diagnostics.CurrentInputUpload.Filename != "CURRENT_INPUT.txt" {
+		t.Fatalf("expected current input upload diagnostics, got %#v", full.Diagnostics.CurrentInputUpload)
+	}
+	if full.Diagnostics.HistoryUpload == nil || full.Diagnostics.HistoryUpload.Filename != "HISTORY.txt" {
+		t.Fatalf("expected history upload diagnostics, got %#v", full.Diagnostics.HistoryUpload)
+	}
+	if got := len(full.Diagnostics.RefFileIDs); got != 2 {
+		t.Fatalf("expected 2 ref file ids, got %d (%#v)", got, full.Diagnostics.RefFileIDs)
+	}
+}

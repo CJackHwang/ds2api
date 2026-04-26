@@ -31,6 +31,18 @@ function formatElapsed(ms, t) {
     return `${(ms / 1000).toFixed(ms < 10_000 ? 2 : 1)}s`
 }
 
+function formatBytes(bytes, t) {
+    if (!bytes) return t('chatHistory.metaUnknown')
+    if (bytes < 1024) return `${bytes} B`
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(bytes < 10 * 1024 ? 2 : 1)} KB`
+    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
+}
+
+function formatDiagReason(reason, t) {
+    if (!reason) return t('chatHistory.metaUnknown')
+    return t(`chatHistory.diagReasonValues.${reason}`)
+}
+
 function previewText(item) {
     return item?.preview || item?.content || item?.reasoning_content || item?.error || item?.user_input || ''
 }
@@ -203,11 +215,93 @@ function HistoryTextView({ item, t }) {
     )
 }
 
+function UploadDiagnosticsView({ item, t }) {
+    const diagnostics = item?.diagnostics
+    const current = diagnostics?.current_input_upload
+    const history = diagnostics?.history_upload
+    const currentReason = diagnostics?.current_input_reason || ''
+    const historyReason = diagnostics?.history_reason || ''
+    const refFileIDs = Array.isArray(diagnostics?.ref_file_ids) ? diagnostics.ref_file_ids : []
+    const hasRecordedDiagnostics = !!(current || history || refFileIDs.length)
+
+    const renderUpload = (title, upload, reason, accentClass) => (
+        <div className={clsx('rounded-xl border px-4 py-4', accentClass)}>
+            <div className="flex items-center justify-between gap-3">
+                <div className="text-sm font-semibold text-foreground">{title}</div>
+                <span className={clsx(
+                    'px-2 py-1 rounded-full border text-[10px] font-semibold uppercase tracking-wide',
+                    upload
+                        ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-600'
+                        : 'border-border bg-background/70 text-muted-foreground'
+                )}>
+                    {upload ? t('chatHistory.diagUploaded') : t('chatHistory.diagNotUploaded')}
+                </span>
+            </div>
+            <div className="mt-3 space-y-2 text-sm">
+                <div className="rounded-lg bg-background/75 px-3 py-2 border border-border/70">
+                    <div className="text-[11px] text-muted-foreground">{t('chatHistory.diagFilename')}</div>
+                    <div className="font-mono break-all text-foreground">{upload?.filename || '-'}</div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    <div className="rounded-lg bg-background/75 px-3 py-2 border border-border/70">
+                        <div className="text-[11px] text-muted-foreground">{t('chatHistory.diagBytes')}</div>
+                        <div className="font-medium text-foreground">{formatBytes(upload?.bytes, t)}</div>
+                    </div>
+                    <div className="rounded-lg bg-background/75 px-3 py-2 border border-border/70">
+                        <div className="text-[11px] text-muted-foreground">{t('chatHistory.diagFileID')}</div>
+                        <div className="font-mono break-all text-foreground">{upload?.file_id || '-'}</div>
+                    </div>
+                </div>
+                <div className="rounded-lg bg-background/75 px-3 py-2 border border-border/70">
+                    <div className="text-[11px] text-muted-foreground">{t('chatHistory.diagReason')}</div>
+                    <div className="text-foreground">{formatDiagReason(reason, t)}</div>
+                </div>
+            </div>
+        </div>
+    )
+
+    return (
+        <div className="max-w-4xl mx-auto rounded-2xl border border-amber-500/35 bg-[rgba(255,243,205,0.92)] px-5 py-4 shadow-sm">
+            <div className="flex items-start justify-between gap-4">
+                <div>
+                    <div className="text-[11px] uppercase tracking-[0.12em] text-[#7a5200]">{t('chatHistory.diagnosticsTitle')}</div>
+                    <div className="mt-2 text-sm leading-6 text-[#5d3d00]">{t('chatHistory.diagnosticsDesc')}</div>
+                    {!hasRecordedDiagnostics && (
+                        <div className="mt-2 text-xs leading-5 text-[#7a5200]">
+                            {t('chatHistory.diagUnavailable')}
+                        </div>
+                    )}
+                </div>
+                <div className="shrink-0 rounded-xl border border-amber-600/20 bg-white/60 px-3 py-2 text-right">
+                    <div className="text-[11px] text-[#7a5200]">{t('chatHistory.diagRefFileIDs')}</div>
+                    <div className="text-base font-semibold text-[#2f2200]">{refFileIDs.length || 0}</div>
+                </div>
+            </div>
+            <div className="mt-4 grid grid-cols-1 xl:grid-cols-2 gap-4">
+                {renderUpload(t('chatHistory.diagCurrentInput'), current, currentReason, 'border-amber-600/25 bg-white/55')}
+                {renderUpload(t('chatHistory.diagHistory'), history, historyReason, 'border-amber-600/25 bg-white/55')}
+            </div>
+            <div className="mt-4 rounded-xl border border-amber-600/20 bg-white/55 px-4 py-3">
+                <div className="text-[11px] uppercase tracking-[0.12em] text-[#7a5200]">{t('chatHistory.diagRefFileIDs')}</div>
+                <div className="mt-2 text-sm text-[#2f2200]">
+                    {refFileIDs.length
+                        ? refFileIDs.map((id, index) => (
+                            <div key={`${id}-${index}`} className="font-mono break-all">{id}</div>
+                        ))
+                        : t('chatHistory.diagNone')}
+                </div>
+            </div>
+        </div>
+    )
+}
+
 function DetailConversation({ selectedItem, t, viewMode, detailScrollRef, assistantStartRef, bottomButtonClassName }) {
     if (!selectedItem) return null
 
     return (
         <>
+            <UploadDiagnosticsView item={selectedItem} t={t} />
+
             <HistoryTextView item={selectedItem} t={t} />
 
             {viewMode === 'list'

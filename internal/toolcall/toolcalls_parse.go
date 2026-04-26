@@ -54,6 +54,7 @@ func parseToolCallsDetailedXMLOnly(text string) ToolCallParseResult {
 		return result
 	}
 	result.SawToolCallSyntax = looksLikeToolCallSyntax(trimmed)
+	trimmed = normalizeDSMLToolCallSyntax(trimmed)
 	trimmed = stripFencedCodeBlocks(trimmed)
 	trimmed = strings.TrimSpace(trimmed)
 	if trimmed == "" {

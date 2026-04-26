@@ -30,6 +30,52 @@ func TestParseToolCallsSupportsToolCallsWrapper(t *testing.T) {
 	}
 }
 
+func TestParseToolCallsSupportsDSMLWrapper(t *testing.T) {
+	text := `<|DSML|tool_calls><|DSML|invoke name="Bash"><|DSML|parameter name="command" string="true">pwd</|DSML|parameter><|DSML|parameter name="description" string="true">show cwd</|DSML|parameter></|DSML|invoke></|DSML|tool_calls>`
+	calls := ParseToolCalls(text, []string{"bash"})
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 call, got %#v", calls)
+	}
+	if calls[0].Name != "Bash" {
+		t.Fatalf("expected original tool name Bash, got %q", calls[0].Name)
+	}
+	if calls[0].Input["command"] != "pwd" || calls[0].Input["description"] != "show cwd" {
+		t.Fatalf("expected command and description arguments, got %#v", calls[0].Input)
+	}
+}
+
+func TestParseToolCallsSupportsLooseDSMLWrapper(t *testing.T) {
+	text := `<DSML|tool_calls><DSML|invoke name="Bash"><DSML|parameter name="command" string="true">pwd</DSML|parameter><DSML|parameter name="description" string="true">show cwd</DSML|parameter></DSML|invoke></DSML|tool_calls>`
+	calls := ParseToolCalls(text, []string{"bash"})
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 call, got %#v", calls)
+	}
+	if calls[0].Name != "Bash" {
+		t.Fatalf("expected original tool name Bash, got %q", calls[0].Name)
+	}
+	if calls[0].Input["command"] != "pwd" || calls[0].Input["description"] != "show cwd" {
+		t.Fatalf("expected command and description arguments, got %#v", calls[0].Input)
+	}
+}
+
+func TestParseToolCallsSupportsDSMLTypedParameters(t *testing.T) {
+	text := `<|DSML|tool_calls><|DSML|invoke name="search"><|DSML|parameter name="top_k" string="false">3</|DSML|parameter><|DSML|parameter name="exact" string="false">true</|DSML|parameter><|DSML|parameter name="filters" string="false">{"lang":"go"}</|DSML|parameter></|DSML|invoke></|DSML|tool_calls>`
+	calls := ParseToolCalls(text, []string{"search"})
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 call, got %#v", calls)
+	}
+	if got, ok := calls[0].Input["top_k"].(float64); !ok || got != 3 {
+		t.Fatalf("expected numeric top_k=3, got %#v", calls[0].Input["top_k"])
+	}
+	if got, ok := calls[0].Input["exact"].(bool); !ok || !got {
+		t.Fatalf("expected bool exact=true, got %#v", calls[0].Input["exact"])
+	}
+	filters, ok := calls[0].Input["filters"].(map[string]any)
+	if !ok || filters["lang"] != "go" {
+		t.Fatalf("expected object filters.lang=go, got %#v", calls[0].Input["filters"])
+	}
+}
+
 func TestParseToolCallsSupportsStandaloneToolWithMultilineCDATAAndRepeatedXMLTags(t *testing.T) {
 	text := `<tool_calls><invoke name="write_file"><parameter name="path">script.sh</parameter><parameter name="content"><![CDATA[#!/bin/bash
 echo "hello"
@@ -143,6 +189,28 @@ func TestParseToolCallsDoesNotTreatParamsNameTagAsToolName(t *testing.T) {
 
 func TestParseToolCallsDetailedMarksToolCallsSyntax(t *testing.T) {
 	text := `<tool_calls><invoke name="Bash"><parameter name="command">pwd</parameter></invoke></tool_calls>`
+	res := ParseToolCallsDetailed(text, []string{"bash"})
+	if !res.SawToolCallSyntax {
+		t.Fatalf("expected SawToolCallSyntax=true, got %#v", res)
+	}
+	if len(res.Calls) != 1 {
+		t.Fatalf("expected one parsed call, got %#v", res)
+	}
+}
+
+func TestParseToolCallsDetailedMarksDSMLToolCallsSyntax(t *testing.T) {
+	text := `<|DSML|tool_calls><|DSML|invoke name="Bash"><|DSML|parameter name="command" string="true">pwd</|DSML|parameter></|DSML|invoke></|DSML|tool_calls>`
+	res := ParseToolCallsDetailed(text, []string{"bash"})
+	if !res.SawToolCallSyntax {
+		t.Fatalf("expected SawToolCallSyntax=true, got %#v", res)
+	}
+	if len(res.Calls) != 1 {
+		t.Fatalf("expected one parsed call, got %#v", res)
+	}
+}
+
+func TestParseToolCallsDetailedMarksLooseDSMLToolCallsSyntax(t *testing.T) {
+	text := `<DSML|tool_calls><DSML|invoke name="Bash"><DSML|parameter name="command" string="true">pwd</DSML|parameter></DSML|invoke></DSML|tool_calls>`
 	res := ParseToolCallsDetailed(text, []string{"bash"})
 	if !res.SawToolCallSyntax {
 		t.Fatalf("expected SawToolCallSyntax=true, got %#v", res)

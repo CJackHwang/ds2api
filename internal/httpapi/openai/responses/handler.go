@@ -95,6 +95,14 @@ func replaceCitationMarkersWithLinks(text string, links map[int]string) string {
 	return shared.ReplaceCitationMarkersWithLinks(text, links)
 }
 
+func shouldRetryUpstreamEmptyOutput(text string, contentFilter bool) bool {
+	return shared.ShouldRetryUpstreamEmptyOutput(text, contentFilter)
+}
+
+func retryUpstreamEmptyOutputWithTimestamp(opts shared.EmptyOutputRetryOptions) (*http.Response, bool, error) {
+	return shared.RetryUpstreamEmptyOutputWithTimestamp(opts)
+}
+
 func upstreamEmptyOutputDetail(contentFilter bool, text, thinking string) (int, string, string) {
 	return shared.UpstreamEmptyOutputDetail(contentFilter, text, thinking)
 }

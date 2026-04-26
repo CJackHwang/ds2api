@@ -93,10 +93,10 @@ func TestNormalizeClaudeMessagesToolUseToAssistantToolCalls(t *testing.T) {
 		t.Fatalf("expected call id preserved, got %#v", call)
 	}
 	content, _ := m["content"].(string)
-	if !containsStr(content, "<tool_calls>") || !containsStr(content, `<invoke name="search_web">`) {
-		t.Fatalf("expected assistant content to include XML tool call history, got %q", content)
+	if !containsStr(content, "<|DSML|tool_calls>") || !containsStr(content, `<|DSML|invoke name="search_web">`) {
+		t.Fatalf("expected assistant content to include DSML tool call history, got %q", content)
 	}
-	if !containsStr(content, `<parameter name="query"><![CDATA[latest]]></parameter>`) {
+	if !containsStr(content, `<|DSML|parameter name="query" string="true">latest</|DSML|parameter>`) {
 		t.Fatalf("expected assistant content to include serialized parameters, got %q", content)
 	}
 }
@@ -292,8 +292,8 @@ func TestBuildClaudeToolPromptSingleTool(t *testing.T) {
 	if !containsStr(prompt, "Search the web") {
 		t.Fatalf("expected description in prompt")
 	}
-	if !containsStr(prompt, "<tool_calls>") {
-		t.Fatalf("expected XML tool_calls format in prompt")
+	if !containsStr(prompt, "<|DSML|tool_calls>") {
+		t.Fatalf("expected DSML tool_calls format in prompt")
 	}
 	if !containsStr(prompt, "TOOL CALL FORMAT") {
 		t.Fatalf("expected tool call format header in prompt")

@@ -48,6 +48,7 @@ type Entry struct {
 	Messages         []Message      `json:"messages,omitempty"`
 	HistoryText      string         `json:"history_text,omitempty"`
 	FinalPrompt      string         `json:"final_prompt,omitempty"`
+	Diagnostics      *Diagnostics   `json:"diagnostics,omitempty"`
 	ReasoningContent string         `json:"reasoning_content,omitempty"`
 	Content          string         `json:"content,omitempty"`
 	Error            string         `json:"error,omitempty"`
@@ -97,6 +98,21 @@ type StartParams struct {
 	Messages    []Message
 	HistoryText string
 	FinalPrompt string
+	Diagnostics *Diagnostics
+}
+
+type Diagnostics struct {
+	CurrentInputUpload *FileUpload `json:"current_input_upload,omitempty"`
+	HistoryUpload      *FileUpload `json:"history_upload,omitempty"`
+	CurrentInputReason string      `json:"current_input_reason,omitempty"`
+	HistoryReason      string      `json:"history_reason,omitempty"`
+	RefFileIDs         []string    `json:"ref_file_ids,omitempty"`
+}
+
+type FileUpload struct {
+	Filename string `json:"filename,omitempty"`
+	Bytes    int    `json:"bytes,omitempty"`
+	FileID   string `json:"file_id,omitempty"`
 }
 
 type UpdateParams struct {
@@ -248,6 +264,7 @@ func (s *Store) Start(params StartParams) (Entry, error) {
 		Messages:    cloneMessages(params.Messages),
 		HistoryText: params.HistoryText,
 		FinalPrompt: strings.TrimSpace(params.FinalPrompt),
+		Diagnostics: cloneDiagnostics(params.Diagnostics),
 	}
 	s.details[entry.ID] = entry
 	s.markDetailDirtyLocked(entry.ID)
@@ -745,6 +762,7 @@ func cloneFile(in File) File {
 func cloneEntry(item Entry) Entry {
 	item.Usage = cloneMap(item.Usage)
 	item.Messages = cloneMessages(item.Messages)
+	item.Diagnostics = cloneDiagnostics(item.Diagnostics)
 	return item
 }
 
@@ -765,5 +783,39 @@ func cloneMessages(messages []Message) []Message {
 	}
 	out := make([]Message, len(messages))
 	copy(out, messages)
+	return out
+}
+
+func cloneDiagnostics(in *Diagnostics) *Diagnostics {
+	if in == nil {
+		return nil
+	}
+	out := &Diagnostics{
+		CurrentInputUpload: cloneFileUpload(in.CurrentInputUpload),
+		HistoryUpload:      cloneFileUpload(in.HistoryUpload),
+		CurrentInputReason: strings.TrimSpace(in.CurrentInputReason),
+		HistoryReason:      strings.TrimSpace(in.HistoryReason),
+		RefFileIDs:         cloneStringSlice(in.RefFileIDs),
+	}
+	if out.CurrentInputUpload == nil && out.HistoryUpload == nil && out.CurrentInputReason == "" && out.HistoryReason == "" && len(out.RefFileIDs) == 0 {
+		return nil
+	}
+	return out
+}
+
+func cloneFileUpload(in *FileUpload) *FileUpload {
+	if in == nil {
+		return nil
+	}
+	out := *in
+	return &out
+}
+
+func cloneStringSlice(in []string) []string {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]string, len(in))
+	copy(out, in)
 	return out
 }

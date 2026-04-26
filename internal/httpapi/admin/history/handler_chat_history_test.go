@@ -94,6 +94,14 @@ func TestGetChatHistoryAndUpdateSettings(t *testing.T) {
 	if itemRec.Header().Get("ETag") == "" {
 		t.Fatalf("expected detail etag header")
 	}
+	var detailPayload map[string]any
+	if err := json.Unmarshal(itemRec.Body.Bytes(), &detailPayload); err != nil {
+		t.Fatalf("decode item payload failed: %v", err)
+	}
+	itemData, _ := detailPayload["item"].(map[string]any)
+	if itemData == nil {
+		t.Fatalf("expected item payload, got %#v", detailPayload)
+	}
 
 	updateReq := httptest.NewRequest(http.MethodPut, "/chat-history/settings", bytes.NewReader([]byte(`{"limit":10}`)))
 	updateReq.Header.Set("Authorization", "Bearer admin")
@@ -126,6 +134,59 @@ func TestGetChatHistoryAndUpdateSettings(t *testing.T) {
 	}
 	if len(snapshot.Items) != 1 {
 		t.Fatalf("expected history preserved when disabled, got %d", len(snapshot.Items))
+	}
+}
+
+func TestGetChatHistoryItemIncludesDiagnostics(t *testing.T) {
+	h, historyStore := newChatHistoryAdminHarness(t)
+	entry, err := historyStore.Start(chathistory.StartParams{
+		UserInput: "hello",
+		Diagnostics: &chathistory.Diagnostics{
+			CurrentInputUpload: &chathistory.FileUpload{
+				Filename: "CURRENT_INPUT.txt",
+				Bytes:    12345,
+				FileID:   "file-current",
+			},
+			HistoryUpload: &chathistory.FileUpload{
+				Filename: "HISTORY.txt",
+				Bytes:    234,
+				FileID:   "file-history",
+			},
+			RefFileIDs: []string{"file-history", "file-current"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("start history failed: %v", err)
+	}
+
+	r := chi.NewRouter()
+	RegisterRoutes(r, h)
+
+	itemReq := httptest.NewRequest(http.MethodGet, "/chat-history/"+entry.ID, nil)
+	itemReq.Header.Set("Authorization", "Bearer admin")
+	itemRec := httptest.NewRecorder()
+	r.ServeHTTP(itemRec, itemReq)
+
+	if itemRec.Code != http.StatusOK {
+		t.Fatalf("expected item 200, got %d body=%s", itemRec.Code, itemRec.Body.String())
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(itemRec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode item payload failed: %v", err)
+	}
+	itemData, _ := payload["item"].(map[string]any)
+	if itemData == nil {
+		t.Fatalf("expected item payload, got %#v", payload)
+	}
+	diag, _ := itemData["diagnostics"].(map[string]any)
+	if diag == nil {
+		t.Fatalf("expected diagnostics in payload, got %#v", itemData)
+	}
+	if _, ok := diag["current_input_upload"]; !ok {
+		t.Fatalf("expected current_input_upload in payload, got %#v", diag)
+	}
+	if _, ok := diag["history_upload"]; !ok {
+		t.Fatalf("expected history_upload in payload, got %#v", diag)
 	}
 }
 

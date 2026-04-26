@@ -138,7 +138,7 @@ func TestHandleVercelStreamPrepareAppliesHistorySplit(t *testing.T) {
 		t.Fatalf("expected historical turns removed from prompt, got %s", promptText)
 	}
 	refIDs, _ := payload["ref_file_ids"].([]any)
-	if len(refIDs) == 0 || refIDs[0] != "file-inline-1" {
+	if len(refIDs) == 0 || refIDs[0] != "file-inline-HISTORY" {
 		t.Fatalf("expected uploaded history file first in ref_file_ids, got %#v", payload["ref_file_ids"])
 	}
 }

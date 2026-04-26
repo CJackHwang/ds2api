@@ -91,7 +91,7 @@ func parseSingleXMLToolCall(block xmlElementBlock) (ParsedToolCall, bool) {
 		if paramName == "" {
 			continue
 		}
-		value := parseInvokeParameterValue(paramMatch.Body)
+		value := parseInvokeParameterValueWithStringHint(paramMatch.Body, paramAttrs["string"])
 		appendMarkupValue(input, paramName, value)
 	}
 
@@ -305,4 +305,22 @@ func parseInvokeParameterValue(raw string) any {
 		return parsed
 	}
 	return html.UnescapeString(extractRawTagValue(trimmed))
+}
+
+func parseInvokeParameterValueWithStringHint(raw, stringAttr string) any {
+	trimmedAttr := strings.TrimSpace(strings.ToLower(stringAttr))
+	switch trimmedAttr {
+	case "true":
+		return html.UnescapeString(extractRawTagValue(strings.TrimSpace(raw)))
+	case "false":
+		trimmed := strings.TrimSpace(html.UnescapeString(extractRawTagValue(raw)))
+		if trimmed == "" {
+			return ""
+		}
+		var parsed any
+		if err := json.Unmarshal([]byte(trimmed), &parsed); err == nil {
+			return parsed
+		}
+	}
+	return parseInvokeParameterValue(raw)
 }

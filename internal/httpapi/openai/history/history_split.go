@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"ds2api/internal/auth"
+	"ds2api/internal/config"
 	dsclient "ds2api/internal/deepseek/client"
 	"ds2api/internal/httpapi/openai/shared"
 	"ds2api/internal/promptcompat"
@@ -16,6 +17,9 @@ const (
 	historySplitFilename    = "HISTORY.txt"
 	historySplitContentType = "text/plain; charset=utf-8"
 	historySplitPurpose     = "assistants"
+	currentInputFilename    = "CURRENT_INPUT.txt"
+	currentInputPromptNote  = "The user's full current request is attached as CURRENT_INPUT.txt. Treat that attached file as the authoritative full text for this turn."
+	currentInputMaxChars    = 12000
 )
 
 type Service struct {
@@ -29,33 +33,124 @@ func (s Service) Apply(ctx context.Context, a *auth.RequestAuth, stdReq promptco
 	}
 
 	promptMessages, historyMessages := SplitOpenAIHistoryMessages(stdReq.Messages, s.Store.HistorySplitTriggerAfterTurns())
-	if len(historyMessages) == 0 {
-		return stdReq, nil
+	updatedMessages := promptMessages
+	if len(updatedMessages) == 0 {
+		updatedMessages = stdReq.Messages
 	}
 
-	historyText := promptcompat.BuildOpenAIHistoryTranscript(historyMessages)
-	if strings.TrimSpace(historyText) == "" {
-		return stdReq, errors.New("history split produced empty transcript")
+	currentUploaded := false
+	if latestIdx, latestText, ok := findLatestLongUserTextMessage(updatedMessages); ok {
+		result, err := s.DS.UploadFile(ctx, a, dsclient.UploadFileRequest{
+			Filename:    currentInputFilename,
+			ContentType: historySplitContentType,
+			Purpose:     historySplitPurpose,
+			Data:        []byte(latestText),
+		}, 3)
+		if err != nil {
+			return stdReq, fmt.Errorf("upload current input file: %w", err)
+		}
+		fileID := strings.TrimSpace(result.ID)
+		if fileID == "" {
+			return stdReq, errors.New("upload current input file returned empty file id")
+		}
+		updatedMessages = cloneMessages(updatedMessages)
+		msg, _ := updatedMessages[latestIdx].(map[string]any)
+		copied := cloneMessage(msg)
+		copied["content"] = currentInputPromptNote
+		updatedMessages[latestIdx] = copied
+		stdReq.RefFileIDs = prependUniqueRefFileID(stdReq.RefFileIDs, fileID)
+		stdReq.Diagnostics.CurrentInputUpload = &promptcompat.FileUploadDiagnostic{
+			Filename: currentInputFilename,
+			Bytes:    len(latestText),
+			FileID:   fileID,
+		}
+		stdReq.Diagnostics.CurrentInputReason = "latest_user_text_too_long"
+		stdReq.Diagnostics.RefFileIDs = promptcompat.CloneStringSlice(stdReq.RefFileIDs)
+		currentUploaded = true
+		config.Logger.Info("[history_split] uploaded current input file",
+			"filename", currentInputFilename,
+			"bytes", len(latestText),
+			"file_id", fileID,
+			"reason", "latest_user_text_too_long",
+		)
+	} else {
+		stdReq.Diagnostics.CurrentInputReason = currentInputSkipReason(updatedMessages)
 	}
 
-	result, err := s.DS.UploadFile(ctx, a, dsclient.UploadFileRequest{
-		Filename:    historySplitFilename,
-		ContentType: historySplitContentType,
-		Purpose:     historySplitPurpose,
-		Data:        []byte(historyText),
-	}, 3)
-	if err != nil {
-		return stdReq, fmt.Errorf("upload history file: %w", err)
-	}
-	fileID := strings.TrimSpace(result.ID)
-	if fileID == "" {
-		return stdReq, errors.New("upload history file returned empty file id")
+	if !currentUploaded {
+		if compactMessages, liveText, ok := buildOversizedLivePromptFallback(updatedMessages); ok {
+			result, err := s.DS.UploadFile(ctx, a, dsclient.UploadFileRequest{
+				Filename:    currentInputFilename,
+				ContentType: historySplitContentType,
+				Purpose:     historySplitPurpose,
+				Data:        []byte(liveText),
+			}, 3)
+			if err != nil {
+				return stdReq, fmt.Errorf("upload current input file: %w", err)
+			}
+			fileID := strings.TrimSpace(result.ID)
+			if fileID == "" {
+				return stdReq, errors.New("upload current input file returned empty file id")
+			}
+			updatedMessages = compactMessages
+			stdReq.RefFileIDs = prependUniqueRefFileID(stdReq.RefFileIDs, fileID)
+			stdReq.Diagnostics.CurrentInputUpload = &promptcompat.FileUploadDiagnostic{
+				Filename: currentInputFilename,
+				Bytes:    len(liveText),
+				FileID:   fileID,
+			}
+			stdReq.Diagnostics.CurrentInputReason = "live_prompt_context_too_large"
+			stdReq.Diagnostics.RefFileIDs = promptcompat.CloneStringSlice(stdReq.RefFileIDs)
+			currentUploaded = true
+			config.Logger.Info("[history_split] uploaded current input file",
+				"filename", currentInputFilename,
+				"bytes", len(liveText),
+				"file_id", fileID,
+				"reason", "live_prompt_context_too_large",
+			)
+		}
 	}
 
-	stdReq.Messages = promptMessages
-	stdReq.HistoryText = historyText
-	stdReq.RefFileIDs = prependUniqueRefFileID(stdReq.RefFileIDs, fileID)
-	stdReq.FinalPrompt, stdReq.ToolNames = promptcompat.BuildOpenAIPrompt(promptMessages, stdReq.ToolsRaw, "", stdReq.ToolChoice, stdReq.Thinking)
+	if len(historyMessages) > 0 {
+		historyText := promptcompat.BuildOpenAIHistoryTranscript(historyMessages)
+		if strings.TrimSpace(historyText) == "" {
+			return stdReq, errors.New("history split produced empty transcript")
+		}
+
+		result, err := s.DS.UploadFile(ctx, a, dsclient.UploadFileRequest{
+			Filename:    historySplitFilename,
+			ContentType: historySplitContentType,
+			Purpose:     historySplitPurpose,
+			Data:        []byte(historyText),
+		}, 3)
+		if err != nil {
+			return stdReq, fmt.Errorf("upload history file: %w", err)
+		}
+		fileID := strings.TrimSpace(result.ID)
+		if fileID == "" {
+			return stdReq, errors.New("upload history file returned empty file id")
+		}
+		stdReq.HistoryText = historyText
+		stdReq.RefFileIDs = prependUniqueRefFileID(stdReq.RefFileIDs, fileID)
+		stdReq.Diagnostics.HistoryUpload = &promptcompat.FileUploadDiagnostic{
+			Filename: historySplitFilename,
+			Bytes:    len(historyText),
+			FileID:   fileID,
+		}
+		stdReq.Diagnostics.HistoryReason = "split_history_available"
+		stdReq.Diagnostics.RefFileIDs = promptcompat.CloneStringSlice(stdReq.RefFileIDs)
+		config.Logger.Info("[history_split] uploaded history file",
+			"filename", historySplitFilename,
+			"bytes", len(historyText),
+			"file_id", fileID,
+			"reason", "split_history_available",
+		)
+	} else {
+		stdReq.Diagnostics.HistoryReason = historyUploadSkipReason(stdReq.Messages, historyMessages)
+	}
+
+	stdReq.Messages = updatedMessages
+	stdReq.FinalPrompt, stdReq.ToolNames = promptcompat.BuildOpenAIPrompt(updatedMessages, stdReq.ToolsRaw, "", stdReq.ToolChoice, stdReq.Thinking)
 	return stdReq, nil
 }
 
@@ -124,6 +219,119 @@ func prependUniqueRefFileID(existing []string, fileID string) []string {
 			continue
 		}
 		out = append(out, trimmed)
+	}
+	return out
+}
+
+func findLatestLongUserTextMessage(messages []any) (int, string, bool) {
+	for i := len(messages) - 1; i >= 0; i-- {
+		msg, ok := messages[i].(map[string]any)
+		if !ok {
+			continue
+		}
+		role := strings.ToLower(strings.TrimSpace(shared.AsString(msg["role"])))
+		if role != "user" {
+			continue
+		}
+		text := strings.TrimSpace(promptcompat.NormalizeOpenAIContentForPrompt(msg["content"]))
+		if len(text) <= currentInputMaxChars {
+			return -1, "", false
+		}
+		return i, text, true
+	}
+	return -1, "", false
+}
+
+func buildOversizedLivePromptFallback(messages []any) ([]any, string, bool) {
+	liveText := promptcompat.BuildOpenAIHistoryTranscript(messages)
+	if len(strings.TrimSpace(liveText)) <= currentInputMaxChars {
+		return nil, "", false
+	}
+	kept := make([]any, 0, len(messages)+1)
+	nonSystemCount := 0
+	for _, raw := range messages {
+		msg, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		role := strings.ToLower(strings.TrimSpace(shared.AsString(msg["role"])))
+		if role == "system" || role == "developer" {
+			kept = append(kept, raw)
+			continue
+		}
+		nonSystemCount++
+	}
+	if nonSystemCount < 2 {
+		return nil, "", false
+	}
+	kept = append(kept, map[string]any{
+		"role":    "user",
+		"content": currentInputPromptNote,
+	})
+	return kept, liveText, true
+}
+
+func currentInputSkipReason(messages []any) string {
+	if len(messages) == 0 {
+		return "no_live_messages"
+	}
+	for i := len(messages) - 1; i >= 0; i-- {
+		msg, ok := messages[i].(map[string]any)
+		if !ok {
+			continue
+		}
+		role := strings.ToLower(strings.TrimSpace(shared.AsString(msg["role"])))
+		if role != "user" {
+			continue
+		}
+		text := strings.TrimSpace(promptcompat.NormalizeOpenAIContentForPrompt(msg["content"]))
+		if text == "" {
+			return "latest_user_text_empty"
+		}
+		if len(text) <= currentInputMaxChars {
+			return "latest_user_text_below_threshold"
+		}
+		return "latest_user_text_too_long"
+	}
+	return "no_user_message"
+}
+
+func historyUploadSkipReason(allMessages []any, historyMessages []any) string {
+	if len(historyMessages) > 0 {
+		return "split_history_available"
+	}
+	userTurns := 0
+	for _, raw := range allMessages {
+		msg, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		if strings.EqualFold(strings.TrimSpace(shared.AsString(msg["role"])), "user") {
+			userTurns++
+		}
+	}
+	if userTurns <= 1 {
+		return "not_enough_user_turns"
+	}
+	return "history_split_empty"
+}
+
+func cloneMessages(messages []any) []any {
+	if len(messages) == 0 {
+		return nil
+	}
+	out := make([]any, len(messages))
+	copy(out, messages)
+	return out
+}
+
+func cloneMessage(msg map[string]any) map[string]any {
+	if msg == nil {
+		return nil
+	}
+	out := make(map[string]any, len(msg))
+	for k, v := range msg {
+		out[k] = v
 	}
 	return out
 }

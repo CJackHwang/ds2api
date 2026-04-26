@@ -2,14 +2,20 @@
 
 const XML_TOOL_SEGMENT_TAGS = [
   '<tool_calls>', '<tool_calls\n', '<tool_calls ',
+  '<|dsml|tool_calls>', '<|dsml|tool_calls\n', '<|dsml|tool_calls ',
+  '<dsml|tool_calls>', '<dsml|tool_calls\n', '<dsml|tool_calls ',
 ];
 
 const XML_TOOL_OPENING_TAGS = [
   '<tool_calls',
+  '<|dsml|tool_calls',
+  '<dsml|tool_calls',
 ];
 
 const XML_TOOL_CLOSING_TAGS = [
   '</tool_calls>',
+  '</|dsml|tool_calls>',
+  '</dsml|tool_calls>',
 ];
 
 module.exports = {

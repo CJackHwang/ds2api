@@ -5,10 +5,11 @@ const {
 } = require('./state');
 const {
   parseMarkupToolCalls,
+  normalizeDSMLToolCallSyntax,
   stripFencedCodeBlocks,
 } = require('./parse_payload');
 
-const TOOL_MARKUP_PREFIXES = ['<tool_calls'];
+const TOOL_MARKUP_PREFIXES = ['<tool_calls', '<|dsml|tool_calls', '<dsml|tool_calls'];
 
 function extractToolNames(tools) {
   if (!Array.isArray(tools) || tools.length === 0) {
@@ -42,11 +43,12 @@ function parseToolCallsDetailed(text, toolNames) {
     return result;
   }
   result.sawToolCallSyntax = looksLikeToolCallSyntax(normalized);
-  if (shouldSkipToolCallParsingForCodeFenceExample(normalized)) {
+  const normalizedMarkup = normalizeDSMLToolCallSyntax(normalized);
+  if (shouldSkipToolCallParsingForCodeFenceExample(normalizedMarkup)) {
     return result;
   }
   // XML markup parsing only.
-  const parsed = parseMarkupToolCalls(normalized);
+  const parsed = parseMarkupToolCalls(normalizedMarkup);
   if (parsed.length === 0) {
     return result;
   }
@@ -69,11 +71,12 @@ function parseStandaloneToolCallsDetailed(text, toolNames) {
     return result;
   }
   result.sawToolCallSyntax = looksLikeToolCallSyntax(trimmed);
-  if (shouldSkipToolCallParsingForCodeFenceExample(trimmed)) {
+  const normalizedMarkup = normalizeDSMLToolCallSyntax(trimmed);
+  if (shouldSkipToolCallParsingForCodeFenceExample(normalizedMarkup)) {
     return result;
   }
   // XML markup parsing only.
-  const parsed = parseMarkupToolCalls(trimmed);
+  const parsed = parseMarkupToolCalls(normalizedMarkup);
   if (parsed.length === 0) {
     return result;
   }

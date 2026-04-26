@@ -175,7 +175,7 @@ flowchart LR
 - `internal/deepseek/{client,protocol,transport}`: upstream requests, sessions, PoW adaptation, protocol constants, and transport details.
 - `internal/js/chat-stream` + `api/chat-stream.js`: Vercel Node streaming bridge; Go prepare/release owns auth, account lease, and completion payload assembly, while Node relays real-time SSE with Go-aligned finalization and tool sieve semantics.
 - `internal/stream` + `internal/sse`: Go stream parsing and incremental assembly.
-- `internal/toolcall` + `internal/toolstream`: canonical XML tool-call parsing + anti-leak sieve (the only executable format is `<tool_calls>` / `<invoke name="...">` / `<parameter name="...">`).
+- `internal/toolcall` + `internal/toolstream`: official DSML + backward-compatible XML tool-call parsing and anti-leak sieve (preferred format: `<|DSML|tool_calls>` / `<|DSML|invoke name="...">` / `<|DSML|parameter name="...">`; legacy `<tool_calls>` XML remains supported internally).
 - `internal/httpapi/admin/*`: Admin API root assembly plus auth/accounts/config/settings/proxies/rawsamples/vercel/history/devcapture/version resource packages.
 - `internal/chathistory`: server-side conversation history persistence, pagination, detail lookup, and retention policy.
 - `internal/config`: config loading/validation + runtime settings hot-reload.

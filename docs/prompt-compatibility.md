@@ -99,6 +99,8 @@ DS2API 当前的核心思路，不是把客户端传来的 `messages`、`tools`�
 - OpenAI Chat / Responses 原生走统一 OpenAI 标准化与 DeepSeek payload 组装；Claude / Gemini 会尽量复用 OpenAI prompt/tool 语义，其中 Gemini 直接复用 `promptcompat.BuildOpenAIPromptForAdapter`，Claude 消息接口在可代理场景会转换为 OpenAI chat 形态再执行。
 - 客户端传入的 thinking / reasoning 开关会被归一到下游 `thinking_enabled`。Gemini `generationConfig.thinkingConfig.thinkingBudget` 会翻译成同一套 thinking 开关；关闭时即使上游返回 `response/thinking_content`，兼容层也不会把它当作可见正文输出。Claude surface 在流式请求且未显式声明 `thinking` 时，仍按 Anthropic 语义默认关闭；但在非流式代理场景，兼容层会内部开启一次下游 thinking，用于捕获“正文为空、工具调用落在 thinking 里”的情况，随后在回包前剥离用户不可见的 thinking block。
 - 对 OpenAI Chat / Responses 的非流式收尾，如果最终可见正文为空，兼容层会优先尝试把思维链中的独立 `<tool_calls>...</tool_calls>` 结构当作真实工具调用解析出来。流式链路也会在收尾阶段做同样的 fallback 检测，但不会因为思维链内容去中途拦截或改写流式输出；thinking / reasoning 增量仍按原样先发，只有在结束收尾时才可能补发最终工具调用结果。只有正文为空且思维链里也没有可执行工具调用时，才继续按空回复错误处理。
+- 对 OpenAI Chat / Responses 的非流式空正文场景，如果正文为空、未命中 content filter、且也没有可执行工具调用，兼容层会先按原始 `prompt` 追加一个 UTC 日期时间标签 `[retry_datetime_utc]...[/retry_datetime_utc]` 后向下游重试一次；不会额外注入补救提示词。只有重试后仍然没有可见正文时，才返回 `upstream_empty_output`。
+- 对 OpenAI 历史拆分链路，如果最新 user 文本过长，兼容层会先把该轮完整文本上传成 `CURRENT_INPUT.txt`，再把更早历史上传成 `HISTORY.txt`。管理后台 `/admin/chat-history/{id}` 会持久化并展示这两次上传的文件名、字节数、file id 与最终 `ref_file_ids`，用于确认“是否真的上传成功且替换了正文内联”。
 
 ## 5. prompt 是怎么拼出来的
 
@@ -149,6 +151,7 @@ DS2API 当前的核心思路，不是把客户端传来的 `messages`、`tools`�
 4. 把这整段内容并入 system prompt。
 
 工具调用正例现在优先示范官方 DSML 风格：`<|DSML|tool_calls>` → `<|DSML|invoke name="...">` → `<|DSML|parameter name="..." string="true|false">`。
+兼容层现在已真实支持 DSML wrapper：Go/Node 的非流式解析、流式 tool sieve、thinking fallback 都会先把 DSML 归一化到内部 XML parser，再执行同一套工具调用逻辑。
 兼容层仍接受旧式纯 `<tool_calls>` wrapper，但提示词会优先要求模型输出官方 DSML 标签，并强调不能只输出 closing wrapper 而漏掉 opening tag。
 正例中的工具名只会来自当前请求实际声明的工具；如果当前请求没有足够的已知工具形态，就省略对应的单工具、多工具或嵌套示例，避免把不可用工具名写进 prompt。
 对执行类工具，脚本内容必须进入执行参数本身：`Bash` / `execute_command` 使用 `command`，`exec_command` 使用 `cmd`；不要把脚本示范成 `path` / `content` 文件写入参数。
@@ -183,18 +186,18 @@ assistant 的 reasoning 会变成一个显式标签块：
 
 ### 7.2 历史 tool_calls 保留方式
 
-assistant 历史 `tool_calls` 不会保留成 OpenAI 原生 JSON，而会转成 prompt 可见的 XML：
+assistant 历史 `tool_calls` 不会保留成 OpenAI 原生 JSON，而会转成 prompt 可见的 DSML：
 
 ```xml
-<tool_calls>
-  <invoke name="read_file">
-    <parameter name="path"><![CDATA[src/main.go]]></parameter>
-  </invoke>
-</tool_calls>
+<|DSML|tool_calls>
+  <|DSML|invoke name="read_file">
+    <|DSML|parameter name="path" string="true">src/main.go</|DSML|parameter>
+  </|DSML|invoke>
+</|DSML|tool_calls>
 ```
 
-这也是当前项目里唯一受支持的 canonical tool-calling 形态；其他形态都会作为普通文本保留，不会作为可执行调用语法。
-例外是 parser 会对一个非常窄的模型失误做修复：如果 assistant 输出了 `<invoke ...>` ... `</tool_calls>`，但漏掉最前面的 opening `<tool_calls>`，解析阶段会补回 wrapper 后再尝试识别。
+兼容层会优先向模型展示官方 DSML 形态；旧 XML `<tool_calls>` 只保留为兼容输入，不再作为历史 transcript 主格式继续喂回模型。
+例外是 parser 仍会对一个非常窄的模型失误做修复：如果 assistant 输出了 `<invoke ...>` ... `</tool_calls>`，但漏掉最前面的 opening `<tool_calls>`，解析阶段会补回 wrapper 后再尝试识别。
 
 这件事很重要，因为它决定了：
 
@@ -256,6 +259,15 @@ history split 现在全局强制开启；旧配置中的 `history_split.enabled=
 6. live prompt 只保留：
    - system / developer
    - 最新 user turn 起的上下文
+
+如果最新这一轮 `user` 还是纯文本且本身过长，兼容层还会再额外上传一个 `CURRENT_INPUT.txt`：
+
+1. 该文件内容就是最后一轮 user 的完整原文。
+2. live prompt 里的最后一轮 user 文本会被替换成一段简短提示，要求模型改为读取 `CURRENT_INPUT.txt`。
+3. `ref_file_ids` 会同时包含：
+   - `HISTORY.txt` 对应的 file id
+   - `CURRENT_INPUT.txt` 对应的 file id
+4. 这样 history split 不仅拆“过去的历史”，也能避免“当前这一轮超长正文”继续撑爆 live prompt。
 
 历史文件内容不是普通自由文本，而是用同一套角色标记再次序列化出的 transcript：
 

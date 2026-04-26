@@ -8,6 +8,9 @@ const {
   toStringSafe,
 } = require('./state');
 
+const DSML_TOOL_TAG_PATTERN = /<\s*\/?\s*(?:\|?\s*dsml\s*\|)\s*(tool_calls|invoke|parameter)\b/i;
+const DSML_TOOL_TAG_NORMALIZE_PATTERN = /<\s*(\/?)\s*(?:\|?\s*dsml\s*\|)\s*(tool_calls|invoke|parameter)\b/gi;
+
 function stripFencedCodeBlocks(text) {
   const t = typeof text === 'string' ? text : '';
   if (!t) {
@@ -17,7 +20,7 @@ function stripFencedCodeBlocks(text) {
 }
 
 function parseMarkupToolCalls(text) {
-  const raw = toStringSafe(text).trim();
+  const raw = normalizeDSMLToolCallSyntax(toStringSafe(text)).trim();
   if (!raw) {
     return [];
   }
@@ -32,6 +35,18 @@ function parseMarkupToolCalls(text) {
     }
   }
   return out;
+}
+
+function normalizeDSMLToolCallSyntax(text) {
+  const raw = toStringSafe(text);
+  if (!raw) {
+    return '';
+  }
+  if (!DSML_TOOL_TAG_PATTERN.test(raw)) {
+    return raw;
+  }
+  DSML_TOOL_TAG_PATTERN.lastIndex = 0;
+  return raw.replace(DSML_TOOL_TAG_NORMALIZE_PATTERN, '<$1$2');
 }
 
 function parseMarkupSingleToolCall(block) {
@@ -66,7 +81,7 @@ function parseMarkupSingleToolCall(block) {
     if (!paramName) {
       continue;
     }
-    appendMarkupValue(input, paramName, parseMarkupValue(match.body));
+    appendMarkupValue(input, paramName, parseMarkupValueWithStringHint(match.body, parameterAttrs.string));
   }
   if (Object.keys(input).length === 0 && inner.trim() !== '') {
     return null;
@@ -294,6 +309,25 @@ function parseMarkupValue(raw) {
   return s;
 }
 
+function parseMarkupValueWithStringHint(raw, stringAttr) {
+  const hint = toStringSafe(stringAttr).trim().toLowerCase();
+  if (hint === 'true') {
+    return unescapeHtml(extractRawTagValue(raw));
+  }
+  if (hint === 'false') {
+    const value = toStringSafe(unescapeHtml(extractRawTagValue(raw))).trim();
+    if (!value) {
+      return '';
+    }
+    try {
+      return JSON.parse(value);
+    } catch (_err) {
+      return parseMarkupValue(raw);
+    }
+  }
+  return parseMarkupValue(raw);
+}
+
 function extractRawTagValue(inner) {
   const s = toStringSafe(inner).trim();
   if (!s) {
@@ -403,4 +437,5 @@ function isOnlyRawValue(obj) {
 module.exports = {
   stripFencedCodeBlocks,
   parseMarkupToolCalls,
+  normalizeDSMLToolCallSyntax,
 };

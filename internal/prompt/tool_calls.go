@@ -2,22 +2,10 @@ package prompt
 
 import (
 	"encoding/json"
-	"fmt"
-	"regexp"
 	"sort"
 	"strings"
 )
 
-var promptXMLTextEscaper = strings.NewReplacer(
-	"&", "&amp;",
-	"<", "&lt;",
-	">", "&gt;",
-)
-
-var promptXMLNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_.:-]*$`)
-
-// FormatToolCallsForPrompt renders a tool_calls slice into the prompt-visible
-// invoke/parameter history block used across adapters.
 func FormatToolCallsForPrompt(raw any) string {
 	calls, ok := raw.([]any)
 	if !ok || len(calls) == 0 {
@@ -38,12 +26,9 @@ func FormatToolCallsForPrompt(raw any) string {
 	if len(blocks) == 0 {
 		return ""
 	}
-	return "<tool_calls>\n" + strings.Join(blocks, "\n") + "\n</tool_calls>"
+	return "<|DSML|tool_calls>\n" + strings.Join(blocks, "\n") + "\n</|DSML|tool_calls>"
 }
 
-// StringifyToolCallArguments normalizes tool arguments into a compact string
-// while preserving raw concatenated payloads when they already look like model
-// output rather than a single JSON object.
 func StringifyToolCallArguments(v any) string {
 	switch x := v.(type) {
 	case nil:
@@ -94,35 +79,20 @@ func formatToolCallForPrompt(call map[string]any) string {
 
 	parameters := formatToolCallParametersForPrompt(argsRaw)
 	if parameters == "" {
-		return `  <invoke name="` + escapeXMLAttribute(name) + `"></invoke>`
+		return `  <|DSML|invoke name="` + escapeDSMLAttribute(name) + `"></|DSML|invoke>`
 	}
 
-	return "  <invoke name=\"" + escapeXMLAttribute(name) + "\">\n" +
+	return "  <|DSML|invoke name=\"" + escapeDSMLAttribute(name) + "\">\n" +
 		parameters + "\n" +
-		"  </invoke>"
+		"  </|DSML|invoke>"
 }
 
 func formatToolCallParametersForPrompt(raw any) string {
 	value := normalizePromptToolCallValue(raw)
-	body, ok := renderPromptToolParameters(value, "    ")
-	if ok && strings.TrimSpace(body) != "" {
-		return body
-	}
-
-	fallback := StringifyToolCallArguments(raw)
-	if strings.TrimSpace(fallback) == "" {
-		return ""
-	}
-	return "    <parameter name=\"content\">" + renderPromptXMLText(fallback) + "</parameter>"
-}
-
-func renderPromptToolParameters(value any, indent string) (string, bool) {
 	switch v := value.(type) {
-	case nil:
-		return "", true
 	case map[string]any:
 		if len(v) == 0 {
-			return "", true
+			return ""
 		}
 		keys := make([]string, 0, len(v))
 		for k := range v {
@@ -131,60 +101,37 @@ func renderPromptToolParameters(value any, indent string) (string, bool) {
 		sort.Strings(keys)
 		lines := make([]string, 0, len(keys))
 		for _, key := range keys {
-			rendered, ok := renderPromptParameterNode(key, v[key], indent)
-			if !ok {
-				return "", false
-			}
-			lines = append(lines, rendered)
+			lines = append(lines, renderPromptParameterNode(key, v[key], "    "))
 		}
-		return strings.Join(lines, "\n"), true
+		return strings.Join(lines, "\n")
 	case []any:
-		lines := make([]string, 0, len(v))
-		for _, item := range v {
-			rendered, ok := renderPromptParameterNode("item", item, indent)
-			if !ok {
-				return "", false
-			}
-			lines = append(lines, rendered)
-		}
-		return strings.Join(lines, "\n"), true
+		return `    <|DSML|parameter name="items" string="false">` + mustMarshalJSON(v) + `</|DSML|parameter>`
 	case string:
-		return indent + `<parameter name="content">` + renderPromptXMLText(v) + `</parameter>`, true
+		trimmed := strings.TrimSpace(v)
+		if trimmed == "" {
+			return ""
+		}
+		return `    <|DSML|parameter name="content" string="true">` + escapeDSMLText(v) + `</|DSML|parameter>`
+	case nil:
+		return ""
 	default:
-		return indent + `<parameter name="value">` + renderPromptXMLText(fmt.Sprint(v)) + `</parameter>`, true
+		return `    <|DSML|parameter name="value" string="false">` + mustMarshalJSON(v) + `</|DSML|parameter>`
 	}
 }
 
-func renderPromptParameterNode(name string, value any, indent string) (string, bool) {
+func renderPromptParameterNode(name string, value any, indent string) string {
 	trimmedName := strings.TrimSpace(name)
 	if trimmedName == "" {
-		return "", false
+		return ""
 	}
+
 	switch v := value.(type) {
 	case nil:
-		return indent + `<parameter name="` + escapeXMLAttribute(trimmedName) + `"></parameter>`, true
-	case map[string]any:
-		body, ok := renderPromptToolXMLBody(v, indent+"  ")
-		if !ok {
-			return "", false
-		}
-		if strings.TrimSpace(body) == "" {
-			return indent + `<parameter name="` + escapeXMLAttribute(trimmedName) + `"></parameter>`, true
-		}
-		return indent + `<parameter name="` + escapeXMLAttribute(trimmedName) + "\">\n" + body + "\n" + indent + `</parameter>`, true
-	case []any:
-		body, ok := renderPromptToolXMLArray(v, indent+"  ")
-		if !ok {
-			return "", false
-		}
-		if strings.TrimSpace(body) == "" {
-			return indent + `<parameter name="` + escapeXMLAttribute(trimmedName) + `"></parameter>`, true
-		}
-		return indent + `<parameter name="` + escapeXMLAttribute(trimmedName) + "\">\n" + body + "\n" + indent + `</parameter>`, true
+		return indent + `<|DSML|parameter name="` + escapeDSMLAttribute(trimmedName) + `" string="false">null</|DSML|parameter>`
 	case string:
-		return indent + `<parameter name="` + escapeXMLAttribute(trimmedName) + `">` + renderPromptXMLText(v) + `</parameter>`, true
+		return indent + `<|DSML|parameter name="` + escapeDSMLAttribute(trimmedName) + `" string="true">` + escapeDSMLText(v) + `</|DSML|parameter>`
 	default:
-		return indent + `<parameter name="` + escapeXMLAttribute(trimmedName) + `">` + renderPromptXMLText(fmt.Sprint(v)) + `</parameter>`, true
+		return indent + `<|DSML|parameter name="` + escapeDSMLAttribute(trimmedName) + `" string="false">` + mustMarshalJSON(v) + `</|DSML|parameter>`
 	}
 }
 
@@ -207,118 +154,34 @@ func normalizePromptToolCallValue(raw any) any {
 	}
 }
 
-func renderPromptToolXMLBody(value any, indent string) (string, bool) {
-	switch v := value.(type) {
-	case nil:
-		return "", true
-	case map[string]any:
-		return renderPromptToolXMLMap(v, indent)
-	case []any:
-		return renderPromptToolXMLArray(v, indent)
-	case string:
-		return indent + "<content>" + renderPromptXMLText(v) + "</content>", true
-	case bool, float32, float64, int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
-		return indent + "<value>" + escapeXMLText(fmt.Sprint(v)) + "</value>", true
-	default:
-		return indent + "<value>" + renderPromptXMLText(fmt.Sprint(v)) + "</value>", true
+func mustMarshalJSON(v any) string {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return `""`
 	}
+	return string(b)
 }
 
-func renderPromptToolXMLMap(m map[string]any, indent string) (string, bool) {
-	if len(m) == 0 {
-		return "", true
+func asString(v any) string {
+	if s, ok := v.(string); ok {
+		return s
 	}
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		if !isValidPromptXMLName(k) {
-			return "", false
-		}
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-
-	lines := make([]string, 0, len(keys))
-	for _, key := range keys {
-		rendered, ok := renderPromptToolXMLNode(key, m[key], indent)
-		if !ok {
-			return "", false
-		}
-		lines = append(lines, rendered)
-	}
-	return strings.Join(lines, "\n"), true
+	return ""
 }
 
-func renderPromptToolXMLArray(items []any, indent string) (string, bool) {
-	if len(items) == 0 {
-		return "", true
-	}
-	lines := make([]string, 0, len(items))
-	for _, item := range items {
-		rendered, ok := renderPromptToolXMLNode("item", item, indent)
-		if !ok {
-			return "", false
-		}
-		lines = append(lines, rendered)
-	}
-	return strings.Join(lines, "\n"), true
-}
-
-func renderPromptToolXMLNode(name string, value any, indent string) (string, bool) {
-	if !isValidPromptXMLName(name) {
-		return "", false
-	}
-	switch v := value.(type) {
-	case nil:
-		return indent + "<" + name + "></" + name + ">", true
-	case map[string]any:
-		inner, ok := renderPromptToolXMLMap(v, indent+"  ")
-		if !ok {
-			return "", false
-		}
-		if strings.TrimSpace(inner) == "" {
-			return indent + "<" + name + "></" + name + ">", true
-		}
-		return indent + "<" + name + ">\n" + inner + "\n" + indent + "</" + name + ">", true
-	case []any:
-		if len(v) == 0 {
-			return indent + "<" + name + "></" + name + ">", true
-		}
-		lines := make([]string, 0, len(v))
-		for _, item := range v {
-			rendered, ok := renderPromptToolXMLNode(name, item, indent)
-			if !ok {
-				return "", false
-			}
-			lines = append(lines, rendered)
-		}
-		return strings.Join(lines, "\n"), true
-	case string:
-		return indent + "<" + name + ">" + renderPromptXMLText(v) + "</" + name + ">", true
-	case bool, float32, float64, int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
-		return indent + "<" + name + ">" + escapeXMLText(fmt.Sprint(v)) + "</" + name + ">", true
-	default:
-		return indent + "<" + name + ">" + renderPromptXMLText(fmt.Sprint(v)) + "</" + name + ">", true
-	}
-}
-
-// renderPromptXMLText emits CDATA for every string so prompt-visible tool
-// history stays uniform and does not drift back toward ad-hoc escaping.
-func renderPromptXMLText(text string) string {
-	if text == "" {
+func escapeDSMLText(v string) string {
+	if v == "" {
 		return ""
 	}
-	if strings.Contains(text, "]]>") {
-		return "<![CDATA[" + strings.ReplaceAll(text, "]]>", "]]]]><![CDATA[>") + "]]>"
-	}
-	return "<![CDATA[" + text + "]]>"
+	return strings.NewReplacer(
+		"&", "&amp;",
+		"<", "&lt;",
+		">", "&gt;",
+	).Replace(v)
 }
 
-func isValidPromptXMLName(name string) bool {
-	return promptXMLNamePattern.MatchString(strings.TrimSpace(name))
-}
-
-func escapeXMLAttribute(text string) string {
-	if text == "" {
+func escapeDSMLAttribute(v string) string {
+	if v == "" {
 		return ""
 	}
 	return strings.NewReplacer(
@@ -326,7 +189,7 @@ func escapeXMLAttribute(text string) string {
 		`"`, "&quot;",
 		"<", "&lt;",
 		">", "&gt;",
-	).Replace(text)
+	).Replace(v)
 }
 
 func normalizeToolArgumentString(raw string) string {
@@ -335,7 +198,6 @@ func normalizeToolArgumentString(raw string) string {
 		return ""
 	}
 	if looksLikeConcatenatedJSON(trimmed) {
-		// Keep the original payload to avoid silently rewriting model output.
 		return raw
 	}
 	return trimmed
@@ -356,18 +218,4 @@ func looksLikeConcatenatedJSON(raw string) bool {
 	}
 	var second any
 	return dec.Decode(&second) == nil
-}
-
-func asString(v any) string {
-	if s, ok := v.(string); ok {
-		return s
-	}
-	return ""
-}
-
-func escapeXMLText(v string) string {
-	if v == "" {
-		return ""
-	}
-	return promptXMLTextEscaper.Replace(v)
 }

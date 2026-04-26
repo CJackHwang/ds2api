@@ -49,6 +49,31 @@ test('parseToolCalls parses XML markup tool call', () => {
   assert.deepEqual(calls[0].input, { path: 'README.MD' });
 });
 
+test('parseToolCalls parses DSML markup tool call', () => {
+  const payload = '<|DSML|tool_calls><|DSML|invoke name="read_file"><|DSML|parameter name="path" string="true">README.MD</|DSML|parameter></|DSML|invoke></|DSML|tool_calls>';
+  const calls = parseToolCalls(payload, ['read_file']);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].name, 'read_file');
+  assert.deepEqual(calls[0].input, { path: 'README.MD' });
+});
+
+test('parseToolCalls parses loose DSML markup tool call', () => {
+  const payload = '<DSML|tool_calls><DSML|invoke name="read_file"><DSML|parameter name="path" string="true">README.MD</DSML|parameter></DSML|invoke></DSML|tool_calls>';
+  const calls = parseToolCalls(payload, ['read_file']);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].name, 'read_file');
+  assert.deepEqual(calls[0].input, { path: 'README.MD' });
+});
+
+test('parseToolCalls parses DSML typed parameters', () => {
+  const payload = '<|DSML|tool_calls><|DSML|invoke name="search"><|DSML|parameter name="top_k" string="false">3</|DSML|parameter><|DSML|parameter name="exact" string="false">true</|DSML|parameter><|DSML|parameter name="filters" string="false">{"lang":"go"}</|DSML|parameter></|DSML|invoke></|DSML|tool_calls>';
+  const calls = parseToolCalls(payload, ['search']);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].input.top_k, 3);
+  assert.equal(calls[0].input.exact, true);
+  assert.deepEqual(calls[0].input.filters, { lang: 'go' });
+});
+
 test('parseToolCalls ignores JSON tool_calls payload (XML-only)', () => {
   const payload = JSON.stringify({
     tool_calls: [{ name: 'read_file', input: { path: 'README.MD' } }],
@@ -91,6 +116,26 @@ test('sieve emits tool_calls when XML tag spans multiple chunks', () => {
       '<tool_calls><invoke name="read_file">',
       '<parameter name="path">README.MD</parameter></invoke></tool_calls>',
     ],
+    ['read_file'],
+  );
+  const finalCalls = events.filter((evt) => evt.type === 'tool_calls').flatMap((evt) => evt.calls || []);
+  assert.equal(finalCalls.length, 1);
+  assert.equal(finalCalls[0].name, 'read_file');
+});
+
+test('sieve emits tool_calls for DSML tool call payload', () => {
+  const events = runSieve(
+    ['<|DSML|tool_calls><|DSML|invoke name="read_file"><|DSML|parameter name="path" string="true">README.MD</|DSML|parameter></|DSML|invoke></|DSML|tool_calls>'],
+    ['read_file'],
+  );
+  const finalCalls = events.filter((evt) => evt.type === 'tool_calls').flatMap((evt) => evt.calls || []);
+  assert.equal(finalCalls.length, 1);
+  assert.equal(finalCalls[0].name, 'read_file');
+});
+
+test('sieve emits tool_calls for loose DSML tool call payload', () => {
+  const events = runSieve(
+    ['<DSML|tool_calls><DSML|invoke name="read_file"><DSML|parameter name="path" string="true">README.MD</DSML|parameter></DSML|invoke></DSML|tool_calls>'],
     ['read_file'],
   );
   const finalCalls = events.filter((evt) => evt.type === 'tool_calls').flatMap((evt) => evt.calls || []);

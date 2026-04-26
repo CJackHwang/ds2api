@@ -46,6 +46,7 @@ func startChatHistory(store *chathistory.Store, r *http.Request, a *auth.Request
 		Messages:    extractAllMessages(stdReq.Messages),
 		HistoryText: stdReq.HistoryText,
 		FinalPrompt: stdReq.FinalPrompt,
+		Diagnostics: buildChatHistoryDiagnostics(stdReq.Diagnostics),
 	})
 	startParams := chathistory.StartParams{
 		CallerID:    strings.TrimSpace(a.CallerID),
@@ -56,6 +57,7 @@ func startChatHistory(store *chathistory.Store, r *http.Request, a *auth.Request
 		Messages:    extractAllMessages(stdReq.Messages),
 		HistoryText: stdReq.HistoryText,
 		FinalPrompt: stdReq.FinalPrompt,
+		Diagnostics: buildChatHistoryDiagnostics(stdReq.Diagnostics),
 	}
 	session := &chatHistorySession{
 		store:       store,
@@ -249,4 +251,40 @@ func isChatHistoryMissingError(err error) bool {
 		return false
 	}
 	return strings.Contains(strings.ToLower(err.Error()), "not found")
+}
+
+func buildChatHistoryDiagnostics(diag promptcompat.RequestDiagnostics) *chathistory.Diagnostics {
+	current := buildChatHistoryFileUpload(diag.CurrentInputUpload)
+	history := buildChatHistoryFileUpload(diag.HistoryUpload)
+	refFileIDs := cloneStringSlice(diag.RefFileIDs)
+	if current == nil && history == nil && len(refFileIDs) == 0 {
+		return nil
+	}
+	return &chathistory.Diagnostics{
+		CurrentInputUpload: current,
+		HistoryUpload:      history,
+		CurrentInputReason: strings.TrimSpace(diag.CurrentInputReason),
+		HistoryReason:      strings.TrimSpace(diag.HistoryReason),
+		RefFileIDs:         refFileIDs,
+	}
+}
+
+func buildChatHistoryFileUpload(in *promptcompat.FileUploadDiagnostic) *chathistory.FileUpload {
+	if in == nil {
+		return nil
+	}
+	return &chathistory.FileUpload{
+		Filename: strings.TrimSpace(in.Filename),
+		Bytes:    in.Bytes,
+		FileID:   strings.TrimSpace(in.FileID),
+	}
+}
+
+func cloneStringSlice(in []string) []string {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]string, len(in))
+	copy(out, in)
+	return out
 }

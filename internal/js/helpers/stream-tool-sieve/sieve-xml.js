@@ -4,6 +4,7 @@ const { parseToolCalls } = require('./parse');
 // XML wrapper tag pair used by the streaming sieve.
 const XML_TOOL_TAG_PAIRS = [
   { open: '<tool_calls', close: '</tool_calls>' },
+  { open: '<|dsml|tool_calls', close: '</|dsml|tool_calls>' },
 ];
 
 const XML_TOOL_OPENING_TAGS = XML_TOOL_TAG_PAIRS.map(p => p.open);

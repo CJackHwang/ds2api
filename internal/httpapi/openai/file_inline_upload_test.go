@@ -41,8 +41,12 @@ func (m *inlineUploadDSStub) UploadFile(ctx context.Context, _ *auth.RequestAuth
 	if m.uploadErr != nil {
 		return nil, m.uploadErr
 	}
+	fileID := "file-inline-1"
+	if strings.HasSuffix(strings.ToLower(strings.TrimSpace(req.Filename)), ".txt") {
+		fileID = "file-inline-" + strings.TrimSpace(strings.ReplaceAll(req.Filename, ".txt", ""))
+	}
 	return &dsclient.UploadFileResult{
-		ID:       "file-inline-1",
+		ID:       fileID,
 		Filename: req.Filename,
 		Bytes:    int64(len(req.Data)),
 		Status:   "uploaded",

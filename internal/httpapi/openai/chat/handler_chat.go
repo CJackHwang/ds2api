@@ -12,6 +12,7 @@ import (
 	"ds2api/internal/config"
 	dsprotocol "ds2api/internal/deepseek/protocol"
 	openaifmt "ds2api/internal/format/openai"
+	"ds2api/internal/httpapi/openai/shared"
 	"ds2api/internal/promptcompat"
 	"ds2api/internal/sse"
 	streamengine "ds2api/internal/stream"
@@ -109,7 +110,7 @@ func (h *Handler) ChatCompletions(w http.ResponseWriter, r *http.Request) {
 		h.handleStream(w, r, resp, sessionID, stdReq.ResponseModel, stdReq.FinalPrompt, stdReq.Thinking, stdReq.Search, stdReq.ToolNames, historySession)
 		return
 	}
-	h.handleNonStream(w, resp, sessionID, stdReq.ResponseModel, stdReq.FinalPrompt, stdReq.Thinking, stdReq.Search, stdReq.ToolNames, historySession)
+	h.handleNonStream(w, r.Context(), a, payload, pow, resp, sessionID, stdReq.ResponseModel, stdReq.FinalPrompt, stdReq.Thinking, stdReq.Search, stdReq.ToolNames, historySession)
 }
 
 func (h *Handler) autoDeleteRemoteSession(ctx context.Context, a *auth.RequestAuth, sessionID string) {
@@ -145,7 +146,7 @@ func (h *Handler) autoDeleteRemoteSession(ctx context.Context, a *auth.RequestAu
 	}
 }
 
-func (h *Handler) handleNonStream(w http.ResponseWriter, resp *http.Response, completionID, model, finalPrompt string, thinkingEnabled, searchEnabled bool, toolNames []string, historySession *chatHistorySession) {
+func (h *Handler) handleNonStream(w http.ResponseWriter, ctx context.Context, a *auth.RequestAuth, payload map[string]any, pow string, resp *http.Response, completionID, model, finalPrompt string, thinkingEnabled, searchEnabled bool, toolNames []string, historySession *chatHistorySession) {
 	if resp.StatusCode != http.StatusOK {
 		defer func() { _ = resp.Body.Close() }()
 		body, _ := io.ReadAll(resp.Body)
@@ -164,6 +165,28 @@ func (h *Handler) handleNonStream(w http.ResponseWriter, resp *http.Response, co
 		finalText = replaceCitationMarkersWithLinks(finalText, result.CitationLinks)
 	}
 	detected := toolcall.ParseAssistantToolCallsDetailed(finalText, finalThinking, toolNames)
+	if len(detected.Calls) == 0 && shouldRetryUpstreamEmptyOutput(finalText, result.ContentFilter) {
+		retryResp, retried, retryErr := retryUpstreamEmptyOutputWithTimestamp(shared.EmptyOutputRetryOptions{
+			Context:     ctx,
+			DS:          h.DS,
+			Auth:        a,
+			Payload:     payload,
+			PowResponse: pow,
+			MaxAttempts: 1,
+		})
+		if retryErr == nil && retried && retryResp != nil {
+			defer func() { _ = retryResp.Body.Close() }()
+			if retryResp.StatusCode == http.StatusOK {
+				result = sse.CollectStream(retryResp, thinkingEnabled, true)
+				finalThinking = cleanVisibleOutput(result.Thinking, stripReferenceMarkers)
+				finalText = cleanVisibleOutput(result.Text, stripReferenceMarkers)
+				if searchEnabled {
+					finalText = replaceCitationMarkersWithLinks(finalText, result.CitationLinks)
+				}
+				detected = toolcall.ParseAssistantToolCallsDetailed(finalText, finalThinking, toolNames)
+			}
+		}
+	}
 	if shouldWriteUpstreamEmptyOutputError(finalText) && len(detected.Calls) == 0 {
 		status, message, code := upstreamEmptyOutputDetail(result.ContentFilter, finalText, finalThinking)
 		if historySession != nil {

@@ -3,52 +3,50 @@ package toolcall
 import "strings"
 
 // BuildToolCallInstructions generates the unified tool-calling instruction block
-// used by all adapters (OpenAI, Claude, Gemini). It uses attention-optimized
-// structure: rules → negative examples → positive examples → anchor.
-//
-// The toolNames slice should contain the actual tool names available in the
-// current request; the function picks real names for examples.
+// used by all adapters (OpenAI, Claude, Gemini). The prompt now aligns with the
+// official DeepSeek DSML wrapper syntax while the parser normalizes DSML back
+// into the existing executable XML representation internally.
 func BuildToolCallInstructions(toolNames []string) string {
 	return `TOOL CALL FORMAT — FOLLOW EXACTLY:
 
-<tool_calls>
-  <invoke name="TOOL_NAME_HERE">
-    <parameter name="PARAMETER_NAME"><![CDATA[PARAMETER_VALUE]]></parameter>
-  </invoke>
-</tool_calls>
+<|DSML|tool_calls>
+  <|DSML|invoke name="TOOL_NAME_HERE">
+    <|DSML|parameter name="PARAMETER_NAME" string="true|false">PARAMETER_VALUE</|DSML|parameter>
+  </|DSML|invoke>
+</|DSML|tool_calls>
 
 RULES:
-1) Use the <tool_calls> XML wrapper format only.
-2) Put one or more <invoke> entries under a single <tool_calls> root.
-3) Put the tool name in the invoke name attribute: <invoke name="TOOL_NAME">.
-4) All string values must use <![CDATA[...]]>, even short ones. This includes code, scripts, file contents, prompts, paths, names, and queries.
-5) Every top-level argument must be a <parameter name="ARG_NAME">...</parameter> node.
-6) Objects use nested XML elements inside the parameter body. Arrays may repeat <item> children.
-7) Numbers, booleans, and null stay plain text.
-8) Use only the parameter names in the tool schema. Do not invent fields.
-9) Do NOT wrap XML in markdown fences. Do NOT output explanations, role markers, or internal monologue.
-10) If you call a tool, the first non-whitespace characters of that tool block must be exactly <tool_calls>.
-11) Never omit the opening <tool_calls> tag, even if you already plan to close with </tool_calls>.
+1) Use the official <|DSML|tool_calls> wrapper format only.
+2) Put one or more <|DSML|invoke> entries under a single <|DSML|tool_calls> root.
+3) Put the tool name in the invoke name attribute: <|DSML|invoke name="TOOL_NAME">.
+4) Every top-level argument must be a <|DSML|parameter name="ARG_NAME" string="...">...</|DSML|parameter> node.
+5) For string parameters, write the value as-is and set string="true".
+6) For numbers, booleans, arrays, objects, and null, encode the value in JSON and set string="false".
+7) Use only the parameter names in the tool schema. Do not invent fields.
+8) Do NOT wrap DSML in markdown fences. Do NOT output explanations, role markers, or internal monologue around the tool block.
+9) If you call a tool, the first non-whitespace characters of that tool block must be exactly <|DSML|tool_calls>.
+10) Never omit the opening <|DSML|tool_calls> tag, even if you already plan to close with </|DSML|tool_calls>.
+11) If thinking is enabled, put all reasoning inside <think>...</think> before any DSML tool block or final response.
 
 PARAMETER SHAPES:
-- string => <parameter name="x"><![CDATA[value]]></parameter>
-- object => <parameter name="x"><field>...</field></parameter>
-- array => <parameter name="x"><item>...</item><item>...</item></parameter>
-- number/bool/null => <parameter name="x">plain_text</parameter>
+- string => <|DSML|parameter name="x" string="true">value</|DSML|parameter>
+- object => <|DSML|parameter name="x" string="false">{"k":"v"}</|DSML|parameter>
+- array => <|DSML|parameter name="x" string="false">["a","b"]</|DSML|parameter>
+- number/bool/null => <|DSML|parameter name="x" string="false">plain_json_literal</|DSML|parameter>
 
 【WRONG — Do NOT do these】:
 
-Wrong 1 — mixed text after XML:
-  <tool_calls>...</tool_calls> I hope this helps.
+Wrong 1 — mixed text after DSML:
+  <|DSML|tool_calls>...</|DSML|tool_calls> I hope this helps.
 Wrong 2 — Markdown code fences:
   ` + "```xml" + `
-  <tool_calls>...</tool_calls>
+  <|DSML|tool_calls>...</|DSML|tool_calls>
   ` + "```" + `
 Wrong 3 — missing opening wrapper:
-  <invoke name="TOOL_NAME">...</invoke>
-  </tool_calls>
+  <|DSML|invoke name="TOOL_NAME">...</|DSML|invoke>
+  </|DSML|tool_calls>
 
-Remember: The ONLY valid way to use tools is the <tool_calls>...</tool_calls> XML block at the end of your response.
+Remember: The ONLY valid way to use tools is the <|DSML|tool_calls>...</|DSML|tool_calls> block at the end of your response.
 
 ` + buildCorrectToolExamples(toolNames)
 }
@@ -71,11 +69,11 @@ func buildCorrectToolExamples(toolNames []string) string {
 	}
 
 	if nested, ok := firstNestedExample(names); ok {
-		examples = append(examples, "Example C — Tool with nested XML parameters:\n"+renderToolExampleBlock([]promptToolExample{nested}))
+		examples = append(examples, "Example C — Tool with JSON object/array parameters:\n"+renderToolExampleBlock([]promptToolExample{nested}))
 	}
 
 	if script, ok := firstScriptExample(names); ok {
-		examples = append(examples, "Example D — Tool with long script using CDATA (RELIABLE FOR CODE/SCRIPTS):\n"+renderToolExampleBlock([]promptToolExample{script}))
+		examples = append(examples, "Example D — Tool with long script string:\n"+renderToolExampleBlock([]promptToolExample{script}))
 	}
 
 	if len(examples) == 0 {
@@ -140,21 +138,21 @@ func firstScriptExample(names []string) (promptToolExample, bool) {
 
 func renderToolExampleBlock(calls []promptToolExample) string {
 	var b strings.Builder
-	b.WriteString("<tool_calls>\n")
+	b.WriteString("<|DSML|tool_calls>\n")
 	for _, call := range calls {
-		b.WriteString(`  <invoke name="`)
+		b.WriteString(`  <|DSML|invoke name="`)
 		b.WriteString(call.name)
 		b.WriteString("\">\n")
 		b.WriteString(indentPromptParameters(call.params, "    "))
-		b.WriteString("\n  </invoke>\n")
+		b.WriteString("\n  </|DSML|invoke>\n")
 	}
-	b.WriteString("</tool_calls>")
+	b.WriteString("</|DSML|tool_calls>")
 	return b.String()
 }
 
 func indentPromptParameters(body, indent string) string {
 	if strings.TrimSpace(body) == "" {
-		return indent + `<parameter name="content"></parameter>`
+		return indent + `<|DSML|parameter name="content" string="true"></|DSML|parameter>`
 	}
 	lines := strings.Split(body, "\n")
 	for i, line := range lines {
@@ -167,34 +165,38 @@ func indentPromptParameters(body, indent string) string {
 	return strings.Join(lines, "\n")
 }
 
-func wrapParameter(name, inner string) string {
-	return `<parameter name="` + name + `">` + inner + `</parameter>`
+func wrapStringParameter(name, value string) string {
+	return `<|DSML|parameter name="` + name + `" string="true">` + escapeDSMLText(value) + `</|DSML|parameter>`
+}
+
+func wrapJSONParameter(name, value string) string {
+	return `<|DSML|parameter name="` + name + `" string="false">` + value + `</|DSML|parameter>`
 }
 
 func exampleBasicParams(name string) (string, bool) {
 	switch strings.TrimSpace(name) {
 	case "Read":
-		return wrapParameter("file_path", promptCDATA("README.md")), true
+		return wrapStringParameter("file_path", "README.md"), true
 	case "Glob":
-		return wrapParameter("pattern", promptCDATA("**/*.go")) + "\n" + wrapParameter("path", promptCDATA(".")), true
+		return wrapStringParameter("pattern", "**/*.go") + "\n" + wrapStringParameter("path", "."), true
 	case "read_file":
-		return wrapParameter("path", promptCDATA("src/main.go")), true
+		return wrapStringParameter("path", "src/main.go"), true
 	case "list_files":
-		return wrapParameter("path", promptCDATA(".")), true
+		return wrapStringParameter("path", "."), true
 	case "search_files":
-		return wrapParameter("query", promptCDATA("tool call parser")), true
+		return wrapStringParameter("query", "tool call parser"), true
 	case "Bash", "execute_command":
-		return wrapParameter("command", promptCDATA("pwd")), true
+		return wrapStringParameter("command", "pwd"), true
 	case "exec_command":
-		return wrapParameter("cmd", promptCDATA("pwd")), true
+		return wrapStringParameter("cmd", "pwd"), true
 	case "Write":
-		return wrapParameter("file_path", promptCDATA("notes.txt")) + "\n" + wrapParameter("content", promptCDATA("Hello world")), true
+		return wrapStringParameter("file_path", "notes.txt") + "\n" + wrapStringParameter("content", "Hello world"), true
 	case "write_to_file":
-		return wrapParameter("path", promptCDATA("notes.txt")) + "\n" + wrapParameter("content", promptCDATA("Hello world")), true
+		return wrapStringParameter("path", "notes.txt") + "\n" + wrapStringParameter("content", "Hello world"), true
 	case "Edit":
-		return wrapParameter("file_path", promptCDATA("README.md")) + "\n" + wrapParameter("old_string", promptCDATA("foo")) + "\n" + wrapParameter("new_string", promptCDATA("bar")), true
+		return wrapStringParameter("file_path", "README.md") + "\n" + wrapStringParameter("old_string", "foo") + "\n" + wrapStringParameter("new_string", "bar"), true
 	case "MultiEdit":
-		return wrapParameter("file_path", promptCDATA("README.md")) + "\n" + `<parameter name="edits"><item><old_string>` + promptCDATA("foo") + `</old_string><new_string>` + promptCDATA("bar") + `</new_string></item></parameter>`, true
+		return wrapStringParameter("file_path", "README.md") + "\n" + wrapJSONParameter("edits", `[{"old_string":"foo","new_string":"bar"}]`), true
 	}
 	return "", false
 }
@@ -202,47 +204,42 @@ func exampleBasicParams(name string) (string, bool) {
 func exampleNestedParams(name string) (string, bool) {
 	switch strings.TrimSpace(name) {
 	case "MultiEdit":
-		return wrapParameter("file_path", promptCDATA("README.md")) + "\n" + `<parameter name="edits"><item><old_string>` + promptCDATA("foo") + `</old_string><new_string>` + promptCDATA("bar") + `</new_string></item></parameter>`, true
+		return wrapStringParameter("file_path", "README.md") + "\n" + wrapJSONParameter("edits", `[{"old_string":"foo","new_string":"bar"}]`), true
 	case "Task":
-		return wrapParameter("description", promptCDATA("Investigate flaky tests")) + "\n" + wrapParameter("prompt", promptCDATA("Run targeted tests and summarize failures")), true
+		return wrapStringParameter("description", "Investigate flaky tests") + "\n" + wrapStringParameter("prompt", "Run targeted tests and summarize failures"), true
 	case "ask_followup_question":
-		return wrapParameter("question", promptCDATA("Which approach do you prefer?")) + "\n" + `<parameter name="follow_up"><item><text>` + promptCDATA("Option A") + `</text></item><item><text>` + promptCDATA("Option B") + `</text></item></parameter>`, true
+		return wrapStringParameter("question", "Which approach do you prefer?") + "\n" + wrapJSONParameter("follow_up", `[{"text":"Option A"},{"text":"Option B"}]`), true
 	}
 	return "", false
 }
 
 func exampleScriptParams(name string) (string, bool) {
-	scriptCommand := `cat > /tmp/test_escape.sh <<'EOF'
-#!/bin/bash
-echo 'single "double"'
-echo "literal dollar: \$HOME"
-EOF
-bash /tmp/test_escape.sh`
-	scriptContent := `#!/bin/bash
-echo 'single "double"'
-echo "literal dollar: $HOME"`
+	scriptCommand := "cat > /tmp/test_escape.sh <<'EOF'\n#!/bin/bash\necho 'single \"double\"'\necho \"literal dollar: $HOME\"\nEOF\nbash /tmp/test_escape.sh"
+	scriptContent := "#!/bin/bash\necho 'single \"double\"'\necho \"literal dollar: $HOME\""
 
 	switch strings.TrimSpace(name) {
 	case "Bash":
-		return wrapParameter("command", promptCDATA(scriptCommand)) + "\n" + wrapParameter("description", promptCDATA("Test shell escaping")), true
+		return wrapStringParameter("command", scriptCommand) + "\n" + wrapStringParameter("description", "Test shell escaping"), true
 	case "execute_command":
-		return wrapParameter("command", promptCDATA(scriptCommand)), true
+		return wrapStringParameter("command", scriptCommand), true
 	case "exec_command":
-		return wrapParameter("cmd", promptCDATA(scriptCommand)), true
+		return wrapStringParameter("cmd", scriptCommand), true
 	case "Write":
-		return wrapParameter("file_path", promptCDATA("test_escape.sh")) + "\n" + wrapParameter("content", promptCDATA(scriptContent)), true
+		return wrapStringParameter("file_path", "test_escape.sh") + "\n" + wrapStringParameter("content", scriptContent), true
 	case "write_to_file":
-		return wrapParameter("path", promptCDATA("test_escape.sh")) + "\n" + wrapParameter("content", promptCDATA(scriptContent)), true
+		return wrapStringParameter("path", "test_escape.sh") + "\n" + wrapStringParameter("content", scriptContent), true
 	}
 	return "", false
 }
 
-func promptCDATA(text string) string {
+func escapeDSMLText(text string) string {
 	if text == "" {
 		return ""
 	}
-	if strings.Contains(text, "]]>") {
-		return "<![CDATA[" + strings.ReplaceAll(text, "]]>", "]]]]><![CDATA[>") + "]]>"
-	}
-	return "<![CDATA[" + text + "]]>"
+	replacer := strings.NewReplacer(
+		"&", "&amp;",
+		"<", "&lt;",
+		">", "&gt;",
+	)
+	return replacer.Replace(text)
 }
