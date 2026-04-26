@@ -104,8 +104,10 @@ type StartParams struct {
 type Diagnostics struct {
 	CurrentInputUpload *FileUpload `json:"current_input_upload,omitempty"`
 	HistoryUpload      *FileUpload `json:"history_upload,omitempty"`
+	TaskStateUpload    *FileUpload `json:"task_state_upload,omitempty"`
 	CurrentInputReason string      `json:"current_input_reason,omitempty"`
 	HistoryReason      string      `json:"history_reason,omitempty"`
+	TaskStateReason    string      `json:"task_state_reason,omitempty"`
 	RefFileIDs         []string    `json:"ref_file_ids,omitempty"`
 }
 
@@ -793,11 +795,13 @@ func cloneDiagnostics(in *Diagnostics) *Diagnostics {
 	out := &Diagnostics{
 		CurrentInputUpload: cloneFileUpload(in.CurrentInputUpload),
 		HistoryUpload:      cloneFileUpload(in.HistoryUpload),
+		TaskStateUpload:    cloneFileUpload(in.TaskStateUpload),
 		CurrentInputReason: strings.TrimSpace(in.CurrentInputReason),
 		HistoryReason:      strings.TrimSpace(in.HistoryReason),
+		TaskStateReason:    strings.TrimSpace(in.TaskStateReason),
 		RefFileIDs:         cloneStringSlice(in.RefFileIDs),
 	}
-	if out.CurrentInputUpload == nil && out.HistoryUpload == nil && out.CurrentInputReason == "" && out.HistoryReason == "" && len(out.RefFileIDs) == 0 {
+	if out.CurrentInputUpload == nil && out.HistoryUpload == nil && out.TaskStateUpload == nil && out.CurrentInputReason == "" && out.HistoryReason == "" && out.TaskStateReason == "" && len(out.RefFileIDs) == 0 {
 		return nil
 	}
 	return out

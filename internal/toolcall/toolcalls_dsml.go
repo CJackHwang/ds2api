@@ -5,8 +5,8 @@ import (
 	"strings"
 )
 
-var dsmlToolTagPattern = regexp.MustCompile(`(?is)<\s*/?\s*(?:\|?\s*dsml\s*\|)\s*(tool_calls|invoke|parameter)\b`)
-var dsmlToolTagNormalizePattern = regexp.MustCompile(`(?is)<\s*(/?)\s*(?:\|?\s*dsml\s*\|)\s*(tool_calls|invoke|parameter)\b`)
+var dsmlToolTagPattern = regexp.MustCompile(`(?is)<\s*/?\s*(?:(?:\|?\s*dsml\s*\|)|dsml\s*)(tool_calls|invoke|parameter)\b`)
+var dsmlToolTagNormalizePattern = regexp.MustCompile(`(?is)<\s*(/?)\s*(?:(?:\|?\s*dsml\s*\|)|dsml\s*)(tool_calls|invoke|parameter)\b`)
 
 func normalizeDSMLToolCallSyntax(text string) string {
 	if strings.TrimSpace(text) == "" {

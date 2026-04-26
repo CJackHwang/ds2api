@@ -101,6 +101,7 @@ DS2API 当前的核心思路，不是把客户端传来的 `messages`、`tools`�
 - 对 OpenAI Chat / Responses 的非流式收尾，如果最终可见正文为空，兼容层会优先尝试把思维链中的独立 `<tool_calls>...</tool_calls>` 结构当作真实工具调用解析出来。流式链路也会在收尾阶段做同样的 fallback 检测，但不会因为思维链内容去中途拦截或改写流式输出；thinking / reasoning 增量仍按原样先发，只有在结束收尾时才可能补发最终工具调用结果。只有正文为空且思维链里也没有可执行工具调用时，才继续按空回复错误处理。
 - 对 OpenAI Chat / Responses 的非流式空正文场景，如果正文为空、未命中 content filter、且也没有可执行工具调用，兼容层会先按原始 `prompt` 追加一个 UTC 日期时间标签 `[retry_datetime_utc]...[/retry_datetime_utc]` 后向下游重试一次；不会额外注入补救提示词。只有重试后仍然没有可见正文时，才返回 `upstream_empty_output`。
 - 对 OpenAI 历史拆分链路，如果最新 user 文本过长，兼容层会先把该轮完整文本上传成 `CURRENT_INPUT.txt`，再把更早历史上传成 `HISTORY.txt`。管理后台 `/admin/chat-history/{id}` 会持久化并展示这两次上传的文件名、字节数、file id 与最终 `ref_file_ids`，用于确认“是否真的上传成功且替换了正文内联”。
+- 对 OpenAI 历史拆分链路，如果已经进入“需要压缩上下文”的区间，兼容层还会额外上传 `TASK_STATE.txt`。这个文件不是原始历史转储，而是当前任务连续性的短摘要：最新用户请求、当前文件引用、DSML 工具格式硬约束、以及本轮 `CURRENT_INPUT` / `HISTORY` 判定结果。它的目的不是替代原文，而是让模型在长对话里更稳定地保持任务目标和格式约束。
 
 ## 5. prompt 是怎么拼出来的
 

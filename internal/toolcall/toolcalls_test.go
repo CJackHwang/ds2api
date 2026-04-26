@@ -58,6 +58,26 @@ func TestParseToolCallsSupportsLooseDSMLWrapper(t *testing.T) {
 	}
 }
 
+func TestParseToolCallsSupportsBareDSMLWrapper(t *testing.T) {
+	text := `<DSMLtool_calls><DSMLinvoke name="Read"><DSMLparameter name="file_path" string="true">E:/KSWJJ/blog/backend/storage/articles.go</DSMLparameter><DSMLparameter name="limit" string="false">30</DSMLparameter><DSMLparameter name="offset" string="false">295</DSMLparameter></DSMLinvoke></DSMLtool_calls>`
+	calls := ParseToolCalls(text, []string{"Read"})
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 call, got %#v", calls)
+	}
+	if calls[0].Name != "Read" {
+		t.Fatalf("expected original tool name Read, got %q", calls[0].Name)
+	}
+	if calls[0].Input["file_path"] != "E:/KSWJJ/blog/backend/storage/articles.go" {
+		t.Fatalf("unexpected file_path: %#v", calls[0].Input)
+	}
+	if got, ok := calls[0].Input["limit"].(float64); !ok || got != 30 {
+		t.Fatalf("unexpected limit: %#v", calls[0].Input["limit"])
+	}
+	if got, ok := calls[0].Input["offset"].(float64); !ok || got != 295 {
+		t.Fatalf("unexpected offset: %#v", calls[0].Input["offset"])
+	}
+}
+
 func TestParseToolCallsSupportsDSMLTypedParameters(t *testing.T) {
 	text := `<|DSML|tool_calls><|DSML|invoke name="search"><|DSML|parameter name="top_k" string="false">3</|DSML|parameter><|DSML|parameter name="exact" string="false">true</|DSML|parameter><|DSML|parameter name="filters" string="false">{"lang":"go"}</|DSML|parameter></|DSML|invoke></|DSML|tool_calls>`
 	calls := ParseToolCalls(text, []string{"search"})

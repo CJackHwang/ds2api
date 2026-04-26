@@ -118,8 +118,8 @@ func TestHandleVercelStreamPrepareAppliesHistorySplit(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
 	}
-	if len(ds.uploadCalls) != 1 {
-		t.Fatalf("expected 1 history upload, got %d", len(ds.uploadCalls))
+	if len(ds.uploadCalls) != 2 {
+		t.Fatalf("expected history and task-state uploads, got %d", len(ds.uploadCalls))
 	}
 
 	var body map[string]any
@@ -138,7 +138,7 @@ func TestHandleVercelStreamPrepareAppliesHistorySplit(t *testing.T) {
 		t.Fatalf("expected historical turns removed from prompt, got %s", promptText)
 	}
 	refIDs, _ := payload["ref_file_ids"].([]any)
-	if len(refIDs) == 0 || refIDs[0] != "file-inline-HISTORY" {
+	if len(refIDs) < 2 || refIDs[0] != "file-inline-TASK_STATE" || refIDs[1] != "file-inline-HISTORY" {
 		t.Fatalf("expected uploaded history file first in ref_file_ids, got %#v", payload["ref_file_ids"])
 	}
 }

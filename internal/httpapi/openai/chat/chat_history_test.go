@@ -317,8 +317,8 @@ func TestChatCompletionsHistorySplitPersistsHistoryText(t *testing.T) {
 	if strings.Contains(full.HistoryText, "latest user turn") {
 		t.Fatalf("expected latest turn to stay out of persisted history text, got %q", full.HistoryText)
 	}
-	if len(ds.uploadCalls) != 1 {
-		t.Fatalf("expected history upload to happen, got %d", len(ds.uploadCalls))
+	if len(ds.uploadCalls) != 2 {
+		t.Fatalf("expected history and task-state uploads to happen, got %d", len(ds.uploadCalls))
 	}
 	if full.HistoryText != string(ds.uploadCalls[0].Data) {
 		t.Fatalf("expected persisted history text to match uploaded HISTORY.txt contents")
@@ -371,7 +371,10 @@ func TestChatCompletionsHistorySplitPersistsUploadDiagnostics(t *testing.T) {
 	if full.Diagnostics.HistoryUpload == nil || full.Diagnostics.HistoryUpload.Filename != "HISTORY.txt" {
 		t.Fatalf("expected history upload diagnostics, got %#v", full.Diagnostics.HistoryUpload)
 	}
-	if got := len(full.Diagnostics.RefFileIDs); got != 2 {
+	if full.Diagnostics.TaskStateUpload == nil || full.Diagnostics.TaskStateUpload.Filename != "TASK_STATE.txt" {
+		t.Fatalf("expected task state upload diagnostics, got %#v", full.Diagnostics.TaskStateUpload)
+	}
+	if got := len(full.Diagnostics.RefFileIDs); got != 3 {
 		t.Fatalf("expected 2 ref file ids, got %d (%#v)", got, full.Diagnostics.RefFileIDs)
 	}
 }

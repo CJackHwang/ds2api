@@ -8,8 +8,8 @@ const {
   toStringSafe,
 } = require('./state');
 
-const DSML_TOOL_TAG_PATTERN = /<\s*\/?\s*(?:\|?\s*dsml\s*\|)\s*(tool_calls|invoke|parameter)\b/i;
-const DSML_TOOL_TAG_NORMALIZE_PATTERN = /<\s*(\/?)\s*(?:\|?\s*dsml\s*\|)\s*(tool_calls|invoke|parameter)\b/gi;
+const DSML_TOOL_TAG_PATTERN = /<\s*\/?\s*(?:(?:\|?\s*dsml\s*\|)|dsml\s*)(tool_calls|invoke|parameter)\b/i;
+const DSML_TOOL_TAG_NORMALIZE_PATTERN = /<\s*(\/?)\s*(?:(?:\|?\s*dsml\s*\|)|dsml\s*)(tool_calls|invoke|parameter)\b/gi;
 
 function stripFencedCodeBlocks(text) {
   const t = typeof text === 'string' ? text : '';

@@ -19,6 +19,8 @@ const (
 	historySplitPurpose     = "assistants"
 	currentInputFilename    = "CURRENT_INPUT.txt"
 	currentInputPromptNote  = "The user's full current request is attached as CURRENT_INPUT.txt. Treat that attached file as the authoritative full text for this turn."
+	taskStateFilename       = "TASK_STATE.txt"
+	taskStatePromptNote     = "The current task continuity state is attached as TASK_STATE.txt. Use it to preserve objectives, tool-format constraints, and recent failure context for this turn."
 	currentInputMaxChars    = 12000
 )
 
@@ -147,6 +149,39 @@ func (s Service) Apply(ctx context.Context, a *auth.RequestAuth, stdReq promptco
 		)
 	} else {
 		stdReq.Diagnostics.HistoryReason = historyUploadSkipReason(stdReq.Messages, historyMessages)
+	}
+
+	if taskStateText, ok := buildTaskStateText(updatedMessages, stdReq, len(historyMessages) > 0 || currentUploaded); ok {
+		result, err := s.DS.UploadFile(ctx, a, dsclient.UploadFileRequest{
+			Filename:    taskStateFilename,
+			ContentType: historySplitContentType,
+			Purpose:     historySplitPurpose,
+			Data:        []byte(taskStateText),
+		}, 3)
+		if err != nil {
+			return stdReq, fmt.Errorf("upload task state file: %w", err)
+		}
+		fileID := strings.TrimSpace(result.ID)
+		if fileID == "" {
+			return stdReq, errors.New("upload task state file returned empty file id")
+		}
+		updatedMessages = prependTaskStateNotice(updatedMessages)
+		stdReq.RefFileIDs = prependUniqueRefFileID(stdReq.RefFileIDs, fileID)
+		stdReq.Diagnostics.TaskStateUpload = &promptcompat.FileUploadDiagnostic{
+			Filename: taskStateFilename,
+			Bytes:    len(taskStateText),
+			FileID:   fileID,
+		}
+		stdReq.Diagnostics.TaskStateReason = "task_continuity_summary_uploaded"
+		stdReq.Diagnostics.RefFileIDs = promptcompat.CloneStringSlice(stdReq.RefFileIDs)
+		config.Logger.Info("[history_split] uploaded task state file",
+			"filename", taskStateFilename,
+			"bytes", len(taskStateText),
+			"file_id", fileID,
+			"reason", "task_continuity_summary_uploaded",
+		)
+	} else {
+		stdReq.Diagnostics.TaskStateReason = "task_state_not_needed"
 	}
 
 	stdReq.Messages = updatedMessages
@@ -314,6 +349,131 @@ func historyUploadSkipReason(allMessages []any, historyMessages []any) string {
 		return "not_enough_user_turns"
 	}
 	return "history_split_empty"
+}
+
+func buildTaskStateText(messages []any, stdReq promptcompat.StandardRequest, needed bool) (string, bool) {
+	if !needed {
+		return "", false
+	}
+	latestUser := ""
+	recent := make([]string, 0, 6)
+	nonSystemCount := 0
+	for _, raw := range messages {
+		msg, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		role := strings.ToLower(strings.TrimSpace(shared.AsString(msg["role"])))
+		content := strings.TrimSpace(promptcompat.NormalizeOpenAIContentForPrompt(msg["content"]))
+		if role != "system" && role != "developer" && content != "" {
+			nonSystemCount++
+		}
+		if role == "user" && content != "" {
+			latestUser = content
+		}
+		if role == "" || content == "" {
+			continue
+		}
+		recent = append(recent, strings.ToUpper(role)+": "+truncateTaskStateLine(content, 280))
+		if len(recent) > 6 {
+			recent = recent[len(recent)-6:]
+		}
+	}
+	if nonSystemCount == 0 && latestUser == "" {
+		return "", false
+	}
+	lines := []string{
+		"Task continuity summary for this request.",
+		"",
+		"Use this file to preserve the current objective, constraints, and recent failure context.",
+	}
+	if latestUser != "" {
+		lines = append(lines, "", "Latest user request:", latestUser)
+	}
+	lines = append(lines,
+		"",
+		"Hard requirements:",
+		"- Treat CURRENT_INPUT.txt as authoritative if it is attached.",
+		"- Treat HISTORY.txt as earlier context if it is attached.",
+		"- Use the canonical <|DSML|tool_calls> wrapper when calling tools.",
+		"- Do not mix plain text after a tool-call block.",
+	)
+	lines = append(lines,
+		"",
+		"Recent decision signals:",
+		"- current_input_reason: "+fallbackTaskStateReason(stdReq.Diagnostics.CurrentInputReason),
+		"- history_reason: "+fallbackTaskStateReason(stdReq.Diagnostics.HistoryReason),
+	)
+	if len(stdReq.RefFileIDs) > 0 {
+		lines = append(lines, "", "Existing attached file ids:")
+		for _, id := range stdReq.RefFileIDs {
+			id = strings.TrimSpace(id)
+			if id == "" {
+				continue
+			}
+			lines = append(lines, "- "+id)
+		}
+	}
+	if len(recent) > 0 {
+		lines = append(lines, "", "Recent live context:")
+		for _, line := range recent {
+			lines = append(lines, "- "+line)
+		}
+	}
+	text := strings.TrimSpace(strings.Join(lines, "\n"))
+	if text == "" {
+		return "", false
+	}
+	return text, true
+}
+
+func prependTaskStateNotice(messages []any) []any {
+	if len(messages) == 0 {
+		return []any{map[string]any{
+			"role":    "system",
+			"content": taskStatePromptNote,
+		}}
+	}
+	out := cloneMessages(messages)
+	for i, raw := range out {
+		msg, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		role := strings.ToLower(strings.TrimSpace(shared.AsString(msg["role"])))
+		if role != "system" && role != "developer" {
+			continue
+		}
+		copied := cloneMessage(msg)
+		normalized := strings.TrimSpace(promptcompat.NormalizeOpenAIContentForPrompt(copied["content"]))
+		if normalized == "" {
+			copied["content"] = taskStatePromptNote
+		} else if !strings.Contains(normalized, taskStatePromptNote) {
+			copied["content"] = normalized + "\n\n" + taskStatePromptNote
+		}
+		out[i] = copied
+		return out
+	}
+	return append([]any{map[string]any{
+		"role":    "system",
+		"content": taskStatePromptNote,
+	}}, out...)
+}
+
+func truncateTaskStateLine(text string, max int) string {
+	text = strings.TrimSpace(text)
+	if max <= 0 || len(text) <= max {
+		return text
+	}
+	return text[:max] + "..."
+}
+
+func fallbackTaskStateReason(reason string) string {
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		return "unknown"
+	}
+	return reason
 }
 
 func cloneMessages(messages []any) []any {

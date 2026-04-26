@@ -263,8 +263,10 @@ func buildChatHistoryDiagnostics(diag promptcompat.RequestDiagnostics) *chathist
 	return &chathistory.Diagnostics{
 		CurrentInputUpload: current,
 		HistoryUpload:      history,
+		TaskStateUpload:    buildChatHistoryFileUpload(diag.TaskStateUpload),
 		CurrentInputReason: strings.TrimSpace(diag.CurrentInputReason),
 		HistoryReason:      strings.TrimSpace(diag.HistoryReason),
+		TaskStateReason:    strings.TrimSpace(diag.TaskStateReason),
 		RefFileIDs:         refFileIDs,
 	}
 }

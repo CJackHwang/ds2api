@@ -298,6 +298,7 @@
         "diagnosticsDesc": "This shows whether the current long input or prior history was actually uploaded as files, and which file references were attached downstream.",
         "diagCurrentInput": "Current input file",
         "diagHistory": "History file",
+        "diagTaskState": "Task state file",
         "diagUploaded": "Uploaded",
         "diagNotUploaded": "Not uploaded",
         "diagFilename": "Filename",
@@ -316,7 +317,9 @@
             "no_user_message": "No user message was detected.",
             "split_history_available": "Splittable history was available, so history upload ran.",
             "not_enough_user_turns": "There were not enough user turns to upload split history.",
-            "history_split_empty": "History split produced no uploadable history."
+            "history_split_empty": "History split produced no uploadable history.",
+            "task_continuity_summary_uploaded": "A task-state continuity file was uploaded to reinforce the current task context.",
+            "task_state_not_needed": "This request did not need a separate task-state continuity file."
         },
         "backToTop": "Back to top",
         "backToBottom": "Jump to bottom",

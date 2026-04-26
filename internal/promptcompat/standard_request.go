@@ -24,8 +24,10 @@ type StandardRequest struct {
 type RequestDiagnostics struct {
 	CurrentInputUpload *FileUploadDiagnostic
 	HistoryUpload      *FileUploadDiagnostic
+	TaskStateUpload    *FileUploadDiagnostic
 	CurrentInputReason string
 	HistoryReason      string
+	TaskStateReason    string
 	RefFileIDs         []string
 }
 
@@ -105,8 +107,10 @@ func (d RequestDiagnostics) Clone() RequestDiagnostics {
 	return RequestDiagnostics{
 		CurrentInputUpload: cloneFileUploadDiagnostic(d.CurrentInputUpload),
 		HistoryUpload:      cloneFileUploadDiagnostic(d.HistoryUpload),
+		TaskStateUpload:    cloneFileUploadDiagnostic(d.TaskStateUpload),
 		CurrentInputReason: d.CurrentInputReason,
 		HistoryReason:      d.HistoryReason,
+		TaskStateReason:    d.TaskStateReason,
 		RefFileIDs:         CloneStringSlice(d.RefFileIDs),
 	}
 }

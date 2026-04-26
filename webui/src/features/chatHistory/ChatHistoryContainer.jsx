@@ -219,10 +219,12 @@ function UploadDiagnosticsView({ item, t }) {
     const diagnostics = item?.diagnostics
     const current = diagnostics?.current_input_upload
     const history = diagnostics?.history_upload
+    const taskState = diagnostics?.task_state_upload
     const currentReason = diagnostics?.current_input_reason || ''
     const historyReason = diagnostics?.history_reason || ''
+    const taskStateReason = diagnostics?.task_state_reason || ''
     const refFileIDs = Array.isArray(diagnostics?.ref_file_ids) ? diagnostics.ref_file_ids : []
-    const hasRecordedDiagnostics = !!(current || history || refFileIDs.length)
+    const hasRecordedDiagnostics = !!(current || history || taskState || refFileIDs.length)
 
     const renderUpload = (title, upload, reason, accentClass) => (
         <div className={clsx('rounded-xl border px-4 py-4', accentClass)}>
@@ -277,9 +279,10 @@ function UploadDiagnosticsView({ item, t }) {
                     <div className="text-base font-semibold text-[#2f2200]">{refFileIDs.length || 0}</div>
                 </div>
             </div>
-            <div className="mt-4 grid grid-cols-1 xl:grid-cols-2 gap-4">
+            <div className="mt-4 grid grid-cols-1 xl:grid-cols-3 gap-4">
                 {renderUpload(t('chatHistory.diagCurrentInput'), current, currentReason, 'border-amber-600/25 bg-white/55')}
                 {renderUpload(t('chatHistory.diagHistory'), history, historyReason, 'border-amber-600/25 bg-white/55')}
+                {renderUpload(t('chatHistory.diagTaskState'), taskState, taskStateReason, 'border-amber-600/25 bg-white/55')}
             </div>
             <div className="mt-4 rounded-xl border border-amber-600/20 bg-white/55 px-4 py-3">
                 <div className="text-[11px] uppercase tracking-[0.12em] text-[#7a5200]">{t('chatHistory.diagRefFileIDs')}</div>

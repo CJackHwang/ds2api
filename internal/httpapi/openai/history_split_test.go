@@ -204,8 +204,11 @@ func TestApplyHistorySplitCarriesHistoryText(t *testing.T) {
 	if err != nil {
 		t.Fatalf("apply history split failed: %v", err)
 	}
-	if len(ds.uploadCalls) != 1 {
-		t.Fatalf("expected 1 upload call, got %d", len(ds.uploadCalls))
+	if len(ds.uploadCalls) != 2 {
+		t.Fatalf("expected 2 upload calls, got %d", len(ds.uploadCalls))
+	}
+	if ds.uploadCalls[0].Filename != "HISTORY.txt" || ds.uploadCalls[1].Filename != "TASK_STATE.txt" {
+		t.Fatalf("unexpected upload order: %#v", ds.uploadCalls)
 	}
 	if out.HistoryText != string(ds.uploadCalls[0].Data) {
 		t.Fatalf("expected history text to be preserved on normalized request")
@@ -235,14 +238,17 @@ func TestApplyHistorySplitUploadsLongCurrentInputAndHistory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("apply history split failed: %v", err)
 	}
-	if len(ds.uploadCalls) != 2 {
-		t.Fatalf("expected 2 upload calls, got %d", len(ds.uploadCalls))
+	if len(ds.uploadCalls) != 3 {
+		t.Fatalf("expected 3 upload calls, got %d", len(ds.uploadCalls))
 	}
 	if ds.uploadCalls[0].Filename != "CURRENT_INPUT.txt" {
 		t.Fatalf("expected current input upload first, got %q", ds.uploadCalls[0].Filename)
 	}
 	if ds.uploadCalls[1].Filename != "HISTORY.txt" {
 		t.Fatalf("expected history upload second, got %q", ds.uploadCalls[1].Filename)
+	}
+	if ds.uploadCalls[2].Filename != "TASK_STATE.txt" {
+		t.Fatalf("expected task state upload third, got %q", ds.uploadCalls[2].Filename)
 	}
 	if out.HistoryText != string(ds.uploadCalls[1].Data) {
 		t.Fatalf("expected history text to match uploaded history file")
@@ -254,7 +260,7 @@ func TestApplyHistorySplitUploadsLongCurrentInputAndHistory(t *testing.T) {
 	if strings.Contains(promptText, "latest long user turn latest long user turn") {
 		t.Fatalf("expected oversized current user text removed from live prompt, got %s", promptText)
 	}
-	if len(out.RefFileIDs) < 2 || out.RefFileIDs[0] != "file-inline-HISTORY" || out.RefFileIDs[1] != "file-inline-CURRENT_INPUT" {
+	if len(out.RefFileIDs) < 3 || out.RefFileIDs[0] != "file-inline-TASK_STATE" || out.RefFileIDs[1] != "file-inline-HISTORY" || out.RefFileIDs[2] != "file-inline-CURRENT_INPUT" {
 		t.Fatalf("expected history and current-input ref files prepended, got %#v", out.RefFileIDs)
 	}
 }
@@ -282,10 +288,10 @@ func TestApplyHistorySplitUploadsLongCurrentInputPartsAndHistory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("apply history split failed: %v", err)
 	}
-	if len(ds.uploadCalls) != 2 {
-		t.Fatalf("expected 2 upload calls, got %d", len(ds.uploadCalls))
+	if len(ds.uploadCalls) != 3 {
+		t.Fatalf("expected 3 upload calls, got %d", len(ds.uploadCalls))
 	}
-	if ds.uploadCalls[0].Filename != "CURRENT_INPUT.txt" || ds.uploadCalls[1].Filename != "HISTORY.txt" {
+	if ds.uploadCalls[0].Filename != "CURRENT_INPUT.txt" || ds.uploadCalls[1].Filename != "HISTORY.txt" || ds.uploadCalls[2].Filename != "TASK_STATE.txt" {
 		t.Fatalf("unexpected upload order: %#v", ds.uploadCalls)
 	}
 	if !strings.Contains(out.FinalPrompt, "CURRENT_INPUT.txt") {
@@ -319,11 +325,11 @@ func TestApplyHistorySplitUploadsOversizedLivePromptFallback(t *testing.T) {
 	if err != nil {
 		t.Fatalf("apply history split failed: %v", err)
 	}
-	if len(ds.uploadCalls) != 1 {
-		t.Fatalf("expected 1 upload call, got %d", len(ds.uploadCalls))
+	if len(ds.uploadCalls) != 2 {
+		t.Fatalf("expected 2 upload calls, got %d", len(ds.uploadCalls))
 	}
-	if ds.uploadCalls[0].Filename != "CURRENT_INPUT.txt" {
-		t.Fatalf("expected current input upload, got %q", ds.uploadCalls[0].Filename)
+	if ds.uploadCalls[0].Filename != "CURRENT_INPUT.txt" || ds.uploadCalls[1].Filename != "TASK_STATE.txt" {
+		t.Fatalf("unexpected upload order: %#v", ds.uploadCalls)
 	}
 	if !strings.Contains(out.FinalPrompt, "CURRENT_INPUT.txt") {
 		t.Fatalf("expected prompt to reference uploaded current input file, got %s", out.FinalPrompt)
@@ -333,6 +339,9 @@ func TestApplyHistorySplitUploadsOversizedLivePromptFallback(t *testing.T) {
 	}
 	if got := out.Diagnostics.CurrentInputReason; got != "live_prompt_context_too_large" {
 		t.Fatalf("unexpected current input reason: %q", got)
+	}
+	if got := out.Diagnostics.TaskStateReason; got != "task_continuity_summary_uploaded" {
+		t.Fatalf("unexpected task state reason: %q", got)
 	}
 }
 
@@ -362,12 +371,15 @@ func TestChatCompletionsHistorySplitUploadsHistoryFileAndKeepsLatestPrompt(t *te
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
 	}
-	if len(ds.uploadCalls) != 1 {
-		t.Fatalf("expected 1 upload call, got %d", len(ds.uploadCalls))
+	if len(ds.uploadCalls) != 2 {
+		t.Fatalf("expected 2 upload calls, got %d", len(ds.uploadCalls))
 	}
 	upload := ds.uploadCalls[0]
 	if upload.Filename != "HISTORY.txt" {
 		t.Fatalf("unexpected upload filename: %q", upload.Filename)
+	}
+	if ds.uploadCalls[1].Filename != "TASK_STATE.txt" {
+		t.Fatalf("expected task state upload second, got %#v", ds.uploadCalls)
 	}
 	if upload.Purpose != "assistants" {
 		t.Fatalf("unexpected purpose: %q", upload.Purpose)
@@ -390,7 +402,7 @@ func TestChatCompletionsHistorySplitUploadsHistoryFileAndKeepsLatestPrompt(t *te
 		t.Fatalf("expected historical turns removed from completion prompt, got %s", promptText)
 	}
 	refIDs, _ := ds.completionReq["ref_file_ids"].([]any)
-	if len(refIDs) == 0 || refIDs[0] != "file-inline-HISTORY" {
+	if len(refIDs) < 2 || refIDs[0] != "file-inline-TASK_STATE" || refIDs[1] != "file-inline-HISTORY" {
 		t.Fatalf("expected uploaded history file to be first ref_file_id, got %#v", ds.completionReq["ref_file_ids"])
 	}
 }
@@ -421,10 +433,10 @@ func TestChatCompletionsHistorySplitUploadsLongCurrentInputFile(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
 	}
-	if len(ds.uploadCalls) != 2 {
-		t.Fatalf("expected 2 upload calls, got %d", len(ds.uploadCalls))
+	if len(ds.uploadCalls) != 3 {
+		t.Fatalf("expected 3 upload calls, got %d", len(ds.uploadCalls))
 	}
-	if ds.uploadCalls[0].Filename != "CURRENT_INPUT.txt" || ds.uploadCalls[1].Filename != "HISTORY.txt" {
+	if ds.uploadCalls[0].Filename != "CURRENT_INPUT.txt" || ds.uploadCalls[1].Filename != "HISTORY.txt" || ds.uploadCalls[2].Filename != "TASK_STATE.txt" {
 		t.Fatalf("unexpected upload order: %#v", ds.uploadCalls)
 	}
 	if ds.completionReq == nil {
@@ -438,7 +450,7 @@ func TestChatCompletionsHistorySplitUploadsLongCurrentInputFile(t *testing.T) {
 		t.Fatalf("expected oversized current user text removed from prompt, got %s", promptText)
 	}
 	refIDs, _ := ds.completionReq["ref_file_ids"].([]any)
-	if len(refIDs) < 2 || refIDs[0] != "file-inline-HISTORY" || refIDs[1] != "file-inline-CURRENT_INPUT" {
+	if len(refIDs) < 3 || refIDs[0] != "file-inline-TASK_STATE" || refIDs[1] != "file-inline-HISTORY" || refIDs[2] != "file-inline-CURRENT_INPUT" {
 		t.Fatalf("expected history then current-input ref_file_ids, got %#v", ds.completionReq["ref_file_ids"])
 	}
 }
@@ -471,8 +483,11 @@ func TestResponsesHistorySplitUploadsHistoryAndKeepsLatestPrompt(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
 	}
-	if len(ds.uploadCalls) != 1 {
-		t.Fatalf("expected 1 upload call, got %d", len(ds.uploadCalls))
+	if len(ds.uploadCalls) != 2 {
+		t.Fatalf("expected 2 upload calls, got %d", len(ds.uploadCalls))
+	}
+	if ds.uploadCalls[0].Filename != "HISTORY.txt" || ds.uploadCalls[1].Filename != "TASK_STATE.txt" {
+		t.Fatalf("unexpected upload order: %#v", ds.uploadCalls)
 	}
 	if ds.completionReq == nil {
 		t.Fatal("expected completion payload to be captured")
@@ -611,8 +626,8 @@ func TestHistorySplitWorksAcrossAutoDeleteModes(t *testing.T) {
 			if rec.Code != http.StatusOK {
 				t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
 			}
-			if len(ds.uploadCalls) != 1 {
-				t.Fatalf("expected history split upload for mode=%s, got %d", mode, len(ds.uploadCalls))
+			if len(ds.uploadCalls) != 2 {
+				t.Fatalf("expected history and task-state uploads for mode=%s, got %d", mode, len(ds.uploadCalls))
 			}
 			if ds.completionReq == nil {
 				t.Fatalf("expected completion payload for mode=%s", mode)

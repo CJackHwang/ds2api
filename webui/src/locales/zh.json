@@ -298,6 +298,7 @@
         "diagnosticsDesc": "这里直接显示本轮是否把长文本或历史真正上传成文件，并展示最终挂到下游请求里的文件引用。",
         "diagCurrentInput": "当前输入文件",
         "diagHistory": "历史文件",
+        "diagTaskState": "任务状态文件",
         "diagUploaded": "已上传",
         "diagNotUploaded": "未上传",
         "diagFilename": "文件名",
@@ -316,7 +317,9 @@
             "no_user_message": "没有检测到用户消息",
             "split_history_available": "存在可拆分历史，已触发历史上传",
             "not_enough_user_turns": "用户轮次不够，未触发历史上传",
-            "history_split_empty": "拆分后历史为空，未触发历史上传"
+            "history_split_empty": "拆分后历史为空，未触发历史上传",
+            "task_continuity_summary_uploaded": "已上传任务状态记忆文件，用于强化当前任务连续性",
+            "task_state_not_needed": "当前请求不需要单独上传任务状态文件"
         },
         "backToTop": "回到顶部",
         "backToBottom": "跳到底部",

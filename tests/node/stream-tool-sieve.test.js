@@ -65,6 +65,14 @@ test('parseToolCalls parses loose DSML markup tool call', () => {
   assert.deepEqual(calls[0].input, { path: 'README.MD' });
 });
 
+test('parseToolCalls parses bare DSML markup tool call', () => {
+  const payload = '<DSMLtool_calls><DSMLinvoke name="Read"><DSMLparameter name="file_path" string="true">E:/KSWJJ/blog/backend/storage/articles.go</DSMLparameter><DSMLparameter name="limit" string="false">30</DSMLparameter><DSMLparameter name="offset" string="false">295</DSMLparameter></DSMLinvoke></DSMLtool_calls>';
+  const calls = parseToolCalls(payload, ['Read']);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].name, 'Read');
+  assert.deepEqual(calls[0].input, { file_path: 'E:/KSWJJ/blog/backend/storage/articles.go', limit: 30, offset: 295 });
+});
+
 test('parseToolCalls parses DSML typed parameters', () => {
   const payload = '<|DSML|tool_calls><|DSML|invoke name="search"><|DSML|parameter name="top_k" string="false">3</|DSML|parameter><|DSML|parameter name="exact" string="false">true</|DSML|parameter><|DSML|parameter name="filters" string="false">{"lang":"go"}</|DSML|parameter></|DSML|invoke></|DSML|tool_calls>';
   const calls = parseToolCalls(payload, ['search']);
