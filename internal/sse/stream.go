@@ -5,7 +5,6 @@ import (
 	"context"
 	"io"
 	"strings"
-	"time"
 )
 
 const (
@@ -16,10 +15,9 @@ const (
 
 // AccumulateConfig defines buffering configuration for SSE output
 type AccumulateConfig struct {
-	Enabled       bool          // Enable token accumulation
-	MinChars      int           // Minimum characters before flush (default: 150)
-	MaxWait       time.Duration // Maximum wait time before flush (default: 80ms)
-	FlushOnFinish bool          // Force flush when stream finishes
+	Enabled       bool // Enable token accumulation
+	MinChars      int  // Minimum characters before flush (default: 150)
+	FlushOnFinish bool // Force flush when stream finishes
 }
 
 // DefaultAccumulateConfig returns sensible defaults
@@ -27,7 +25,6 @@ func DefaultAccumulateConfig() AccumulateConfig {
 	return AccumulateConfig{
 		Enabled:       true,
 		MinChars:      150,
-		MaxWait:       80 * time.Millisecond,
 		FlushOnFinish: true,
 	}
 }
@@ -57,7 +54,6 @@ func startParsedLinePumpWithConfig(ctx context.Context, body io.Reader, thinking
 		var textBuffer strings.Builder
 		var thinkingBuffer strings.Builder
 		var toolDetectionThinkingBuffer strings.Builder
-		var lastFlush time.Time
 		var textPendingType string
 		var thinkingPendingType string
 
@@ -66,17 +62,13 @@ func startParsedLinePumpWithConfig(ctx context.Context, body io.Reader, thinking
 				return
 			}
 
-			now := time.Now()
-			elapsed := now.Sub(lastFlush)
-
 			textLen := textBuffer.Len()
 			thinkingLen := thinkingBuffer.Len()
 
 			// Determine if we should flush
 			shouldFlush := force ||
 				textLen >= cfg.MinChars ||
-				(thinkingLen > 0 && textLen >= 50) ||
-				(!force && elapsed >= cfg.MaxWait && (textLen > 0 || thinkingLen > 0))
+				(thinkingLen > 0 && textLen >= 50)
 
 			if !shouldFlush {
 				return
@@ -116,7 +108,6 @@ func startParsedLinePumpWithConfig(ctx context.Context, body io.Reader, thinking
 			textBuffer.Reset()
 			thinkingBuffer.Reset()
 			toolDetectionThinkingBuffer.Reset()
-			lastFlush = now
 		}
 
 		for scanner.Scan() {

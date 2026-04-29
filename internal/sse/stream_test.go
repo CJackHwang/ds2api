@@ -45,7 +45,6 @@ func TestAccumulateFlushOnMinChars(t *testing.T) {
 	cfg := AccumulateConfig{
 		Enabled:       true,
 		MinChars:      10,
-		MaxWait:       500 * time.Millisecond,
 		FlushOnFinish: true,
 	}
 	body := buildAccumulateSSEBody([]string{"hello", " world", "foo", "bar"}, 10)
@@ -90,7 +89,6 @@ func TestAccumulateDisabled(t *testing.T) {
 	cfg := AccumulateConfig{
 		Enabled:       false,
 		MinChars:      150,
-		MaxWait:       80 * time.Millisecond,
 		FlushOnFinish: true,
 	}
 	body := buildAccumulateSSEBody([]string{"a", "b", "c"}, 150)
@@ -122,7 +120,6 @@ func TestFlushOnFinish(t *testing.T) {
 	cfg := AccumulateConfig{
 		Enabled:       true,
 		MinChars:      1000,
-		MaxWait:       10 * time.Second,
 		FlushOnFinish: true,
 	}
 	body := buildAccumulateSSEBody([]string{"hello", " world"}, 1000)
@@ -156,7 +153,6 @@ func TestContextCancellation(t *testing.T) {
 	cfg := AccumulateConfig{
 		Enabled:       true,
 		MinChars:      10000,
-		MaxWait:       10 * time.Second,
 		FlushOnFinish: true,
 	}
 
