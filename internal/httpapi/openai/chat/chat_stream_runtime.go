@@ -254,7 +254,6 @@ func (s *chatStreamRuntime) onParsed(parsed sse.LineResult) streamengine.ParsedD
 		return streamengine.ParsedDecision{Stop: true, StopReason: streamengine.StopReasonHandlerRequested}
 	}
 
-	newChoices := make([]map[string]any, 0, len(parsed.Parts))
 	contentSeen := false
 	for _, p := range parsed.ToolDetectionThinkingParts {
 		trimmed := sse.TrimContinuationOverlap(s.toolDetectionThinking.String(), p.Text)
@@ -262,6 +261,14 @@ func (s *chatStreamRuntime) onParsed(parsed sse.LineResult) streamengine.ParsedD
 			s.toolDetectionThinking.WriteString(trimmed)
 		}
 	}
+
+	mergedDelta := map[string]any{}
+	if !s.firstChunkSent {
+		mergedDelta["role"] = "assistant"
+		s.firstChunkSent = true
+	}
+	var toolCallDeltas []map[string]any
+
 	for _, p := range parsed.Parts {
 		cleanedText := cleanVisibleOutput(p.Text, s.stripReferenceMarkers)
 		if s.searchEnabled && sse.IsCitation(cleanedText) {
@@ -271,11 +278,6 @@ func (s *chatStreamRuntime) onParsed(parsed sse.LineResult) streamengine.ParsedD
 			continue
 		}
 		contentSeen = true
-		delta := map[string]any{}
-		if !s.firstChunkSent {
-			delta["role"] = "assistant"
-			s.firstChunkSent = true
-		}
 		if p.Type == "thinking" {
 			if s.thinkingEnabled {
 				trimmed := sse.TrimContinuationOverlap(s.thinking.String(), cleanedText)
@@ -283,7 +285,7 @@ func (s *chatStreamRuntime) onParsed(parsed sse.LineResult) streamengine.ParsedD
 					continue
 				}
 				s.thinking.WriteString(trimmed)
-				delta["reasoning_content"] = trimmed
+				mergedDelta["reasoning_content"] = trimmed
 			}
 		} else {
 			trimmed := sse.TrimContinuationOverlap(s.text.String(), cleanedText)
@@ -292,7 +294,7 @@ func (s *chatStreamRuntime) onParsed(parsed sse.LineResult) streamengine.ParsedD
 			}
 			s.text.WriteString(trimmed)
 			if !s.bufferToolContent {
-				delta["content"] = trimmed
+				mergedDelta["content"] = trimmed
 			} else {
 				events := toolstream.ProcessChunk(&s.toolSieve, trimmed, s.toolNames)
 				for _, evt := range events {
@@ -305,58 +307,53 @@ func (s *chatStreamRuntime) onParsed(parsed sse.LineResult) streamengine.ParsedD
 							continue
 						}
 						formatted := formatIncrementalStreamToolCallDeltas(filtered, s.streamToolCallIDs)
-						if len(formatted) == 0 {
-							continue
+						if len(formatted) > 0 {
+							s.toolCallsEmitted = true
+							toolCallDeltas = append(toolCallDeltas, map[string]any{"tool_calls": formatted})
 						}
-						tcDelta := map[string]any{
-							"tool_calls": formatted,
-						}
-						s.toolCallsEmitted = true
-						if !s.firstChunkSent {
-							tcDelta["role"] = "assistant"
-							s.firstChunkSent = true
-						}
-						newChoices = append(newChoices, openaifmt.BuildChatStreamDeltaChoice(0, tcDelta))
 						continue
 					}
 					if len(evt.ToolCalls) > 0 {
 						s.toolCallsEmitted = true
 						s.toolCallsDoneEmitted = true
-						tcDelta := map[string]any{
-							"tool_calls": formatFinalStreamToolCallsWithStableIDs(evt.ToolCalls, s.streamToolCallIDs, s.toolsRaw),
-						}
-						if !s.firstChunkSent {
-							tcDelta["role"] = "assistant"
-							s.firstChunkSent = true
-						}
-						newChoices = append(newChoices, openaifmt.BuildChatStreamDeltaChoice(0, tcDelta))
+						formatted := formatFinalStreamToolCallsWithStableIDs(evt.ToolCalls, s.streamToolCallIDs, s.toolsRaw)
+						toolCallDeltas = append(toolCallDeltas, map[string]any{"tool_calls": formatted})
 						s.resetStreamToolCallState()
 						continue
 					}
 					if evt.Content != "" {
 						cleaned := cleanVisibleOutput(evt.Content, s.stripReferenceMarkers)
-						if cleaned == "" {
-							continue
+						if cleaned != "" {
+							if existing, ok := mergedDelta["content"].(string); ok {
+								mergedDelta["content"] = existing + cleaned
+							} else {
+								mergedDelta["content"] = cleaned
+							}
 						}
-						contentDelta := map[string]any{
-							"content": cleaned,
-						}
-						if !s.firstChunkSent {
-							contentDelta["role"] = "assistant"
-							s.firstChunkSent = true
-						}
-						newChoices = append(newChoices, openaifmt.BuildChatStreamDeltaChoice(0, contentDelta))
 					}
 				}
 			}
 		}
-		if len(delta) > 0 {
-			newChoices = append(newChoices, openaifmt.BuildChatStreamDeltaChoice(0, delta))
+	}
+
+	for _, tcDelta := range toolCallDeltas {
+		if len(mergedDelta) > 0 {
+			for k, v := range tcDelta {
+				mergedDelta[k] = v
+			}
+		} else {
+			if !s.firstChunkSent {
+				tcDelta["role"] = "assistant"
+				s.firstChunkSent = true
+			}
+			s.sendChunk(openaifmt.BuildChatStreamChunk(s.completionID, s.created, s.model,
+				[]map[string]any{openaifmt.BuildChatStreamDeltaChoice(0, tcDelta)}, nil))
 		}
 	}
 
-	if len(newChoices) > 0 {
-		s.sendChunk(openaifmt.BuildChatStreamChunk(s.completionID, s.created, s.model, newChoices, nil))
+	if len(mergedDelta) > 0 {
+		s.sendChunk(openaifmt.BuildChatStreamChunk(s.completionID, s.created, s.model,
+			[]map[string]any{openaifmt.BuildChatStreamDeltaChoice(0, mergedDelta)}, nil))
 	}
 	return streamengine.ParsedDecision{ContentSeen: contentSeen}
 }

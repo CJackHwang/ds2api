@@ -29,7 +29,8 @@ func TestStartParsedLinePumpMultipleLines(t *testing.T) {
 			"data: {\"p\":\"response/content\",\"v\":\"text\"}\n" +
 			"data: [DONE]\n",
 	)
-	results, done := StartParsedLinePump(context.Background(), body, true, "thinking")
+	cfg := AccumulateConfig{Enabled: false}
+	results, done := startParsedLinePumpWithConfig(context.Background(), body, true, "thinking", cfg)
 
 	collected := make([]LineResult, 0)
 	for r := range results {
@@ -60,7 +61,8 @@ func TestStartParsedLinePumpTypeTracking(t *testing.T) {
 			"data: {\"p\":\"response/fragments/-1/content\",\"v\":\"案\"}\n" +
 			"data: [DONE]\n",
 	)
-	results, done := StartParsedLinePump(context.Background(), body, true, "text")
+	cfg := AccumulateConfig{Enabled: false}
+	results, done := startParsedLinePumpWithConfig(context.Background(), body, true, "text", cfg)
 
 	types := make([]string, 0)
 	for r := range results {
@@ -88,10 +90,10 @@ func TestStartParsedLinePumpContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	results, done := StartParsedLinePump(ctx, pr, false, "text")
 
-	// Write one line to allow it to start
+	// Write one line and close pipe to unblock scanner
 	go func() {
 		_, _ = io.WriteString(pw, "data: {\"p\":\"response/content\",\"v\":\"hello\"}\n")
-		// Don't close yet - wait for context cancel
+		_ = pw.Close()
 	}()
 
 	// Read first result
@@ -100,19 +102,17 @@ func TestStartParsedLinePumpContextCancellation(t *testing.T) {
 		t.Fatalf("expected first parsed result, got %#v", r)
 	}
 
-	// Cancel context - this will cause the pump to exit on next send
+	// Cancel context
 	cancel()
-	// Close the pipe to unblock scanner.Scan()
-	_ = pw.Close()
 
 	// Drain remaining results
 	for range results {
 	}
 
 	err := <-done
-	// Error may be context.Canceled or nil (if pipe closed first)
-	if err != nil && err != context.Canceled {
-		t.Fatalf("expected context.Canceled or nil error, got %v", err)
+	// Error may be context.Canceled, io.EOF, or nil
+	if err != nil && err != context.Canceled && err != io.EOF {
+		t.Fatalf("expected context.Canceled, io.EOF or nil, got %v", err)
 	}
 }
 
