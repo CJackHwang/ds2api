@@ -171,9 +171,9 @@ func startParsedLinePumpWithConfig(ctx context.Context, body io.Reader, thinking
 				}
 				for _, p := range result.Parts {
 					if p.Type == "thinking" {
-						// Thinking content: flush text buffer first, then accumulate thinking
+						// Thinking content after text: force-flush text first to preserve stream order
 						if textBuffer.Len() > 0 {
-							flushBuffer(false)
+							flushBuffer(true)
 						}
 						thinkingBuffer.WriteString(p.Text)
 						thinkingPendingType = "thinking"
