@@ -40,8 +40,12 @@ func (s Service) ApplyCurrentInputFile(ctx context.Context, a *auth.RequestAuth,
 	if resolvedType, ok := config.GetModelType(stdReq.ResolvedModel); ok {
 		modelType = resolvedType
 	}
+	historyFilename := s.Store.HistoryFilename()
+	if historyFilename == "" {
+		historyFilename = promptcompat.CurrentInputContextFilename
+	}
 	result, err := s.DS.UploadFile(ctx, a, dsclient.UploadFileRequest{
-		Filename:    currentInputFilename,
+		Filename:    historyFilename,
 		ContentType: currentInputContentType,
 		Purpose:     currentInputPurpose,
 		ModelType:   modelType,
@@ -58,7 +62,7 @@ func (s Service) ApplyCurrentInputFile(ctx context.Context, a *auth.RequestAuth,
 	messages := []any{
 		map[string]any{
 			"role":    "user",
-			"content": currentInputFilePrompt(),
+			"content": currentInputFilePrompt(historyFilename),
 		},
 	}
 
@@ -92,6 +96,6 @@ func latestUserInputForFile(messages []any) (int, string) {
 	return -1, ""
 }
 
-func currentInputFilePrompt() string {
-	return "Continue from the latest state in the attached DS2API_HISTORY.txt context. Treat it as the current working state and answer the latest user request directly."
+func currentInputFilePrompt(filename string) string {
+	return fmt.Sprintf("Continue from the latest state in the attached %s context. Treat it as the current working state and answer the latest user request directly.", filename)
 }

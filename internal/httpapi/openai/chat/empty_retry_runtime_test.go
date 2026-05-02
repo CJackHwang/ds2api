@@ -50,6 +50,8 @@ func TestConsumeChatStreamAttemptMarksContextCancelledState(t *testing.T) {
 		nil,
 		false,
 		false,
+		false,
+		"",
 	)
 	resp := makeOpenAISSEHTTPResponse(
 		`data: {"p":"response/content","v":"hello"}`,

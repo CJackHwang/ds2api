@@ -200,3 +200,43 @@ func (s *Store) ThinkingInjectionPrompt() string {
 	defer s.mu.RUnlock()
 	return strings.TrimSpace(s.cfg.ThinkingInjection.Prompt)
 }
+
+func (s *Store) KeepSessionEnabled() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.cfg.KeepSession.Enabled {
+		return true
+	}
+	raw := strings.TrimSpace(os.Getenv("KEEP_SESSION"))
+	return raw == "true" || raw == "1"
+}
+
+func (s *Store) HistoryFilename() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if raw := strings.TrimSpace(s.cfg.KeepSession.HistoryFilename); raw != "" {
+		return raw
+	}
+	if raw := strings.TrimSpace(os.Getenv("DS2API_HISTORY_FILENAME")); raw != "" {
+		return raw
+	}
+	return "DS2API_HISTORY.txt"
+}
+
+func (s *Store) SupplementFilename() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if raw := strings.TrimSpace(s.cfg.KeepSession.SupplementFilename); raw != "" {
+		return raw
+	}
+	if raw := strings.TrimSpace(os.Getenv("DS2API_SUPPLEMENT_FILENAME")); raw != "" {
+		return raw
+	}
+	return "supplement.txt"
+}
+
+func (s *Store) SupplementFileEnabled() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.cfg.KeepSession.SupplementFileEnabled
+}

@@ -28,7 +28,7 @@ type chatNonStreamResult struct {
 	responseMessageID     int
 }
 
-func (h *Handler) handleNonStreamWithRetry(w http.ResponseWriter, ctx context.Context, a *auth.RequestAuth, resp *http.Response, payload map[string]any, pow, completionID, model, finalPrompt string, refFileTokens int, thinkingEnabled, searchEnabled bool, toolNames []string, toolsRaw any, historySession *chatHistorySession) {
+func (h *Handler) handleNonStreamWithRetry(w http.ResponseWriter, ctx context.Context, a *auth.RequestAuth, resp *http.Response, payload map[string]any, pow, completionID, model, finalPrompt string, refFileTokens int, thinkingEnabled, searchEnabled bool, toolNames []string, toolsRaw any, historySession *chatHistorySession, keepSession bool) {
 	attempts := 0
 	currentResp := resp
 	usagePrompt := finalPrompt
@@ -52,7 +52,7 @@ func (h *Handler) handleNonStreamWithRetry(w http.ResponseWriter, ctx context.Co
 		addRefFileTokensToUsage(result.body, refFileTokens)
 		result.finishReason = chatFinishReason(result.body)
 		if !shouldRetryChatNonStream(result, attempts) {
-			h.finishChatNonStreamResult(w, result, attempts, usagePrompt, refFileTokens, historySession)
+			h.finishChatNonStreamResult(w, result, attempts, usagePrompt, refFileTokens, historySession, a.DeepSeekToken, keepSession)
 			return
 		}
 
@@ -108,7 +108,7 @@ func (h *Handler) collectChatNonStreamAttempt(w http.ResponseWriter, resp *http.
 	}, true
 }
 
-func (h *Handler) finishChatNonStreamResult(w http.ResponseWriter, result chatNonStreamResult, attempts int, usagePrompt string, refFileTokens int, historySession *chatHistorySession) {
+func (h *Handler) finishChatNonStreamResult(w http.ResponseWriter, result chatNonStreamResult, attempts int, usagePrompt string, refFileTokens int, historySession *chatHistorySession, token string, keepSession bool) {
 	if result.detectedCalls == 0 && shouldWriteUpstreamEmptyOutputError(result.text) {
 		status, message, code := upstreamEmptyOutputDetail(result.contentFilter, result.text, result.thinking)
 		if historySession != nil {
@@ -117,6 +117,10 @@ func (h *Handler) finishChatNonStreamResult(w http.ResponseWriter, result chatNo
 		writeUpstreamEmptyOutputError(w, result.text, result.thinking, result.contentFilter)
 		config.Logger.Info("[openai_empty_retry] terminal empty output", "surface", "chat.completions", "stream", false, "retry_attempts", attempts, "success_source", "none", "content_filter", result.contentFilter)
 		return
+	}
+	if keepSession && result.responseMessageID > 0 && token != "" {
+		cache := GetSessionCache()
+		cache.UpdateMessageIDs(token, result.responseMessageID, result.responseMessageID)
 	}
 	if historySession != nil {
 		historySession.success(http.StatusOK, result.thinking, result.text, result.finishReason, openaifmt.BuildChatUsageForModel("", usagePrompt, result.thinking, result.text, refFileTokens))
@@ -146,8 +150,8 @@ func shouldRetryChatNonStream(result chatNonStreamResult, attempts int) bool {
 		strings.TrimSpace(result.text) == ""
 }
 
-func (h *Handler) handleStreamWithRetry(w http.ResponseWriter, r *http.Request, a *auth.RequestAuth, resp *http.Response, payload map[string]any, pow, completionID, model, finalPrompt string, refFileTokens int, thinkingEnabled, searchEnabled bool, toolNames []string, toolsRaw any, historySession *chatHistorySession) {
-	streamRuntime, initialType, ok := h.prepareChatStreamRuntime(w, resp, completionID, model, finalPrompt, refFileTokens, thinkingEnabled, searchEnabled, toolNames, toolsRaw, historySession)
+func (h *Handler) handleStreamWithRetry(w http.ResponseWriter, r *http.Request, a *auth.RequestAuth, resp *http.Response, payload map[string]any, pow, completionID, model, finalPrompt string, refFileTokens int, thinkingEnabled, searchEnabled bool, toolNames []string, toolsRaw any, historySession *chatHistorySession, keepSession bool) {
+	streamRuntime, initialType, ok := h.prepareChatStreamRuntime(w, resp, completionID, model, finalPrompt, refFileTokens, thinkingEnabled, searchEnabled, toolNames, toolsRaw, historySession, keepSession, a.DeepSeekToken)
 	if !ok {
 		return
 	}
@@ -189,7 +193,7 @@ func (h *Handler) handleStreamWithRetry(w http.ResponseWriter, r *http.Request, 
 	}
 }
 
-func (h *Handler) prepareChatStreamRuntime(w http.ResponseWriter, resp *http.Response, completionID, model, finalPrompt string, refFileTokens int, thinkingEnabled, searchEnabled bool, toolNames []string, toolsRaw any, historySession *chatHistorySession) (*chatStreamRuntime, string, bool) {
+func (h *Handler) prepareChatStreamRuntime(w http.ResponseWriter, resp *http.Response, completionID, model, finalPrompt string, refFileTokens int, thinkingEnabled, searchEnabled bool, toolNames []string, toolsRaw any, historySession *chatHistorySession, keepSession bool, token string) (*chatStreamRuntime, string, bool) {
 	if resp.StatusCode != http.StatusOK {
 		defer func() { _ = resp.Body.Close() }()
 		body, _ := io.ReadAll(resp.Body)
@@ -216,6 +220,7 @@ func (h *Handler) prepareChatStreamRuntime(w http.ResponseWriter, resp *http.Res
 		w, rc, canFlush, completionID, time.Now().Unix(), model, finalPrompt,
 		thinkingEnabled, searchEnabled, h.compatStripReferenceMarkers(), toolNames, toolsRaw,
 		len(toolNames) > 0, h.toolcallFeatureMatchEnabled() && h.toolcallEarlyEmitHighConfidence(),
+		keepSession, token,
 	)
 	streamRuntime.refFileTokens = refFileTokens
 	return streamRuntime, initialType, true
@@ -244,6 +249,10 @@ func (h *Handler) consumeChatStreamAttempt(r *http.Request, resp *http.Response,
 		OnFinalize: func(reason streamengine.StopReason, _ error) {
 			if string(reason) == "content_filter" {
 				finalReason = "content_filter"
+			}
+			if streamRuntime.keepSession && streamRuntime.responseMessageID > 0 {
+				cache := GetSessionCache()
+				cache.UpdateMessageIDs(streamRuntime.token, streamRuntime.responseMessageID, streamRuntime.responseMessageID)
 			}
 		},
 		OnContextDone: func() {

@@ -298,6 +298,80 @@ Prior conversation history and tool progress.
 
 开启后，请求的 live prompt 不再直接内联完整上下文，而是保留一个 user role 的短提示，提示模型基于已提供上下文直接回答最新请求；上传后的 `file_id` 会进入 `ref_file_ids`。
 
+## 9.1 Keep Session（有状态多轮对话）
+
+当 `keep_session.enabled=true` 时，DS2API 会启用有状态多轮对话模式，复用 DeepSeek 远端的同一 `chat_session_id` 进行跨轮次持续对话。
+
+### 9.1.1 核心机制
+
+- **Session 复用**：同一认证 token 的请求会复用相同的远端 `chat_session_id`，而不是每次新建。
+- **parent_message_id 维护**：每轮对话结束后，缓存最后一条消息的 `response_message_id`，作为下一轮的 `parent_message_id`，使对话上下文能够正确链接。
+- **历史 diff 处理**：对于非首条消息，通过比较新旧历史文件内容，提取增量部分作为补充文件上传，避免重复发送完整历史。
+
+### 9.1.2 执行流程
+
+```text
+首条消息：
+  1. NormalizeOpenAIChatRequest -> stdReq
+  2. applyCurrentInputFile (填充 HistoryText)
+  3. 创建/复用 session
+  4. 正常完成请求
+
+后续消息：
+  1. NormalizeOpenAIChatRequest -> stdReq
+  2. applyCurrentInputFile (填充 HistoryText)
+  3. applyKeepSessionHistory:
+     - 比较新旧历史，提取增量内容
+     - 构建补充文件（system prompt + 历史上下文）
+     - 上传补充文件到 ref_file_ids
+     - 精简 FinalPrompt 为仅最新用户输入
+  4. 使用缓存的 sessionID 和 parentMessageID
+  5. 完成请求并更新 message ID 缓存
+```
+
+### 9.1.3 补充文件（Supplement File）
+
+当 `keep_session.supplement_file_enabled=true` 时（默认开启），系统会自动生成并上传补充文件：
+
+- **文件名**：可配置，默认为 `supplement.txt`
+- **内容格式**：
+  ```text
+  <｜begin▁of▁sentence｜><｜System｜>原始 system prompt 内容<｜end▁of▁instructions｜>
+  ```
+- **作用**：将历史上下文中的 system prompt 和早期对话内容以文件形式传递，减少 live prompt 的重复内容
+- **FinalPrompt 精简**：无论补充文件是否启用，都会将 FinalPrompt 精简为仅包含最新的 `<｜User｜>...</attachment>` 内容，避免上下文重复
+
+### 9.1.4 配置项
+
+```json
+{
+  "keep_session": {
+    "enabled": false,
+    "supplement_file_enabled": true,
+    "history_filename": "DS2API_HISTORY.txt",
+    "supplement_filename": "supplement.txt"
+  }
+}
+```
+
+- `enabled`：是否启用有状态多轮对话（默认 false）
+- `supplement_file_enabled`：是否上传补充文件（默认 true）
+- `history_filename`：历史文件的文件名
+- `supplement_filename`：补充文件的文件名
+
+### 9.1.5 Session 持久化
+
+Session 缓存会持久化到本地文件 `data/sessions/session_cache.json`，服务重启后可以恢复之前的会话状态，继续多轮对话。
+
+相关实现：
+
+- Session 缓存管理：
+  [internal/httpapi/openai/chat/session_cache.go](../internal/httpapi/openai/chat/session_cache.go)
+- Keep session 历史处理：
+  [internal/httpapi/openai/chat/handler_chat.go](../internal/httpapi/openai/chat/handler_chat.go) (applyKeepSessionHistory)
+- 历史 diff 和内容提取：
+  [internal/httpapi/openai/chat/history_diff.go](../internal/httpapi/openai/chat/history_diff.go)
+
 ## 10. 各协议入口的差异
 
 ### 10.1 OpenAI Chat / Responses
