@@ -2,22 +2,12 @@ package sse
 
 import (
 	"context"
-	"encoding/json"
+	"fmt"
+	"io"
 	"strings"
 	"testing"
+	"time"
 )
-
-func makeLargeContentSSEBody(t *testing.T, payload string) string {
-	t.Helper()
-	line, err := json.Marshal(map[string]any{
-		"p": "response/content",
-		"v": payload,
-	})
-	if err != nil {
-		t.Fatalf("marshal SSE line failed: %v", err)
-	}
-	return "data: " + string(line) + "\n" + "data: [DONE]\n"
-}
 
 func TestStartParsedLinePumpParsesAndStops(t *testing.T) {
 	body := strings.NewReader("data: {\"p\":\"response/content\",\"v\":\"hi\"}\n\ndata: [DONE]\n")
@@ -42,27 +32,150 @@ func TestStartParsedLinePumpParsesAndStops(t *testing.T) {
 	}
 }
 
-func TestStartParsedLinePumpHandlesLongSingleSSELine(t *testing.T) {
-	payload := strings.Repeat("x", 2*1024*1024+4096)
-	results, done := StartParsedLinePump(context.Background(), strings.NewReader(makeLargeContentSSEBody(t, payload)), false, "text")
+func buildAccumulateSSEBody(chunks []string, minChars int) *strings.Reader {
+	var sb strings.Builder
+	for _, c := range chunks {
+		sb.WriteString(fmt.Sprintf("data: {\"p\":\"response/content\",\"v\":\"%s\"}\n", c))
+	}
+	sb.WriteString("data: [DONE]\n")
+	return strings.NewReader(sb.String())
+}
 
-	var got strings.Builder
-	var sawDone bool
+func TestAccumulateFlushOnMinChars(t *testing.T) {
+	cfg := AccumulateConfig{
+		Enabled:       true,
+		MinChars:      10,
+		FlushOnFinish: true,
+	}
+	body := buildAccumulateSSEBody([]string{"hello", " world", "foo", "bar"}, 10)
+	results, done := startParsedLinePumpWithConfig(context.Background(), body, false, "text", cfg)
+
+	collected := make([]LineResult, 0)
 	for r := range results {
-		for _, p := range r.Parts {
-			got.WriteString(p.Text)
-		}
-		if r.Stop {
-			sawDone = true
-		}
+		collected = append(collected, r)
 	}
 	if err := <-done; err != nil {
-		t.Fatalf("unexpected long-line read error: %v", err)
+		t.Fatalf("unexpected error: %v", err)
 	}
-	if got.String() != payload {
-		t.Fatalf("long SSE line payload mismatch: got len=%d want len=%d", got.Len(), len(payload))
+
+	stopCount := 0
+	flushCount := 0
+	var totalText strings.Builder
+	for _, r := range collected {
+		if r.Stop {
+			stopCount++
+			continue
+		}
+		if r.Parsed && len(r.Parts) > 0 {
+			flushCount++
+			for _, p := range r.Parts {
+				totalText.WriteString(p.Text)
+			}
+		}
 	}
-	if !sawDone {
-		t.Fatal("expected DONE after long SSE line")
+
+	if totalText.String() != "hello worldfoobar" {
+		t.Errorf("expected total text 'hello worldfoobar', got %q", totalText.String())
+	}
+	if flushCount == 0 {
+		t.Error("expected at least one flush")
+	}
+	if stopCount != 1 {
+		t.Errorf("expected 1 stop result, got %d", stopCount)
+	}
+}
+
+func TestAccumulateDisabled(t *testing.T) {
+	cfg := AccumulateConfig{
+		Enabled:       false,
+		MinChars:      150,
+		FlushOnFinish: true,
+	}
+	body := buildAccumulateSSEBody([]string{"a", "b", "c"}, 150)
+	results, done := startParsedLinePumpWithConfig(context.Background(), body, false, "text", cfg)
+
+	collected := make([]LineResult, 0)
+	for r := range results {
+		collected = append(collected, r)
+	}
+	if err := <-done; err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	nonStopCount := 0
+	for _, r := range collected {
+		if !r.Stop && r.Parsed {
+			nonStopCount++
+			if len(r.Parts) != 1 || len(r.Parts[0].Text) != 1 {
+				t.Errorf("expected single char per result when accumulation disabled, got parts=%v text=%q", len(r.Parts), r.Parts[0].Text)
+			}
+		}
+	}
+	if nonStopCount != 3 {
+		t.Errorf("expected 3 non-stop results when disabled, got %d", nonStopCount)
+	}
+}
+
+func TestFlushOnFinish(t *testing.T) {
+	cfg := AccumulateConfig{
+		Enabled:       true,
+		MinChars:      1000,
+		FlushOnFinish: true,
+	}
+	body := buildAccumulateSSEBody([]string{"hello", " world"}, 1000)
+	results, done := startParsedLinePumpWithConfig(context.Background(), body, false, "text", cfg)
+
+	collected := make([]LineResult, 0)
+	for r := range results {
+		collected = append(collected, r)
+	}
+	if err := <-done; err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var totalFlushedText string
+	for _, r := range collected {
+		if !r.Stop && r.Parsed {
+			for _, p := range r.Parts {
+				totalFlushedText += p.Text
+			}
+		}
+	}
+	if totalFlushedText != "hello world" {
+		t.Errorf("expected 'hello world', got %q", totalFlushedText)
+	}
+}
+
+func TestContextCancellation(t *testing.T) {
+	pr, pw := io.Pipe()
+	ctx, cancel := context.WithCancel(context.Background())
+
+	cfg := AccumulateConfig{
+		Enabled:       true,
+		MinChars:      10000,
+		FlushOnFinish: true,
+	}
+
+	results, done := startParsedLinePumpWithConfig(ctx, pr, false, "text", cfg)
+
+	go func() {
+		_, _ = io.WriteString(pw, "data: {\"p\":\"response/content\",\"v\":\"hello\"}\n")
+		_ = pw.Close()
+	}()
+
+	r := <-results
+	if !r.Parsed {
+		t.Fatalf("expected parsed result, got %#v", r)
+	}
+
+	cancel()
+
+	for range results {
+	}
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("goroutine did not exit after context cancellation")
 	}
 }

@@ -23,11 +23,28 @@ func ParseDeepSeekSSELine(raw []byte) (map[string]any, bool, bool) {
 	if dataStr == "[DONE]" {
 		return nil, true, true
 	}
+	if fastSkipSSEData(dataStr) {
+		return nil, false, false
+	}
 	chunk := map[string]any{}
 	if err := json.Unmarshal([]byte(dataStr), &chunk); err != nil {
 		return nil, false, false
 	}
 	return chunk, false, true
+}
+
+func fastSkipSSEData(data string) bool {
+	idx := strings.Index(data, `"p":"`)
+	if idx < 0 {
+		return false
+	}
+	start := idx + 5
+	end := strings.Index(data[start:], `"`)
+	if end < 0 {
+		return false
+	}
+	path := data[start : start+end]
+	return shouldSkipPath(path)
 }
 
 func shouldSkipPath(path string) bool {
@@ -92,7 +109,6 @@ func ParseSSEChunkForContentDetailed(chunk map[string]any, thinkingEnabled bool,
 	}
 	newType := currentFragmentType
 	parts := make([]ContentPart, 0, 8)
-	updateTypeFromExplicitPath(path, thinkingEnabled, &newType)
 	collectDirectFragments(path, chunk, v, &newType, &parts)
 	updateTypeFromNestedResponse(path, v, &newType)
 	partType := resolvePartType(path, thinkingEnabled, newType)
@@ -108,22 +124,9 @@ func ParseSSEChunkForContentDetailed(chunk map[string]any, thinkingEnabled bool,
 	detectionThinkingParts := selectThinkingParts(parts)
 	if !thinkingEnabled {
 		parts = dropThinkingParts(parts)
+		newType = "text"
 	}
 	return parts, detectionThinkingParts, false, newType
-}
-
-func updateTypeFromExplicitPath(path string, thinkingEnabled bool, newType *string) {
-	if newType == nil {
-		return
-	}
-	switch path {
-	case "response/content":
-		*newType = "text"
-	case "response/thinking_content":
-		if !thinkingEnabled || *newType != "text" {
-			*newType = "thinking"
-		}
-	}
 }
 
 func selectThinkingParts(parts []ContentPart) []ContentPart {
@@ -220,11 +223,8 @@ func resolvePartType(path string, thinkingEnabled bool, newType string) string {
 		return "text"
 	case strings.Contains(path, "response/fragments") && strings.Contains(path, "/content"):
 		return newType
-	case path == "":
-		if newType != "" {
-			return newType
-		}
-		return "text"
+	case path == "" && thinkingEnabled:
+		return newType
 	default:
 		return "text"
 	}
@@ -261,27 +261,9 @@ func appendChunkValueContent(v any, partType string, newType *string, parts *[]C
 		}
 		*parts = append(*parts, pp...)
 	case map[string]any:
-		if appendObjectContentByPath(path, val, partType, parts) {
-			return false
-		}
 		appendWrappedFragments(val, partType, newType, parts)
 	}
 	return false
-}
-
-func appendObjectContentByPath(path string, val map[string]any, partType string, parts *[]ContentPart) bool {
-	if path != "response/content" && path != "response/thinking_content" && path != "" {
-		return false
-	}
-	text, _ := val["text"].(string)
-	if text == "" {
-		text, _ = val["content"].(string)
-	}
-	if text == "" {
-		return false
-	}
-	appendContentPart(parts, text, partType)
-	return true
 }
 
 func appendWrappedFragments(val map[string]any, partType string, newType *string, parts *[]ContentPart) {

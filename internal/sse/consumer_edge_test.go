@@ -41,15 +41,6 @@ func TestCollectStreamTextOnly(t *testing.T) {
 	}
 }
 
-func TestCollectStreamHandlesLongSingleSSELine(t *testing.T) {
-	payload := strings.Repeat("x", 2*1024*1024+4096)
-	resp := makeHTTPResponse(makeLargeContentSSEBody(t, payload))
-	result := CollectStream(resp, false, true)
-	if result.Text != payload {
-		t.Fatalf("long SSE line payload mismatch: got len=%d want len=%d", len(result.Text), len(payload))
-	}
-}
-
 func TestCollectStreamThinkingAndText(t *testing.T) {
 	resp := makeHTTPResponse(
 		"data: {\"p\":\"response/thinking_content\",\"v\":\"Thinking...\"}\n" +

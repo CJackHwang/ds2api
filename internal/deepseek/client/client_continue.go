@@ -7,7 +7,6 @@ import (
 	dsprotocol "ds2api/internal/deepseek/protocol"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -28,7 +27,7 @@ type continueState struct {
 }
 
 // wrapCompletionWithAutoContinue wraps the completion response body so that
-// if the upstream indicates the response is incomplete (INCOMPLETE /
+// if the upstream indicates the response is incomplete (WIP / INCOMPLETE /
 // AUTO_CONTINUE), ds2api will automatically call the DeepSeek continue
 // endpoint and splice the continuation SSE stream onto the original.
 // The caller sees a single, seamless SSE stream.
@@ -133,51 +132,36 @@ func pumpAutoContinue(ctx context.Context, pw *io.PipeWriter, initial io.ReadClo
 // sentinels are consumed (not forwarded) so that the downstream only sees
 // one final [DONE] at the very end.
 func streamBodyWithContinueState(ctx context.Context, pw *io.PipeWriter, body io.Reader, state *continueState) (bool, error) {
-	reader := bufio.NewReaderSize(body, 64*1024)
+	scanner := bufio.NewScanner(body)
+	scanner.Buffer(make([]byte, 0, 64*1024), 2*1024*1024)
+	bw := bufio.NewWriterSize(pw, 64*1024)
 	hadDone := false
-	for {
+	for scanner.Scan() {
 		select {
 		case <-ctx.Done():
+			_ = bw.Flush()
 			return hadDone, ctx.Err()
 		default:
 		}
-		line, err := reader.ReadBytes('\n')
-		if len(line) == 0 && err != nil {
-			if err == io.EOF {
-				return hadDone, nil
-			}
-			return hadDone, err
+		text := scanner.Text()
+		trimmed := strings.TrimSpace(text)
+		if trimmed == "" {
+			continue
 		}
-		trimmed := strings.TrimSpace(string(line))
-		if trimmed != "" {
-			if strings.HasPrefix(trimmed, "data:") {
-				data := strings.TrimSpace(strings.TrimPrefix(trimmed, "data:"))
-				if data == "[DONE]" {
-					hadDone = true
-					if err != nil && err != io.EOF {
-						return hadDone, err
-					}
-					if err == io.EOF {
-						return hadDone, nil
-					}
-					continue
-				}
-				state.observe(data)
+		if strings.HasPrefix(trimmed, "data:") {
+			data := strings.TrimSpace(strings.TrimPrefix(trimmed, "data:"))
+			if data == "[DONE]" {
+				hadDone = true
+				continue
 			}
-			if !strings.HasSuffix(string(line), "\n") {
-				line = append(line, '\n')
-			}
-			if _, copyErr := io.Copy(pw, bytes.NewReader(line)); copyErr != nil {
-				return hadDone, copyErr
-			}
+			state.observe(data)
 		}
-		if err != nil {
-			if err == io.EOF {
-				return hadDone, nil
-			}
+		if _, err := bw.WriteString(text + "\n"); err != nil {
 			return hadDone, err
 		}
 	}
+	_ = bw.Flush()
+	return hadDone, scanner.Err()
 }
 
 // observe extracts continue-relevant signals from an SSE JSON chunk.
@@ -193,100 +177,49 @@ func (s *continueState) observe(data string) {
 	if id := intFrom(chunk["response_message_id"]); id > 0 {
 		s.responseMessageID = id
 	}
-	s.observeDirectPatch(asString(chunk["p"]), chunk["v"])
-	if p, _ := chunk["p"].(string); p == "response" {
-		s.observeBatchPatches("response", chunk["v"])
-	} else {
-		s.observeBatchPatches("", chunk["v"])
+	// Path-based status: {"p": "response/status", "v": "FINISHED"}
+	if p, _ := chunk["p"].(string); p == "response/status" {
+		if status, _ := chunk["v"].(string); status != "" {
+			s.lastStatus = strings.TrimSpace(status)
+			if strings.EqualFold(s.lastStatus, "FINISHED") {
+				s.finished = true
+			}
+		}
 	}
-	if v, _ := chunk["v"].(map[string]any); v != nil {
-		s.observeResponseObject(v["response"])
-	}
-	if message, _ := chunk["message"].(map[string]any); message != nil {
-		s.observeResponseObject(message["response"])
-	}
-}
-
-func (s *continueState) observeDirectPatch(path string, value any) {
-	if s == nil {
-		return
-	}
-	switch strings.Trim(strings.TrimSpace(path), "/") {
-	case "response/status", "status", "response/quasi_status", "quasi_status":
-		s.setStatus(asString(value))
-	case "response/auto_continue", "auto_continue":
-		if v, ok := value.(bool); ok && v {
+	// Nested v.response
+	v, _ := chunk["v"].(map[string]any)
+	if response, _ := v["response"].(map[string]any); response != nil {
+		if id := intFrom(response["message_id"]); id > 0 {
+			s.responseMessageID = id
+		}
+		if status, _ := response["status"].(string); status != "" {
+			s.lastStatus = strings.TrimSpace(status)
+			if strings.EqualFold(s.lastStatus, "FINISHED") {
+				s.finished = true
+			}
+		}
+		if autoContinue, ok := response["auto_continue"].(bool); ok && autoContinue {
 			s.lastStatus = "AUTO_CONTINUE"
 		}
 	}
-}
-
-func (s *continueState) observeResponseObject(raw any) {
-	if s == nil {
-		return
-	}
-	response, _ := raw.(map[string]any)
-	if response == nil {
-		return
-	}
-	if id := intFrom(response["message_id"]); id > 0 {
-		s.responseMessageID = id
-	}
-	s.setStatus(asString(response["status"]))
-	if autoContinue, ok := response["auto_continue"].(bool); ok && autoContinue {
-		s.lastStatus = "AUTO_CONTINUE"
-	}
-}
-
-func (s *continueState) observeBatchPatches(parentPath string, raw any) {
-	if s == nil {
-		return
-	}
-	patches, ok := raw.([]any)
-	if !ok {
-		return
-	}
-	for _, patch := range patches {
-		m, ok := patch.(map[string]any)
-		if !ok {
-			continue
-		}
-		path := strings.TrimSpace(asString(m["p"]))
-		if path == "" {
-			continue
-		}
-		fullPath := path
-		if parent := strings.Trim(strings.TrimSpace(parentPath), "/"); parent != "" && !strings.Contains(path, "/") {
-			fullPath = parent + "/" + path
-		}
-		switch strings.Trim(strings.TrimSpace(fullPath), "/") {
-		case "response/status", "status", "response/quasi_status", "quasi_status":
-			s.setStatus(asString(m["v"]))
-		case "response/auto_continue", "auto_continue":
-			if v, ok := m["v"].(bool); ok && v {
-				s.lastStatus = "AUTO_CONTINUE"
+	// Nested message.response
+	if message, _ := chunk["message"].(map[string]any); message != nil {
+		if response, _ := message["response"].(map[string]any); response != nil {
+			if id := intFrom(response["message_id"]); id > 0 {
+				s.responseMessageID = id
+			}
+			if status, _ := response["status"].(string); status != "" {
+				s.lastStatus = strings.TrimSpace(status)
+				if strings.EqualFold(s.lastStatus, "FINISHED") {
+					s.finished = true
+				}
 			}
 		}
 	}
 }
 
-func (s *continueState) setStatus(status string) {
-	if s == nil {
-		return
-	}
-	normalized := strings.TrimSpace(status)
-	if normalized == "" {
-		return
-	}
-	s.lastStatus = normalized
-	if strings.EqualFold(normalized, "FINISHED") || strings.EqualFold(normalized, "CONTENT_FILTER") {
-		s.finished = true
-	}
-}
-
-// shouldContinue returns true when the upstream explicitly indicates the
-// response is incomplete and we have enough information to issue a continue
-// request. Plain WIP is not sufficient because normal streams begin in WIP.
+// shouldContinue returns true when the upstream indicates the response is
+// not yet finished and we have enough information to issue a continue request.
 func (s *continueState) shouldContinue() bool {
 	if s == nil {
 		return false
@@ -295,7 +228,7 @@ func (s *continueState) shouldContinue() bool {
 		return false
 	}
 	switch strings.ToUpper(strings.TrimSpace(s.lastStatus)) {
-	case "INCOMPLETE", "AUTO_CONTINUE":
+	case "WIP", "INCOMPLETE", "AUTO_CONTINUE":
 		return true
 	default:
 		return false
@@ -310,20 +243,4 @@ func (s *continueState) prepareForNextRound() {
 	}
 	s.finished = false
 	s.lastStatus = ""
-}
-
-func asString(v any) string {
-	if v == nil {
-		return ""
-	}
-	switch x := v.(type) {
-	case string:
-		return x
-	default:
-		s := strings.TrimSpace(strings.ReplaceAll(strings.TrimSpace(fmt.Sprint(v)), "\u0000", ""))
-		if s == "<nil>" {
-			return ""
-		}
-		return s
-	}
 }

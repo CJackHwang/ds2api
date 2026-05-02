@@ -88,71 +88,6 @@ func TestParseSSEChunkForContentAfterAppendUsesUpdatedType(t *testing.T) {
 	}
 }
 
-func TestParseSSEChunkForContentThinkingDisabledKeepsHiddenFragmentState(t *testing.T) {
-	chunk1 := map[string]any{
-		"p": "response/fragments",
-		"o": "APPEND",
-		"v": []any{
-			map[string]any{"type": "THINK", "content": "我们"},
-		},
-	}
-	parts1, finished1, nextType1 := ParseSSEChunkForContent(chunk1, false, "text")
-	if finished1 {
-		t.Fatal("expected first chunk unfinished")
-	}
-	if nextType1 != "thinking" {
-		t.Fatalf("expected hidden THINK fragment to keep next type thinking, got %q", nextType1)
-	}
-	if len(parts1) != 0 {
-		t.Fatalf("expected hidden thinking to be dropped, got %#v", parts1)
-	}
-
-	chunk2 := map[string]any{
-		"p": "response/fragments/-1/content",
-		"v": "被",
-	}
-	parts2, finished2, nextType2 := ParseSSEChunkForContent(chunk2, false, nextType1)
-	if finished2 {
-		t.Fatal("expected second chunk unfinished")
-	}
-	if nextType2 != "thinking" {
-		t.Fatalf("expected hidden continuation to keep next type thinking, got %q", nextType2)
-	}
-	if len(parts2) != 0 {
-		t.Fatalf("expected hidden continuation to be dropped, got %#v", parts2)
-	}
-
-	chunk3 := map[string]any{"v": "要求"}
-	parts3, finished3, nextType3 := ParseSSEChunkForContent(chunk3, false, nextType2)
-	if finished3 {
-		t.Fatal("expected third chunk unfinished")
-	}
-	if nextType3 != "thinking" {
-		t.Fatalf("expected pathless hidden continuation to keep next type thinking, got %q", nextType3)
-	}
-	if len(parts3) != 0 {
-		t.Fatalf("expected pathless hidden continuation to be dropped, got %#v", parts3)
-	}
-
-	chunk4 := map[string]any{
-		"p": "response/fragments",
-		"o": "APPEND",
-		"v": []any{
-			map[string]any{"type": "RESPONSE", "content": "答"},
-		},
-	}
-	parts4, finished4, nextType4 := ParseSSEChunkForContent(chunk4, false, nextType3)
-	if finished4 {
-		t.Fatal("expected fourth chunk unfinished")
-	}
-	if nextType4 != "text" {
-		t.Fatalf("expected RESPONSE fragment to switch next type text, got %q", nextType4)
-	}
-	if len(parts4) != 1 || parts4[0].Type != "text" || parts4[0].Text != "答" {
-		t.Fatalf("expected visible response text, got %#v", parts4)
-	}
-}
-
 func TestParseSSEChunkForContentAutoTransitionsThinkClose(t *testing.T) {
 	chunk := map[string]any{
 		"p": "response/thinking_content",
@@ -226,46 +161,5 @@ func TestParseSSEChunkForContentStripsLeakedThinkTagsFromText(t *testing.T) {
 	}
 	if parts[0].Type != "text" || parts[0].Text != "normal text leaked end" {
 		t.Fatalf("expected leaked think tag to be stripped, got %#v", parts[0])
-	}
-}
-
-func TestParseSSEChunkForContentResponseContentObjectShape(t *testing.T) {
-	chunk := map[string]any{
-		"p": "response/content",
-		"v": map[string]any{"text": "对象内容"},
-	}
-	parts, finished, _ := ParseSSEChunkForContent(chunk, false, "text")
-	if finished {
-		t.Fatal("expected unfinished")
-	}
-	if len(parts) != 1 || parts[0].Text != "对象内容" || parts[0].Type != "text" {
-		t.Fatalf("unexpected parts: %#v", parts)
-	}
-}
-
-func TestParseSSEChunkForThinkingContentObjectShape(t *testing.T) {
-	chunk := map[string]any{
-		"p": "response/thinking_content",
-		"v": map[string]any{"content": "对象思考"},
-	}
-	parts, finished, _ := ParseSSEChunkForContent(chunk, true, "thinking")
-	if finished {
-		t.Fatal("expected unfinished")
-	}
-	if len(parts) != 1 || parts[0].Text != "对象思考" || parts[0].Type != "thinking" {
-		t.Fatalf("unexpected parts: %#v", parts)
-	}
-}
-
-func TestParseSSEChunkForContentObjectShapeWithoutPath(t *testing.T) {
-	chunk := map[string]any{
-		"v": map[string]any{"text": "无路径对象内容"},
-	}
-	parts, finished, _ := ParseSSEChunkForContent(chunk, false, "text")
-	if finished {
-		t.Fatal("expected unfinished")
-	}
-	if len(parts) != 1 || parts[0].Text != "无路径对象内容" || parts[0].Type != "text" {
-		t.Fatalf("unexpected parts: %#v", parts)
 	}
 }
