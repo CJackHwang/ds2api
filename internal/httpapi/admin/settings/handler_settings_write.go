@@ -17,7 +17,7 @@ func (h *Handler) updateSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	adminCfg, runtimeCfg, compatCfg, responsesCfg, embeddingsCfg, autoDeleteCfg, currentInputCfg, thinkingInjCfg, aliasMap, err := parseSettingsUpdateRequest(req)
+	adminCfg, runtimeCfg, compatCfg, responsesCfg, embeddingsCfg, autoDeleteCfg, currentInputCfg, thinkingInjCfg, keepSessionCfg, aliasMap, err := parseSettingsUpdateRequest(req)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"detail": err.Error()})
 		return
@@ -32,6 +32,10 @@ func (h *Handler) updateSettings(w http.ResponseWriter, r *http.Request) {
 	currentInputMinCharsSet := hasNestedSettingsKey(req, "current_input_file", "min_chars")
 	thinkingInjectionEnabledSet := hasNestedSettingsKey(req, "thinking_injection", "enabled")
 	thinkingInjectionPromptSet := hasNestedSettingsKey(req, "thinking_injection", "prompt")
+	keepSessionEnabledSet := hasNestedSettingsKey(req, "keep_session", "enabled")
+	keepSessionHistoryFilenameSet := hasNestedSettingsKey(req, "keep_session", "history_filename")
+	keepSessionSupplementFilenameSet := hasNestedSettingsKey(req, "keep_session", "supplement_filename")
+	keepSessionSupplementFileEnabledSet := hasNestedSettingsKey(req, "keep_session", "supplement_file_enabled")
 
 	if err := h.Store.Update(func(c *config.Config) error {
 		if adminCfg != nil {
@@ -85,6 +89,20 @@ func (h *Handler) updateSettings(w http.ResponseWriter, r *http.Request) {
 			}
 			if thinkingInjectionPromptSet {
 				c.ThinkingInjection.Prompt = thinkingInjCfg.Prompt
+			}
+		}
+		if keepSessionCfg != nil {
+			if keepSessionEnabledSet {
+				c.KeepSession.Enabled = keepSessionCfg.Enabled
+			}
+			if keepSessionHistoryFilenameSet {
+				c.KeepSession.HistoryFilename = keepSessionCfg.HistoryFilename
+			}
+			if keepSessionSupplementFilenameSet {
+				c.KeepSession.SupplementFilename = keepSessionCfg.SupplementFilename
+			}
+			if keepSessionSupplementFileEnabledSet {
+				c.KeepSession.SupplementFileEnabled = keepSessionCfg.SupplementFileEnabled
 			}
 		}
 		if aliasMap != nil {

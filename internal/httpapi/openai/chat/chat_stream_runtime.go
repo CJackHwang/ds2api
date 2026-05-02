@@ -27,6 +27,8 @@ type chatStreamRuntime struct {
 	thinkingEnabled       bool
 	searchEnabled         bool
 	stripReferenceMarkers bool
+	keepSession           bool
+	token                 string
 
 	firstChunkSent       bool
 	bufferToolContent    bool
@@ -94,6 +96,8 @@ func newChatStreamRuntime(
 	toolsRaw any,
 	bufferToolContent bool,
 	emitEarlyToolDeltas bool,
+	keepSession bool,
+	token string,
 ) *chatStreamRuntime {
 	return &chatStreamRuntime{
 		w:                     w,
@@ -110,6 +114,8 @@ func newChatStreamRuntime(
 		stripReferenceMarkers: stripReferenceMarkers,
 		bufferToolContent:     bufferToolContent,
 		emitEarlyToolDeltas:   emitEarlyToolDeltas,
+		keepSession:           keepSession,
+		token:                 token,
 		streamToolCallIDs:     map[int]string{},
 		streamToolNames:       map[int]string{},
 	}

@@ -570,7 +570,7 @@ func TestHandleNonStreamWithRetryIncludesRefFileTokensInUsage(t *testing.T) {
 			`data: [DONE]`,
 		)
 		rec := httptest.NewRecorder()
-		h.handleNonStreamWithRetry(rec, context.Background(), nil, resp, nil, "", "cid-ref", "deepseek-v4-flash", "prompt", refFileTokens, false, false, nil, nil, nil)
+		h.handleNonStreamWithRetry(rec, context.Background(), nil, resp, nil, "", "cid-ref", "deepseek-v4-flash", "prompt", refFileTokens, false, false, nil, nil, nil, false)
 		if rec.Code != http.StatusOK {
 			t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
 		}

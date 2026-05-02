@@ -41,6 +41,10 @@ type ConfigStore interface {
 	ThinkingInjectionPrompt() string
 	CompatStripReferenceMarkers() bool
 	AutoDeleteSessions() bool
+	KeepSessionEnabled() bool
+	HistoryFilename() string
+	SupplementFilename() string
+	SupplementFileEnabled() bool
 }
 
 type PoolController interface {

@@ -56,6 +56,10 @@ func (m mockOpenAIConfig) ThinkingInjectionEnabled() bool {
 	return *m.thinkingInjection
 }
 func (m mockOpenAIConfig) ThinkingInjectionPrompt() string { return m.thinkingPrompt }
+func (m mockOpenAIConfig) KeepSessionEnabled() bool       { return false }
+func (m mockOpenAIConfig) HistoryFilename() string         { return "DS2API_HISTORY.txt" }
+func (m mockOpenAIConfig) SupplementFilename() string      { return "supplement.txt" }
+func (m mockOpenAIConfig) SupplementFileEnabled() bool    { return true }
 
 func TestNormalizeOpenAIChatRequestWithConfigInterface(t *testing.T) {
 	cfg := mockOpenAIConfig{

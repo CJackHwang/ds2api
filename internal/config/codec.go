@@ -54,6 +54,9 @@ func (c Config) MarshalJSON() ([]byte, error) {
 	if c.ThinkingInjection.Enabled != nil || strings.TrimSpace(c.ThinkingInjection.Prompt) != "" {
 		m["thinking_injection"] = c.ThinkingInjection
 	}
+	if c.KeepSession.Enabled || c.KeepSession.SupplementFileEnabled || strings.TrimSpace(c.KeepSession.HistoryFilename) != "" || strings.TrimSpace(c.KeepSession.SupplementFilename) != "" {
+		m["keep_session"] = c.KeepSession
+	}
 	if c.VercelSyncHash != "" {
 		m["_vercel_sync_hash"] = c.VercelSyncHash
 	}
@@ -132,6 +135,10 @@ func (c *Config) UnmarshalJSON(b []byte) error {
 			if err := json.Unmarshal(v, &c.ThinkingInjection); err != nil {
 				return fmt.Errorf("invalid field %q: %w", k, err)
 			}
+		case "keep_session":
+			if err := json.Unmarshal(v, &c.KeepSession); err != nil {
+				return fmt.Errorf("invalid field %q: %w", k, err)
+			}
 		case "_vercel_sync_hash":
 			if err := json.Unmarshal(v, &c.VercelSyncHash); err != nil {
 				return fmt.Errorf("invalid field %q: %w", k, err)
@@ -178,6 +185,12 @@ func (c Config) Clone() Config {
 		ThinkingInjection: ThinkingInjectionConfig{
 			Enabled: cloneBoolPtr(c.ThinkingInjection.Enabled),
 			Prompt:  c.ThinkingInjection.Prompt,
+		},
+		KeepSession: KeepSessionConfig{
+			Enabled:               c.KeepSession.Enabled,
+			HistoryFilename:       c.KeepSession.HistoryFilename,
+			SupplementFilename:     c.KeepSession.SupplementFilename,
+			SupplementFileEnabled:  c.KeepSession.SupplementFileEnabled,
 		},
 		VercelSyncHash:   c.VercelSyncHash,
 		VercelSyncTime:   c.VercelSyncTime,

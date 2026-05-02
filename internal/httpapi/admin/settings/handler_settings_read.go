@@ -40,6 +40,12 @@ func (h *Handler) getSettings(w http.ResponseWriter, _ *http.Request) {
 			"prompt":         h.Store.ThinkingInjectionPrompt(),
 			"default_prompt": promptcompat.DefaultThinkingInjectionPrompt,
 		},
+		"keep_session": map[string]any{
+			"enabled":                h.Store.KeepSessionEnabled(),
+			"history_filename":       h.Store.HistoryFilename(),
+			"supplement_filename":    h.Store.SupplementFilename(),
+			"supplement_file_enabled": h.Store.SupplementFileEnabled(),
+		},
 		"model_aliases":     snap.ModelAliases,
 		"env_backed":        h.Store.IsEnvBacked(),
 		"needs_vercel_sync": needsSync,

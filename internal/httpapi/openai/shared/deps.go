@@ -49,6 +49,10 @@ type ConfigReader interface {
 	CurrentInputFileMinChars() int
 	ThinkingInjectionEnabled() bool
 	ThinkingInjectionPrompt() string
+	KeepSessionEnabled() bool
+	HistoryFilename() string
+	SupplementFilename() string
+	SupplementFileEnabled() bool
 }
 
 type Deps struct {

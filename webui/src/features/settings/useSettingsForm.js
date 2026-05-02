@@ -19,6 +19,7 @@ const DEFAULT_FORM = {
     auto_delete: { mode: 'none' },
     current_input_file: { enabled: true, min_chars: 0 },
     thinking_injection: { enabled: true, prompt: '', default_prompt: '' },
+    keep_session: { enabled: false, history_filename: 'DS2API_HISTORY.txt', supplement_filename: 'supplement.txt', supplement_file_enabled: true },
     model_aliases_text: '{}',
 }
 
@@ -81,6 +82,12 @@ function fromServerForm(data) {
             prompt: data.thinking_injection?.prompt || '',
             default_prompt: data.thinking_injection?.default_prompt || '',
         },
+        keep_session: {
+            enabled: data.keep_session?.enabled ?? false,
+            history_filename: data.keep_session?.history_filename || 'DS2API_HISTORY.txt',
+            supplement_filename: data.keep_session?.supplement_filename || 'supplement.txt',
+            supplement_file_enabled: data.keep_session?.supplement_file_enabled ?? true,
+        },
         model_aliases_text: JSON.stringify(data.model_aliases || {}, null, 2),
     }
 }
@@ -108,6 +115,12 @@ function toServerPayload(form) {
         thinking_injection: {
             enabled: Boolean(form.thinking_injection?.enabled ?? true),
             prompt: String(form.thinking_injection?.prompt || '').trim(),
+        },
+        keep_session: {
+            enabled: Boolean(form.keep_session?.enabled ?? false),
+            history_filename: String(form.keep_session?.history_filename || 'DS2API_HISTORY.txt').trim(),
+            supplement_filename: String(form.keep_session?.supplement_filename || 'supplement.txt').trim(),
+            supplement_file_enabled: Boolean(form.keep_session?.supplement_file_enabled ?? true),
         },
     }
 }

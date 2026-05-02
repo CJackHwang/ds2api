@@ -10,6 +10,7 @@ import (
 
 	"ds2api/internal/auth"
 	"ds2api/internal/config"
+	dsclient "ds2api/internal/deepseek/client"
 	dsprotocol "ds2api/internal/deepseek/protocol"
 	openaifmt "ds2api/internal/format/openai"
 	"ds2api/internal/promptcompat"
@@ -42,8 +43,12 @@ func (h *Handler) ChatCompletions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var sessionID string
+	var parentMessageID interface{}
+	keepSession := h.Store.KeepSessionEnabled()
 	defer func() {
-		h.autoDeleteRemoteSession(r.Context(), a, sessionID)
+		if !keepSession {
+			h.autoDeleteRemoteSession(r.Context(), a, sessionID)
+		}
 		h.Auth.Release(a)
 	}()
 
@@ -68,28 +73,45 @@ func (h *Handler) ChatCompletions(w http.ResponseWriter, r *http.Request) {
 		writeOpenAIError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	stdReq, err = h.applyCurrentInputFile(r.Context(), a, stdReq)
-	if err != nil {
-		status, message := mapCurrentInputFileError(err)
-		writeOpenAIError(w, status, message)
-		return
+
+	cache := GetSessionCache()
+
+	if !keepSession || cache.IsFirstMessage(a.DeepSeekToken) {
+		stdReq, err = h.applyCurrentInputFile(r.Context(), a, stdReq)
+		if err != nil {
+			status, message := mapCurrentInputFileError(err)
+			writeOpenAIError(w, status, message)
+			return
+		}
+	}
+
+	if keepSession && !cache.IsFirstMessage(a.DeepSeekToken) {
+		stdReq = h.applyKeepSessionHistory(r.Context(), a, stdReq)
 	}
 	historySession := startChatHistory(h.ChatHistory, r, a, stdReq)
 
-	sessionID, err = h.DS.CreateSession(r.Context(), a, 3)
-	if err != nil {
-		if a.UseConfigToken {
-			if historySession != nil {
-				historySession.error(http.StatusUnauthorized, "Account token is invalid. Please re-login the account in admin.", "error", "", "")
-			}
-			writeOpenAIError(w, http.StatusUnauthorized, "Account token is invalid. Please re-login the account in admin.")
+	if keepSession {
+		cache := GetSessionCache()
+		cachedSID, cachedParentID, found := cache.GetSession(a.DeepSeekToken)
+		if found && cachedSID != "" {
+			sessionID = cachedSID
+			parentMessageID = cachedParentID
+			config.Logger.Info("[keep_session] reusing cached session", "account", a.AccountID, "session_id", sessionID[:min(len(sessionID), 12)]+"...")
 		} else {
-			if historySession != nil {
-				historySession.error(http.StatusUnauthorized, "Invalid token. If this should be a DS2API key, add it to config.keys first.", "error", "", "")
+			sessionID, err = h.DS.CreateSession(r.Context(), a, 3)
+			if err != nil {
+				handleCreateSessionError(w, a, historySession, err)
+				return
 			}
-			writeOpenAIError(w, http.StatusUnauthorized, "Invalid token. If this should be a DS2API key, add it to config.keys first.")
+			cache.SetSession(a.DeepSeekToken, sessionID, nil)
+			config.Logger.Info("[keep_session] created new session", "account", a.AccountID, "session_id", sessionID[:min(len(sessionID), 12)]+"...")
 		}
-		return
+	} else {
+		sessionID, err = h.DS.CreateSession(r.Context(), a, 3)
+		if err != nil {
+			handleCreateSessionError(w, a, historySession, err)
+			return
+		}
 	}
 	pow, err := h.DS.GetPow(r.Context(), a, 3)
 	if err != nil {
@@ -100,6 +122,9 @@ func (h *Handler) ChatCompletions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	payload := stdReq.CompletionPayload(sessionID)
+	if keepSession && parentMessageID != nil {
+		payload["parent_message_id"] = parentMessageID
+	}
 	resp, err := h.DS.CallCompletion(r.Context(), a, payload, pow, 3)
 	if err != nil {
 		if historySession != nil {
@@ -110,10 +135,10 @@ func (h *Handler) ChatCompletions(w http.ResponseWriter, r *http.Request) {
 	}
 	refFileTokens := stdReq.RefFileTokens
 	if stdReq.Stream {
-		h.handleStreamWithRetry(w, r, a, resp, payload, pow, sessionID, stdReq.ResponseModel, stdReq.PromptTokenText, refFileTokens, stdReq.Thinking, stdReq.Search, stdReq.ToolNames, stdReq.ToolsRaw, historySession)
+		h.handleStreamWithRetry(w, r, a, resp, payload, pow, sessionID, stdReq.ResponseModel, stdReq.PromptTokenText, refFileTokens, stdReq.Thinking, stdReq.Search, stdReq.ToolNames, stdReq.ToolsRaw, historySession, keepSession)
 		return
 	}
-	h.handleNonStreamWithRetry(w, r.Context(), a, resp, payload, pow, sessionID, stdReq.ResponseModel, stdReq.PromptTokenText, refFileTokens, stdReq.Thinking, stdReq.Search, stdReq.ToolNames, stdReq.ToolsRaw, historySession)
+	h.handleNonStreamWithRetry(w, r.Context(), a, resp, payload, pow, sessionID, stdReq.ResponseModel, stdReq.PromptTokenText, refFileTokens, stdReq.Thinking, stdReq.Search, stdReq.ToolNames, stdReq.ToolsRaw, historySession, keepSession)
 }
 
 func (h *Handler) autoDeleteRemoteSession(ctx context.Context, a *auth.RequestAuth, sessionID string) {
@@ -236,6 +261,8 @@ func (h *Handler) handleStream(w http.ResponseWriter, r *http.Request, resp *htt
 		toolsRaw,
 		bufferToolContent,
 		emitEarlyToolDeltas,
+		false,
+		"",
 	)
 	streamRuntime.refFileTokens = refFileTokens
 
@@ -264,6 +291,10 @@ func (h *Handler) handleStream(w http.ResponseWriter, r *http.Request, resp *htt
 			} else {
 				streamRuntime.finalize("stop", false)
 			}
+			if streamRuntime.keepSession && streamRuntime.responseMessageID > 0 {
+				cache := GetSessionCache()
+				cache.UpdateMessageIDs(streamRuntime.token, streamRuntime.responseMessageID, streamRuntime.responseMessageID)
+			}
 			if historySession == nil {
 				return
 			}
@@ -279,4 +310,140 @@ func (h *Handler) handleStream(w http.ResponseWriter, r *http.Request, resp *htt
 			}
 		},
 	})
+}
+
+func handleCreateSessionError(w http.ResponseWriter, a *auth.RequestAuth, historySession *chatHistorySession, err error) {
+	if a.UseConfigToken {
+		if historySession != nil {
+			historySession.error(http.StatusUnauthorized, "Account token is invalid. Please re-login the account in admin.", "error", "", "")
+		}
+		writeOpenAIError(w, http.StatusUnauthorized, "Account token is invalid. Please re-login the account in admin.")
+	} else {
+		if historySession != nil {
+			historySession.error(http.StatusUnauthorized, "Invalid token. If this should be a DS2API key, add it to config.keys first.", "error", "", "")
+		}
+		writeOpenAIError(w, http.StatusUnauthorized, "Invalid token. If this should be a DS2API key, add it to config.keys first.")
+	}
+}
+
+func (h *Handler) applyKeepSessionHistory(ctx context.Context, a *auth.RequestAuth, stdReq promptcompat.StandardRequest) promptcompat.StandardRequest {
+	cache := GetSessionCache()
+	token := a.DeepSeekToken
+	oldHistory := cache.GetHistoryText(token)
+	newHistory := stdReq.HistoryText
+
+	if cache.IsFirstMessage(token) {
+		cache.SetHistoryText(token, newHistory)
+		return stdReq
+	}
+
+	newContent := extractNewHistoryContent(oldHistory, newHistory)
+	if newContent == "" {
+		return stdReq
+	}
+
+	cache.SetHistoryText(token, newHistory)
+
+	supplementContent := buildSupplementFromMessages(stdReq.Messages, newContent)
+	if supplementContent != "" {
+		supplementFilename := h.Store.SupplementFilename()
+		if supplementFilename == "" {
+			supplementFilename = "supplement.txt"
+		}
+		modelType := "default"
+		if resolvedType, ok := config.GetModelType(stdReq.ResolvedModel); ok {
+			modelType = resolvedType
+		}
+		config.Logger.Info("[keep_session] uploading supplement file",
+			"filename", supplementFilename,
+			"content_len", len(supplementContent))
+		result, err := h.DS.UploadFile(ctx, a, dsclient.UploadFileRequest{
+			Filename:    supplementFilename,
+			ContentType: "text/plain; charset=utf-8",
+			Purpose:     "assistants",
+			ModelType:   modelType,
+			Data:        []byte(supplementContent),
+		}, 3)
+		if err != nil {
+			config.Logger.Warn("[keep_session] supplement upload failed, falling back to inline", "error", err)
+			stdReq.PassThrough["supplement_text"] = supplementContent
+		} else {
+			fileID := strings.TrimSpace(result.ID)
+			if fileID != "" {
+				stdReq.RefFileIDs = append(stdReq.RefFileIDs, fileID)
+				config.Logger.Info("[keep_session] supplement uploaded successfully", "file_id", fileID)
+			}
+		}
+	}
+
+	stdReq.FinalPrompt = extractLastUserInput(newContent)
+
+	return stdReq
+}
+
+func buildSupplementFromMessages(messages []any, newUserContent string) string {
+	if len(messages) == 0 {
+		return ""
+	}
+
+	systemContent := ""
+	for _, raw := range messages {
+		msg, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		role := strings.ToLower(strings.TrimSpace(asString(msg["role"])))
+		if role == "system" {
+			systemContent = asString(msg["content"])
+			break
+		}
+	}
+
+	config.Logger.Info("[keep_session] buildSupplementFromMessages",
+		"messages_count", len(messages),
+		"system_content_len", len(systemContent),
+		"has_begin_tag", strings.Contains(systemContent, "<｜begin▁of▁sentence｜>"),
+		"has_end_tag", strings.Contains(systemContent, "<｜end▁of▁instructions｜>"))
+
+	result := extractSystemPrompt(systemContent)
+	if result != "" {
+		config.Logger.Info("[keep_session] supplement extracted",
+			"result_len", len(result),
+			"preview", result[:min(100, len(result))]+"...")
+	}
+	return result
+}
+
+func extractSystemPrompt(content string) string {
+	startIdx := strings.Index(content, "<｜begin▁of▁sentence｜>")
+	endIdx := strings.Index(content, "<｜end▁of▁instructions｜>")
+
+	if startIdx < 0 && endIdx < 0 {
+		return content
+	}
+
+	if startIdx < 0 {
+		startIdx = 0
+	} else if endIdx < 0 {
+		return content[startIdx:]
+	}
+
+	endIdx += len("<｜end▁of▁instructions｜>")
+	if endIdx > len(content) {
+		endIdx = len(content)
+	}
+	return content[startIdx:endIdx]
+}
+
+func extractLastUserInput(text string) string {
+	idx := strings.LastIndex(text, "<｜User｜>")
+	if idx < 0 {
+		return text
+	}
+	start := idx + len("<｜User｜>")
+	end := strings.Index(text[start:], "</attachment>")
+	if end < 0 {
+		return text[start:]
+	}
+	return text[start : start+end]
 }
