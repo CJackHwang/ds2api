@@ -14,6 +14,9 @@ func BuildOpenAIPrompt(messagesRaw []any, toolsRaw any, traceID string, toolPoli
 	if tools, ok := toolsRaw.([]any); ok && len(tools) > 0 {
 		messages, toolNames = injectToolPrompt(messages, tools, toolPolicy)
 	}
+	if hint := buildReadToolCacheHints(messagesRaw, toolNames); hint != "" {
+		messages = append(messages, map[string]any{"role": "system", "content": hint})
+	}
 	return prompt.MessagesPrepareWithThinking(messages, thinkingEnabled), toolNames
 }
 

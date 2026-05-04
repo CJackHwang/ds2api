@@ -183,3 +183,54 @@ func TestBuildOpenAIFinalPromptWithThinkingKeepsPromptUnchanged(t *testing.T) {
 		t.Fatalf("expected thinking flag not to prepend continuation contract, thinking=%q plain=%q", finalPromptThinking, finalPromptPlain)
 	}
 }
+
+func TestBuildOpenAIFinalPromptReadLikeToolIncludesReadCacheState(t *testing.T) {
+	messages := []any{
+		map[string]any{"role": "user", "content": "修复 src/main.go"},
+		map[string]any{
+			"role": "assistant",
+			"tool_calls": []any{
+				map[string]any{
+					"id": "call_read_1",
+					"function": map[string]any{
+						"name":      "read_file",
+						"arguments": `{"path":"src/main.go"}`,
+					},
+				},
+			},
+		},
+		map[string]any{
+			"role":         "tool",
+			"tool_call_id": "call_read_1",
+			"name":         "read_file",
+			"content":      "package main\nfunc main() {}",
+		},
+		map[string]any{"role": "user", "content": "继续修改"},
+	}
+	tools := []any{
+		map[string]any{
+			"type": "function",
+			"function": map[string]any{
+				"name":        "read_file",
+				"description": "Read a file",
+				"parameters": map[string]any{
+					"type": "object",
+				},
+			},
+		},
+	}
+
+	finalPrompt, _ := buildOpenAIFinalPrompt(messages, tools, "", false)
+	if !strings.Contains(finalPrompt, "Read-tool cache state") {
+		t.Fatalf("expected read cache state in final prompt: %q", finalPrompt)
+	}
+	if !strings.Contains(finalPrompt, `path="src/main.go"`) {
+		t.Fatalf("expected read path in cache state: %q", finalPrompt)
+	}
+	if !strings.Contains(finalPrompt, `tool_call_id="call_read_1"`) {
+		t.Fatalf("expected read tool_call_id in cache state: %q", finalPrompt)
+	}
+	if !strings.Contains(finalPrompt, "use that existing content to make edits or analysis") {
+		t.Fatalf("expected edit/analysis instruction in cache state: %q", finalPrompt)
+	}
+}
