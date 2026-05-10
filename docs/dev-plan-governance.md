@@ -79,9 +79,12 @@ DoD：
 
 任务：
 
-- 密码 hash：从 sha256 升级到 argon2id（或 bcrypt，按依赖成本择一）：
-  - 兼容旧 hash：登录时旧 hash 验证通过后自动重写为新 hash。
-  - 文档说明迁移路径。
+- 密码 hash：从 sha256 升级到 bcrypt（依赖 `golang.org/x/crypto/bcrypt`，已在仓库间接依赖中存在）。**已完成**（分支 `feat/m2-governance-password-hash`）：
+  - `internal/auth/admin.go`：`HashAdminPassword` 默认产出 `bcrypt:` 前缀；`verifyAdminPasswordHash` 兼容 `sha256:` / `bcrypt:` 双前缀，且只对前缀做 lower-case 处理（避免破坏 bcrypt 主体大小写）。
+  - 新增 `VerifyAdminCredentialWithUpgrade(candidate, store) (ok, upgradedHash)`：验证成功且存储为 legacy hash 时返回新 bcrypt hash 供调用方落盘。
+  - `internal/httpapi/admin/auth/handler_auth.go` 在 login 路径下自动 `Store.Update` 写回新 hash。
+  - 单元测试：`internal/auth/admin_test.go` 覆盖 bcrypt round-trip / legacy sha256 验证 / 透明升级 / 拒绝错误密码；`internal/httpapi/admin/auth/handler_auth_test.go` 覆盖 login 端到端迁移与 bcrypt 不重写。
+  - `docs/DEPLOY.md` 安全注意事项小节追加“密码哈希算法（bcrypt 默认 / sha256 透明迁移）”。
 - 结构化日志指标 v1（输出到日志，不强求接 metrics 系统）：
   - `request_id`、`route`、`model_alias`、`account_id`（脱敏）、`ttft_ms`、`upstream_ttft_ms`、`retry_count`、`account_switch_count`。
   - 与 Tool Parser M2 / Context Engine M2 的指标共用一套 logger 字段约定。
@@ -89,11 +92,11 @@ DoD：
 
 DoD：
 
-- 密码迁移路径有自动化测试覆盖。
+- 密码迁移路径有自动化测试覆盖。✅
 - 关键指标字段在主链路日志中可见。
 - 文档同步。
 
-分支：`feat/m2-governance-password-hash`、`feat/m2-governance-observability`。
+分支：`feat/m2-governance-password-hash`（已开发，待合并）、`feat/m2-governance-observability`。
 
 ### 2.4 M3：Provider 抽象起步（可选，约 1 周）
 

@@ -1,6 +1,7 @@
 package contextengine
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -172,6 +173,26 @@ func asString(v any) string {
 	return ""
 }
 
+// marshalArguments serialises a tool-call argument value to a string suitable
+// for inclusion in segment content. When the value is already a string (the
+// normal case after JSON unmarshalling into map[string]any), it is returned
+// unchanged. When the value is a JSON object or array (some upstream libraries
+// keep arguments as a native map rather than a pre-serialised string), it is
+// compactly marshalled to JSON instead of being silently dropped or truncated.
+func marshalArguments(v any) string {
+	if v == nil {
+		return "{}"
+	}
+	if s, ok := v.(string); ok {
+		return s
+	}
+	b, err := json.Marshal(v)
+	if err != nil {
+		return "{}"
+	}
+	return string(b)
+}
+
 func marshalToolCalls(v any) string {
 	switch x := v.(type) {
 	case string:
@@ -185,7 +206,7 @@ func marshalToolCalls(v any) string {
 			if m, ok := item.(map[string]any); ok {
 				if fn, ok := m["function"].(map[string]any); ok {
 					name := asString(fn["name"])
-					args := asString(fn["arguments"])
+					args := marshalArguments(fn["arguments"])
 					parts = append(parts, name+"("+args+")")
 				}
 			}

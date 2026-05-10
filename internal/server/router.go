@@ -207,7 +207,7 @@ func corsMiddleware(store *config.Store) func(http.Handler) http.Handler {
 }
 
 func setCORSHeaders(w http.ResponseWriter, r *http.Request, allowList []string) {
-	origin := strings.TrimSpace(r.Header.Get("Origin"))
+	origin := strings.ToLower(strings.TrimSpace(r.Header.Get("Origin")))
 	if origin == "" {
 		// No Origin header: not a cross-origin request, allow all.
 		w.Header().Set("Access-Control-Allow-Origin", "*")

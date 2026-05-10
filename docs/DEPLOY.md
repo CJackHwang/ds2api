@@ -597,29 +597,22 @@ sudo systemctl stop ds2api
 
 **DS2API 默认使用不安全的 admin key `"admin"`**，如未配置会在每次鉴权时打印 `ERROR` 级日志。生产环境必须通过以下任一方式配置：
 
-- **推荐**：在 `config.json` 的 `admin.password_hash` 填入 bcrypt/sha256 哈希值（通过 WebUI Admin 页面生成）
+- **推荐**：在 `config.json` 的 `admin.password_hash` 填入哈希值（通过 WebUI Admin 页面生成）
 - 或设置环境变量 `DS2API_ADMIN_KEY=<强密钥>`
 
 未配置时，服务**可正常启动**但每次 admin 请求都会打印安全警告。建议在自动化部署中监控此类 `ERROR` 日志以快速发现配置缺失。
 
-### CORS 配置
+#### 密码哈希算法（bcrypt 默认 / sha256 透明迁移）
 
-默认行为（`cors.allow_origins` 未设置）：服务**回显任意 Origin**，兼容所有浏览器客户端（等同于宽松模式）。
+自 M2 起，新生成的 `admin.password_hash` 使用 bcrypt（`bcrypt:` 前缀）。验证函数同时兼容历史 `sha256:` 前缀，因此 **存量部署无需手动重置密码**：
 
-如需限制跨域来源，在 `config.json` 中添加：
+- 任意一次 admin 登录成功后，若存储的是 `sha256:` 历史哈希，服务会自动用相同密码重新生成 bcrypt 哈希并落盘到 `config.json`（或环境变量 writeback 路径）。
+- 升级后第一次成功登录时，服务签发的 JWT 使用迁移后的新哈希作为派生 secret；旧 token（在迁移前签发）会被立即作废，需要重新登录一次。这与"修改密码使旧 token 失效"是同一语义。
+- 若希望预先迁移，可在 WebUI 的设置页重新设置一次密码，会直接以 bcrypt 写入。
 
-```json
-{
-  "cors": {
-    "allow_origins": [
-      "https://your-frontend.example.com",
-      "app://obsidian.md"
-    ]
-  }
-}
-```
-
-配置后，只有列表中的 Origin 会收到 `Access-Control-Allow-Origin` 响应头；不在列表中的来源不会收到该头，浏览器会拦截跨域请求。**空列表或不配置时行为与旧版本完全一致（零回归）。**
+> **建议**：若 `DS2API_JWT_SECRET` 未独立设置，JWT 派生 secret 会回退到 password hash；为避免迁移瞬间作废所有 token，可显式配置 `DS2API_JWT_SECRET=<独立强随机字符串>`。
+>
+> **Query key 警告**：Gemini 兼容路径支持 `?key=` / `?api_key=` 作为 fallback 凭证。该参数会出现在反向代理 / Vercel / 网关的 HTTP 访问日志中，**不建议生产环境使用**；优先通过 `Authorization: Bearer <key>` 头传递凭证。
 
 ---
 
