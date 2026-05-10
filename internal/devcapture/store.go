@@ -152,7 +152,7 @@ func (s *Store) Start(label, url, accountID string, requestPayload any) *Session
 		label:      strings.TrimSpace(label),
 		url:        strings.TrimSpace(url),
 		accountID:  strings.TrimSpace(accountID),
-		requestRaw: marshalPayload(requestPayload),
+		requestRaw: util.RedactSensitiveFields(marshalPayload(requestPayload)),
 	}
 }
 
@@ -217,7 +217,7 @@ func (c *captureBody) finalize() {
 		AccountID:         c.s.accountID,
 		StatusCode:        c.statusCode,
 		RequestBody:       c.s.requestRaw,
-		ResponseBody:      c.buf.String(),
+		ResponseBody:      util.RedactSensitiveFields(c.buf.String()),
 		ResponseTruncated: c.truncated,
 	}
 	c.s.store.push(entry)
