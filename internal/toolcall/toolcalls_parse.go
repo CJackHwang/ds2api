@@ -47,22 +47,46 @@ func ParseAssistantToolCallsDetailed(text, thinking string, availableToolNames [
 	return textParsed
 }
 
+// parseCandidate is the private intermediate representation produced by the
+// parser pipeline. It is kept separate from ToolCallParseResult so that M2
+// can attach additional confidence signals (e.g. parse path, ambiguity flags)
+// without modifying the public API.
+type parseCandidate struct {
+	sawToolCallSyntax bool
+	calls             []ParsedToolCall
+	rejectedToolNames []string
+	rejectedByPolicy  bool
+}
+
+func (c parseCandidate) toResult() ToolCallParseResult {
+	return ToolCallParseResult{
+		Calls:             c.calls,
+		SawToolCallSyntax: c.sawToolCallSyntax,
+		RejectedByPolicy:  c.rejectedByPolicy,
+		RejectedToolNames: c.rejectedToolNames,
+	}
+}
+
 func parseToolCallsDetailedXMLOnly(text string) ToolCallParseResult {
-	result := ToolCallParseResult{}
+	return buildParseCandidate(text).toResult()
+}
+
+func buildParseCandidate(text string) parseCandidate {
+	cand := parseCandidate{}
 	trimmed := strings.TrimSpace(text)
 	if trimmed == "" {
-		return result
+		return cand
 	}
-	result.SawToolCallSyntax = looksLikeToolCallSyntax(trimmed)
+	cand.sawToolCallSyntax = looksLikeToolCallSyntax(trimmed)
 	trimmed = stripFencedCodeBlocks(trimmed)
 	trimmed = strings.TrimSpace(trimmed)
 	if trimmed == "" {
-		return result
+		return cand
 	}
 
 	normalized, ok := normalizeDSMLToolCallMarkup(trimmed)
 	if !ok {
-		return result
+		return cand
 	}
 	parsed := parseXMLToolCalls(normalized)
 	if len(parsed) == 0 && strings.Contains(strings.ToLower(normalized), "<![cdata[") {
@@ -72,15 +96,13 @@ func parseToolCallsDetailedXMLOnly(text string) ToolCallParseResult {
 		}
 	}
 	if len(parsed) == 0 {
-		return result
+		return cand
 	}
 
-	result.SawToolCallSyntax = true
-	calls, rejectedNames := filterToolCallsDetailed(parsed)
-	result.Calls = calls
-	result.RejectedToolNames = rejectedNames
-	result.RejectedByPolicy = len(rejectedNames) > 0 && len(calls) == 0
-	return result
+	cand.sawToolCallSyntax = true
+	cand.calls, cand.rejectedToolNames = filterToolCallsDetailed(parsed)
+	cand.rejectedByPolicy = len(cand.rejectedToolNames) > 0 && len(cand.calls) == 0
+	return cand
 }
 
 func filterToolCallsDetailed(parsed []ParsedToolCall) ([]ParsedToolCall, []string) {

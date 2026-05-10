@@ -111,3 +111,32 @@ go test -v -run 'TestParseToolCalls|TestProcessToolSieve' ./internal/toolcall ./
 - 空参数结构化保留，malformed executable-looking XML wrapper 作为文本释放
 - 非兼容内容按普通文本透传
 - 代码块示例不执行
+
+## Go/Node Parity 测试
+
+`tests/node/toolcall-parity.test.js` 是 M1 新增的跨语言对比驱动，与 Go 侧的
+`TestGoCompatToolCallFixtures` 使用**完全相同的 fixture + expected 文件集**：
+
+- Fixtures：`tests/compat/fixtures/toolcalls/**/*.json`
+- Expected：`tests/compat/expected/toolcalls_*.json`
+
+两侧测试均通过才表示 Go 与 Node parser 行为一致。
+
+运行方式：
+
+```bash
+# Go 侧
+go test ./internal/compat/... -run TestGoCompatToolCallFixtures
+
+# Node 侧
+node --test tests/node/toolcall-parity.test.js
+
+# 完整 CI（包含以上两侧）
+./tests/scripts/run-unit-all.sh
+```
+
+### 内部 parseCandidate（M2 预留）
+
+`internal/toolcall/toolcalls_parse.go` 中的私有 `parseCandidate` 结构体是
+M2 shadow diff 的占位点。M2 会在此携带额外置信信号（parse path、ambiguity flags）
+而不修改 `ParseToolCallsDetailed` 的公开签名。
