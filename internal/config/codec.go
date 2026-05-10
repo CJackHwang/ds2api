@@ -51,6 +51,9 @@ func (c Config) MarshalJSON() ([]byte, error) {
 	if strings.TrimSpace(c.Vercel.Token) != "" || strings.TrimSpace(c.Vercel.ProjectID) != "" || strings.TrimSpace(c.Vercel.TeamID) != "" {
 		m["vercel"] = NormalizeVercelConfig(c.Vercel)
 	}
+	if strings.TrimSpace(c.ContextEngine.Mode) != "" {
+		m["context_engine"] = c.ContextEngine
+	}
 	if c.VercelSyncHash != "" {
 		m["_vercel_sync_hash"] = c.VercelSyncHash
 	}
@@ -128,6 +131,10 @@ func (c *Config) UnmarshalJSON(b []byte) error {
 			if err := json.Unmarshal(v, &c.ThinkingInjection); err != nil {
 				return fmt.Errorf("invalid field %q: %w", k, err)
 			}
+		case "context_engine":
+			if err := json.Unmarshal(v, &c.ContextEngine); err != nil {
+				return fmt.Errorf("invalid field %q: %w", k, err)
+			}
 		case "vercel":
 			if err := json.Unmarshal(v, &c.Vercel); err != nil {
 				return fmt.Errorf("invalid field %q: %w", k, err)
@@ -172,6 +179,7 @@ func (c Config) Clone() Config {
 			Prompt:  c.ThinkingInjection.Prompt,
 		},
 		Vercel:           c.Vercel,
+		ContextEngine:    c.ContextEngine,
 		VercelSyncHash:   c.VercelSyncHash,
 		VercelSyncTime:   c.VercelSyncTime,
 		AdditionalFields: map[string]any{},
