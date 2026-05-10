@@ -1,0 +1,23 @@
+{
+  "calls": [
+    {
+      "name": "Read",
+      "input": {
+        "file_path": "/Users/activer/developer/game-01/cyberpunk-tetris.html",
+        "limit": 55,
+        "offset": 1706
+      }
+    },
+    {
+      "name": "Read",
+      "input": {
+        "file_path": "/Users/activer/developer/game-01/game.js",
+        "limit": 55,
+        "offset": 1208
+      }
+    }
+  ],
+  "sawToolCallSyntax": true,
+  "rejectedByPolicy": false,
+  "rejectedToolNames": []
+}

@@ -1,0 +1,6 @@
+{
+  "text": "现在修复 NEXT/HOLD 预览区域显示问题。问题根因是 `canvas.getAttribute('width')` 在 DPR 缩放后返回的是物理像素值（如 200），而非 CSS 逻辑尺寸（100），导致 `clearRect` 和居中计算使用了错误的画布尺寸。\n\n<｜DSML｜tool_calls>\n  <｜DSML｜invoke name=\"Edit\">\n    <｜DSML｜parameter name=\"file_path\"><![CDATA[/Users/activer/developer/game-01/game.js]]></｜DSML｜parameter>\n    <｜DSML｜parameter name=\"old_string\"><![CDATA[    const w = parseInt(canvas.getAttribute('width'));\n    const h = parseInt(canvas.getAttribute('height'));\n    ctx.clearRect(0, 0, w, h);\n\n    if (!type || !color) return;]]></｜DSML｜parameter>\n    <｜DSML｜parameter name=\"new_string\"><![CDATA[    const w = parseInt(canvas.style.width);\n    const h = parseInt(canvas.style.height);\n    ctx.clearRect(0, 0, w, h);\n\n    if (!type || !color) return;]]></｜DSML｜parameter>\n  </｜DSML｜invoke>\n</｜DSML｜tool_calls>",
+  "tool_names": [
+    "Edit"
+  ]
+}

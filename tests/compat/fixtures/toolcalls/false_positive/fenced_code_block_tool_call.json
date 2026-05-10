@@ -1,0 +1,6 @@
+{
+  "text": "```xml\n<tool_calls><invoke name=\"Read\"><parameter name=\"path\">README.md</parameter></invoke></tool_calls>\n```\n\n这里只是展示格式，不是真实调用。",
+  "tool_names": [
+    "Read"
+  ]
+}

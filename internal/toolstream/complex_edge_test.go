@@ -706,6 +706,88 @@ func TestSieve_DSMLCollapsedTagNamesWithPrefixText(t *testing.T) {
 	}
 }
 
+// ---- M0 基线：DSML pipe 变体跨 chunk 闭合 ----
+
+// </｜DSML｜tool_calls> 闭合标签在单独的 chunk 中到达
+func TestSieve_DSMLPipeVariantCrossChunkClose(t *testing.T) {
+	var state State
+	chunks := []string{
+		"<｜DSML｜tool_calls>\n",
+		"<｜DSML｜invoke name=\"Read\">\n",
+		"<｜DSML｜parameter name=\"file_path\"><![CDATA[/tmp/a.txt]]></｜DSML｜parameter>\n",
+		"</｜DSML｜invoke>\n",
+		"</｜DSML｜tool_calls>",
+	}
+	var events []Event
+	for _, c := range chunks {
+		events = append(events, ProcessChunk(&state, c, []string{"Read"})...)
+	}
+	events = append(events, Flush(&state, []string{"Read"})...)
+
+	var text strings.Builder
+	var filePath string
+	callCount := 0
+	for _, e := range events {
+		text.WriteString(e.Content)
+		for _, call := range e.ToolCalls {
+			callCount++
+			filePath, _ = call.Input["file_path"].(string)
+		}
+	}
+	if callCount != 1 {
+		t.Fatalf("DSML pipe 变体跨 chunk 闭合应解析出 1 个工具调用，got %d, text=%q", callCount, text.String())
+	}
+	if filePath != "/tmp/a.txt" {
+		t.Fatalf("file_path 应为 /tmp/a.txt，got %q", filePath)
+	}
+	if text.Len() != 0 {
+		t.Fatalf("不应有文本泄漏, got %q", text.String())
+	}
+}
+
+// ---- M0 基线：半截 CDATA 参数值跨 chunk ----
+
+// CDATA 参数内容被拆分为两个 chunk：前半段在第一个 chunk，后半段在第二个
+func TestSieve_CDATAValueSplitAcrossChunks(t *testing.T) {
+	var state State
+	firstHalf := "Hello, this is the first half of a long parameter value "
+	secondHalf := "and this is the second half."
+	chunks := []string{
+		"<｜DSML｜tool_calls>\n",
+		"<｜DSML｜invoke name=\"Write\">\n",
+		"<｜DSML｜parameter name=\"content\"><![CDATA[" + firstHalf,
+		secondHalf + "]]></｜DSML｜parameter>\n",
+		"</｜DSML｜invoke>\n",
+		"</｜DSML｜tool_calls>",
+	}
+	var events []Event
+	for _, c := range chunks {
+		events = append(events, ProcessChunk(&state, c, []string{"Write"})...)
+	}
+	events = append(events, Flush(&state, []string{"Write"})...)
+
+	var text strings.Builder
+	var gotContent string
+	callCount := 0
+	for _, e := range events {
+		text.WriteString(e.Content)
+		for _, call := range e.ToolCalls {
+			callCount++
+			gotContent, _ = call.Input["content"].(string)
+		}
+	}
+	if callCount != 1 {
+		t.Fatalf("半截 CDATA 跨 chunk 应解析出 1 个工具调用，got %d, text=%q", callCount, text.String())
+	}
+	want := firstHalf + secondHalf
+	if gotContent != want {
+		t.Fatalf("CDATA 内容应完整，got %q want %q", gotContent, want)
+	}
+	if text.Len() != 0 {
+		t.Fatalf("不应有文本泄漏, got %q", text.String())
+	}
+}
+
 func TestSieve_DSMLCollapsedLookalikeTagNameStaysText(t *testing.T) {
 	var state State
 	input := "<DSMLtool_calls_extra><DSMLinvoke name=\"update_todo_list\"><DSMLparameter name=\"todos\">x</DSMLparameter></DSMLinvoke></DSMLtool_calls_extra>"

@@ -1,0 +1,6 @@
+{
+  "text": "好的，让我更深入地追踪整个渲染链路。我需要看 `start()` 方法、渲染循环，以及确认 `_drawNext` 是否真的被调用。\n\n<｜DSML｜tool_calls>\n  <｜DSML｜invoke name=\"Read\">\n    <｜DSML｜parameter name=\"file_path\"><![CDATA[/Users/activer/developer/game-01/game.js]]></｜DSML｜parameter>\n    <｜DSML｜parameter name=\"limit\"><![CDATA[50]]></｜DSML｜parameter>\n    <｜DSML｜parameter name=\"offset\"><![CDATA[515]]></｜DSML｜parameter>\n  </｜DSML｜invoke>\n  <｜DSML｜invoke name=\"Read\">\n    <｜DSML｜parameter name=\"file_path\"><![CDATA[/Users/activer/developer/game-01/game.js]]></｜DSML｜parameter>\n    <｜DSML｜parameter name=\"limit\"><![CDATA[80]]></｜DSML｜parameter>\n    <｜DSML｜parameter name=\"offset\"><![CDATA[670]]></｜DSML｜parameter>\n  </｜DSML｜invoke>\n</｜DSML｜tool_calls>",
+  "tool_names": [
+    "Read"
+  ]
+}

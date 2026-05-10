@@ -1,0 +1,7 @@
+{
+  "text": "<div class=\"tool_calls\">\n  <span class=\"invoke\">just HTML markup</span>\n</div>",
+  "tool_names": [
+    "Read",
+    "Edit"
+  ]
+}
