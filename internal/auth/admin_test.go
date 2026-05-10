@@ -44,6 +44,15 @@ func TestUsingDefaultAdminKeyReturnsFalseWhenEnvSet(t *testing.T) {
 	}
 }
 
+func TestUsingDefaultAdminKeyReturnsFalseWhenStoreHasHash(t *testing.T) {
+	t.Setenv("DS2API_ADMIN_KEY", "")
+	t.Setenv("DS2API_CONFIG_JSON", `{"admin":{"password_hash":"`+HashAdminPassword("somepassword")+`"}}`)
+	store := config.LoadStore()
+	if UsingDefaultAdminKey(store) {
+		t.Fatal("expected UsingDefaultAdminKey to return false when store has password_hash configured")
+	}
+}
+
 func TestVerifyJWTWithStoreValidAfter(t *testing.T) {
 	t.Setenv("DS2API_CONFIG_JSON", `{"admin":{"password_hash":"`+HashAdminPassword("oldpass")+`"}}`)
 	store := config.LoadStore()
