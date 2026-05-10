@@ -13,11 +13,8 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 )
-
-var warnOnce sync.Once
 
 type AdminConfigReader interface {
 	AdminPasswordHash() string
@@ -38,9 +35,7 @@ func effectiveAdminKey(store AdminConfigReader) string {
 	if v := strings.TrimSpace(os.Getenv("DS2API_ADMIN_KEY")); v != "" {
 		return v
 	}
-	warnOnce.Do(func() {
-		slog.Error("SECURITY: DS2API_ADMIN_KEY is not set. Using insecure default \"admin\". Set a strong key before use.")
-	})
+slog.Error("SECURITY: DS2API_ADMIN_KEY is not set. Using insecure default \"admin\". Set a strong key before use.")
 	return "admin"
 }
 
