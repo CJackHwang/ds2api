@@ -1,0 +1,28 @@
+{
+  "description": "Assistant has tool_calls but the matching tool result is missing (history truncated mid-loop). Context Engine must detect this invariant violation.",
+  "messages": [
+    {
+      "role": "user",
+      "content": "请读取 game.js 第 990 行"
+    },
+    {
+      "role": "assistant",
+      "content": "好的，我来读取文件。",
+      "tool_calls": [
+        {
+          "id": "call_02",
+          "type": "function",
+          "function": {
+            "name": "Read",
+            "arguments": "{\"file_path\": \"/Users/activer/developer/game-01/game.js\", \"limit\": 60, \"offset\": 990}"
+          }
+        }
+      ]
+    }
+  ],
+  "history_text": "",
+  "file_refs": [],
+  "expected_issues": [
+    "orphan_tool_call"
+  ]
+}

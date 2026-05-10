@@ -211,3 +211,51 @@ DoD：
 - shadow 模式下能稳定产出 plan，diff 可观测。
 - tool pair 不变量 / token budget / reasoning summary 三类 fixtures 全部通过。
 - `docs/prompt-compatibility.md` 描述 ContextPlan 行为；`docs/ARCHITECTURE.md` 反映新模块位置。
+
+---
+
+## 附录 A — M0-B 问题证据清单
+
+> 复核时间：M0 阶段。格式：现象 / 代码入口 / 结论 / 建议排期。
+
+### A1. 文件引用：无 digest 机制
+
+| 字段 | 详情 |
+|------|------|
+| **现象** | 同一文件多轮被引用时，每次均独立传递 `file_id`，无内容去重逻辑 |
+| **代码入口** | `internal/promptcompat/file_refs.go:CollectOpenAIRefFileIDs` — 只收集字符串 ID，不计算内容摘要 |
+| **结论** | 无 SHA-256 digest，Context Engine 无法判断两轮中同一文件是否内容相同，复用优化无从实现 |
+| **建议排期** | M1-B `internal/contextengine/digest.go` 实现 `SHA256FileDigest`；M2 接入文件 segment 复用判断 |
+
+### A2. 历史记录：tool_call / tool_result 孤立风险
+
+| 字段 | 详情 |
+|------|------|
+| **现象** | 多轮历史被裁截到 token 限制时，可能保留 `assistant[tool_calls]` 却丢弃对应的 `role=tool` 结果，形成孤立 tool_call |
+| **代码入口** | `internal/promptcompat/history_transcript.go:buildOpenAIHistoryTranscript` — 逐条遍历，**无 tool pair 完整性校验** |
+| **关联** | `internal/promptcompat/message_normalize.go:NormalizeOpenAIMessagesForPrompt` 同样无配对验证 |
+| **验证场景** | `tests/compat/fixtures/context/orphan_tool_call.json` — assistant 有 `tool_calls` 字段但无后续 `role=tool` 消息 |
+| **结论** | 历史截断不保证 tool 对完整，会向模型发送不一致的 prompt，可能触发模型困惑或重复调用工具 |
+| **建议排期** | M1-B `internal/contextengine/compile.go` 中加入 `ValidateToolPairInvariant(segments)`；检测孤立时将末尾不完整 tool_call segment 标记为 `TrimmedSegment` 而非丢弃 |
+
+### A3. Thinking 注入：无历史 reasoning 压缩
+
+| 字段 | 详情 |
+|------|------|
+| **现象** | 历史中每轮 assistant 的 `reasoning_content` 原文被逐字注入 prompt（通过 `formatPromptLabeledBlock`），多轮累积后 reasoning 块可消耗大量 token |
+| **代码入口** | `internal/promptcompat/message_normalize.go:buildAssistantContentForPrompt` — `reasoning` 块直接拼接，无大小限制 |
+| **关联** | `internal/promptcompat/thinking_injection.go:AppendThinkingInjectionToLatestUser` — 仅注入新的 thinking 提示文字，不压缩历史 reasoning |
+| **结论** | 长对话时历史 reasoning 块线性增长；Context Engine M3 需在 `compile.go` 加入 reasoning summary（保留 "摘要 + 末 N 字符原文"）策略 |
+| **建议排期** | M1-B `compile.go` 保持 off（不修改现有行为）；M3 实现 `SummarizeReasoningSegment` |
+
+### A4. context fixtures 位置
+
+已创建基线 fixtures（供 M1-B `contextengine` 包的单元测试使用）：
+
+```
+tests/compat/fixtures/context/
+  plain_multiturn.json          — 纯多轮，无 tool call（428k 长历史，截取前 8k）
+  tool_loop_read.json           — assistant tool_call + 配对 tool result
+  orphan_tool_call.json         — assistant tool_call 后无 tool result（验证孤立检测）
+  long_history_token_budget.json — 525k 历史截取前 16k，token_budget_hint=4096
+```
