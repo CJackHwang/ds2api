@@ -39,7 +39,7 @@ func effectiveAdminKey(store AdminConfigReader) string {
 		return v
 	}
 	warnOnce.Do(func() {
-		slog.Warn("⚠️  DS2API_ADMIN_KEY is not set! Using insecure default \"admin\". Set a strong key in production!")
+		slog.Error("SECURITY: DS2API_ADMIN_KEY is not set. Using insecure default \"admin\". Set a strong key before use.")
 	})
 	return "admin"
 }
@@ -53,7 +53,10 @@ func jwtSecret(store AdminConfigReader) string {
 			return hash
 		}
 	}
-	return effectiveAdminKey(store)
+	if v := strings.TrimSpace(os.Getenv("DS2API_ADMIN_KEY")); v != "" {
+		return v
+	}
+	return "admin"
 }
 
 func jwtExpireHours(store AdminConfigReader) int {
