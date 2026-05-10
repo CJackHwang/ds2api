@@ -21,6 +21,15 @@
 - [Tool Calling 统一语义](./toolcall-semantics.md)
 - [DeepSeek SSE 行为结构说明（逆向观察）](./DeepSeekSSE行为结构说明-2026-04-05.md)
 
+### v2 开发规划
+
+- [PRD v1（已归档为规划输入）](./ds_2_api_prd.md)
+- [PRD 评审与改进建议](./prd-review-and-improvements.md)
+- [v2 开发路线总览（含分支与集成策略）](./dev-roadmap.md)
+- [Tool Parser v2 计划：加固 + 可观测](./dev-plan-toolparser.md)
+- [Context Engine 计划：渐进引入](./dev-plan-context-engine.md)
+- [治理与产品化计划](./dev-plan-governance.md)
+
 ### 文档维护约定
 
 - 文档更新必须以实际代码实现为依据：总路由装配看 `internal/server/router.go`，协议/resource 路由看 `internal/httpapi/**/handler*.go` 与 `internal/httpapi/admin/handler.go`，配置默认值看 `internal/config/*`，模型/alias 看 `internal/config/models.go`，prompt 兼容链路看 `docs/prompt-compatibility.md` 列出的代码入口。
@@ -52,6 +61,15 @@ Recommended reading order:
 - [API -> pure-text web-chat compatibility pipeline](./prompt-compatibility.md)
 - [Tool-calling unified semantics](./toolcall-semantics.md)
 - [DeepSeek SSE behavior notes (reverse-engineered)](./DeepSeekSSE行为结构说明-2026-04-05.md)
+
+### v2 development planning (Chinese only)
+
+- [PRD v1 (archived as planning input)](./ds_2_api_prd.md)
+- [PRD review & improvement notes](./prd-review-and-improvements.md)
+- [v2 development roadmap (branching & integration policy)](./dev-roadmap.md)
+- [Tool Parser v2 plan: harden + observability](./dev-plan-toolparser.md)
+- [Context Engine plan: incremental rollout](./dev-plan-context-engine.md)
+- [Governance & productization plan](./dev-plan-governance.md)
 
 ### Maintenance conventions
 

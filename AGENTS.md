@@ -34,3 +34,19 @@ These rules apply to all agent-made changes in this repository.
 - When business logic or user-visible behavior changes, update the corresponding documentation in the same change.
 - `docs/prompt-compatibility.md` is the source-of-truth document for the “API -> pure-text web-chat context” compatibility flow.
 - If a change affects message normalization, tool prompt injection, prompt-visible tool history, file/reference handling, history split, or completion payload assembly, update `docs/prompt-compatibility.md` in the same change.
+
+## Branch Discipline
+
+- Never commit or push directly to `main`. `main` is integration-only and accepts changes via PR.
+- If the working tree is on `main`, the agent must first create and switch to a topic branch before making any edits or running write actions.
+- Always create a topic branch from the latest `main`. Use the naming convention defined in `docs/dev-roadmap.md`:
+  - `feat/<milestone>-<theme>-<short-slug>` (e.g. `feat/m1-toolparser-confidence-rework`)
+  - `fix/<theme>-<short-slug>`
+  - `docs/<theme>-<short-slug>`
+  - `refactor/<theme>-<short-slug>`
+  - `chore/<short-slug>`
+  - Theme enum: `toolparser`, `context`, `governance`, `webui`, `infra`, `docs`. Milestone enum: `m0`–`m4`.
+- One milestone or one logical change per branch. Do not accumulate unrelated commits.
+- Before opening a PR, rebase on `main` and run the PR Gate commands listed above.
+- Squash-merge with a semantic-prefix commit message (`feat:`, `fix:`, `docs:`, `refactor:`, `chore:`, `perf:`, `style:`).
+- Wait for the previous milestone branch to be merged before opening the next milestone branch.

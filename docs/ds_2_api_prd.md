@@ -1,5 +1,14 @@
 # ds2api 双核心改造 PRD
 
+> **Status: v1 设想（planning input, 2026-05）。**
+> 本文档保留作为 v2 阶段的规划输入，**不再作为执行口径**。落地以下列 v2 文档为准：
+>
+> - 评审与差距分析：[`prd-review-and-improvements.md`](./prd-review-and-improvements.md)
+> - 路线总览（含分支与集成策略）：[`dev-roadmap.md`](./dev-roadmap.md)
+> - 主题计划：[`dev-plan-toolparser.md`](./dev-plan-toolparser.md)、[`dev-plan-context-engine.md`](./dev-plan-context-engine.md)、[`dev-plan-governance.md`](./dev-plan-governance.md)
+>
+> 当本文与 v2 plan 出现冲突时，以 v2 plan 为准。
+
 ## 0. 文档目的
 
 本文档回顾我们围绕 `CJackHwang/ds2api` 的全部讨论，形成一份面向后续开发的产品与工程规划。重点聚焦两个高收益改造方向：
