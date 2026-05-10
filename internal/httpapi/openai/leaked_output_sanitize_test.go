@@ -35,6 +35,24 @@ func TestSanitizeLeakedOutputRemovesFullwidthDelimitedMetaMarkers(t *testing.T) 
 	}
 }
 
+func TestSanitizeLeakedOutputRemovesAssistantEndOfToolCallsMarkers(t *testing.T) {
+	fw := "\uff5c"
+	raw := "A<|Assistant_END_OF_TOOL_CALLS|>B<" + fw + "Assistant▁END▁OF▁TOOL_CALLS" + fw + ">C<|end_of_tool_calls|>D"
+	got := sanitizeLeakedOutput(raw)
+	if got != "ABCD" {
+		t.Fatalf("unexpected sanitize result for assistant end-of-tool-calls markers: %q", got)
+	}
+}
+
+func TestSanitizeLeakedOutputRemovesFullToolResultSection(t *testing.T) {
+	fw := "\uff5c"
+	raw := "开始<" + fw + "Tool" + fw + ">[{\"content\":\"openjdk version 21\"}]<" + fw + "end▁of▁toolresults" + fw + ">结束"
+	got := sanitizeLeakedOutput(raw)
+	if got != "开始结束" {
+		t.Fatalf("unexpected sanitize result for leaked tool result section: %q", got)
+	}
+}
+
 func TestSanitizeLeakedOutputRemovesThinkAndBosMarkers(t *testing.T) {
 	raw := "A<think>B</think>C<|begin▁of▁sentence|>D<| begin_of_sentence |>E<|begin_of_sentence|>F"
 	got := sanitizeLeakedOutput(raw)

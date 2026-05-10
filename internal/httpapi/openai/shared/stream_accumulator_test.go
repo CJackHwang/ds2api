@@ -96,6 +96,87 @@ func TestStreamAccumulatorSuppressesCitationTextWhenSearchEnabled(t *testing.T) 
 	}
 }
 
+func TestStreamAccumulatorStripsToolResultSectionAcrossTextChunks(t *testing.T) {
+	acc := StreamAccumulator{StripReferenceMarkers: true}
+	first := acc.Apply(sse.LineResult{
+		Parsed: true,
+		Parts:  []sse.ContentPart{{Type: "text", Text: "visible:<|Tool|>"}},
+	})
+	second := acc.Apply(sse.LineResult{
+		Parsed: true,
+		Parts:  []sse.ContentPart{{Type: "text", Text: `[{"content":"secret","tool_call_id":"call_123"}]`}},
+	})
+	third := acc.Apply(sse.LineResult{
+		Parsed: true,
+		Parts:  []sse.ContentPart{{Type: "text", Text: "<|end_of_toolresults|> after"}},
+	})
+
+	if got := acc.RawText.String(); got != `visible:<|Tool|>[{"content":"secret","tool_call_id":"call_123"}]<|end_of_toolresults|> after` {
+		t.Fatalf("raw text = %q", got)
+	}
+	if got := acc.Text.String(); got != "visible: after" {
+		t.Fatalf("visible text = %q", got)
+	}
+	if !first.ContentSeen || !second.ContentSeen || !third.ContentSeen {
+		t.Fatalf("expected all chunks to mark upstream content")
+	}
+	if got := first.Parts[0].VisibleText; got != "visible:" {
+		t.Fatalf("first visible delta = %q", got)
+	}
+	if got := second.Parts[0].VisibleText; got != "" {
+		t.Fatalf("payload visible delta = %q", got)
+	}
+	if got := third.Parts[0].VisibleText; got != " after" {
+		t.Fatalf("closing visible delta = %q", got)
+	}
+}
+
+func TestStreamAccumulatorStripsFullwidthToolResultSectionAcrossTextChunks(t *testing.T) {
+	acc := StreamAccumulator{StripReferenceMarkers: true}
+	acc.Apply(sse.LineResult{
+		Parsed: true,
+		Parts:  []sse.ContentPart{{Type: "text", Text: "x<｜Tool｜>"}},
+	})
+	acc.Apply(sse.LineResult{
+		Parsed: true,
+		Parts:  []sse.ContentPart{{Type: "text", Text: `{"content":"secret"}`}},
+	})
+	acc.Apply(sse.LineResult{
+		Parsed: true,
+		Parts:  []sse.ContentPart{{Type: "text", Text: "<｜end▁of▁toolresults｜>y"}},
+	})
+
+	if got := acc.Text.String(); got != "xy" {
+		t.Fatalf("visible text = %q", got)
+	}
+}
+
+func TestStreamAccumulatorStripsToolResultSectionAcrossThinkingChunks(t *testing.T) {
+	acc := StreamAccumulator{ThinkingEnabled: true, StripReferenceMarkers: true}
+	acc.Apply(sse.LineResult{
+		Parsed: true,
+		Parts:  []sse.ContentPart{{Type: "thinking", Text: "thought <|Tool|>"}},
+	})
+	payload := acc.Apply(sse.LineResult{
+		Parsed: true,
+		Parts:  []sse.ContentPart{{Type: "thinking", Text: `[{"content":"secret"}]`}},
+	})
+	acc.Apply(sse.LineResult{
+		Parsed: true,
+		Parts:  []sse.ContentPart{{Type: "thinking", Text: "<|end_of_toolresults|>resumes"}},
+	})
+
+	if got := acc.RawThinking.String(); got != `thought <|Tool|>[{"content":"secret"}]<|end_of_toolresults|>resumes` {
+		t.Fatalf("raw thinking = %q", got)
+	}
+	if got := acc.Thinking.String(); got != "thought resumes" {
+		t.Fatalf("visible thinking = %q", got)
+	}
+	if got := payload.Parts[0].VisibleText; got != "" {
+		t.Fatalf("payload visible delta = %q", got)
+	}
+}
+
 func TestStreamAccumulatorStripsInlineCitationAndReferenceMarkers(t *testing.T) {
 	acc := StreamAccumulator{SearchEnabled: true, StripReferenceMarkers: true}
 	result := acc.Apply(sse.LineResult{

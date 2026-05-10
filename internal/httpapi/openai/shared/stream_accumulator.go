@@ -16,6 +16,9 @@ type StreamAccumulator struct {
 	ToolDetectionThinking strings.Builder
 	RawText               strings.Builder
 	Text                  strings.Builder
+
+	thinkingToolResultSectionOpen bool
+	textToolResultSectionOpen     bool
 }
 
 type StreamPartDelta struct {
@@ -69,7 +72,8 @@ func (a *StreamAccumulator) applyThinkingPart(text string) StreamPartDelta {
 	if !a.ThinkingEnabled || rawTrimmed == "" {
 		return delta
 	}
-	cleanedText := CleanVisibleOutput(rawTrimmed, a.StripReferenceMarkers)
+	visibleCandidate := stripLeakedToolResultSectionsDelta(rawTrimmed, &a.thinkingToolResultSectionOpen)
+	cleanedText := CleanVisibleOutput(visibleCandidate, a.StripReferenceMarkers)
 	if cleanedText == "" {
 		return delta
 	}
@@ -89,11 +93,15 @@ func (a *StreamAccumulator) applyTextPart(text string) StreamPartDelta {
 	}
 	a.RawText.WriteString(rawTrimmed)
 	delta := StreamPartDelta{Type: "text", RawText: rawTrimmed}
-	if a.SearchEnabled && sse.IsCitation(rawTrimmed) {
+	visibleCandidate := stripLeakedToolResultSectionsDelta(rawTrimmed, &a.textToolResultSectionOpen)
+	if visibleCandidate == "" {
+		return delta
+	}
+	if a.SearchEnabled && sse.IsCitation(visibleCandidate) {
 		delta.CitationOnly = true
 		return delta
 	}
-	cleanedText := CleanVisibleOutput(rawTrimmed, a.StripReferenceMarkers)
+	cleanedText := CleanVisibleOutput(visibleCandidate, a.StripReferenceMarkers)
 	trimmed := sse.TrimContinuationOverlapFromBuilder(&a.Text, cleanedText)
 	if trimmed == "" {
 		return delta

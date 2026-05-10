@@ -10,6 +10,9 @@ import (
 var emptyJSONFencePattern = regexp.MustCompile("(?is)```json\\s*```")
 var leakedToolCallArrayPattern = regexp.MustCompile(`(?is)\[\{\s*"function"\s*:\s*\{[\s\S]*?\}\s*,\s*"id"\s*:\s*"call[^"]*"\s*,\s*"type"\s*:\s*"function"\s*}\]`)
 var leakedToolResultBlobPattern = regexp.MustCompile(`(?is)<\s*\|\s*tool\s*\|\s*>\s*\{[\s\S]*?"tool_call_id"\s*:\s*"call[^"]*"\s*}`)
+var leakedToolResultOpenMarkerPattern = regexp.MustCompile(`(?is)<[\|\x{ff5c}]\s*tool\s*[\|\x{ff5c}]>`)
+var leakedToolResultCloseMarkerPattern = regexp.MustCompile(`(?is)<[\|\x{ff5c}]\s*end[_▁]of[_▁]tool[_▁]?results\s*[\|\x{ff5c}]>`)
+var leakedToolResultSectionPattern = regexp.MustCompile(`(?is)<[\|\x{ff5c}]\s*tool\s*[\|\x{ff5c}]>[\s\S]*?<[\|\x{ff5c}]\s*end[_▁]of[_▁]tool[_▁]?results\s*[\|\x{ff5c}]>`)
 
 var leakedThinkTagPattern = regexp.MustCompile(`(?is)</?\s*think\s*>`)
 
@@ -29,7 +32,8 @@ var leakedThoughtMarkerPattern = regexp.MustCompile(`(?i)<[\|\x{ff5c}]\s*(?:begi
 // halfwidth or legacy U+FF5C fullwidth delimiters:
 //   - ASCII underscore: <|end_of_sentence|>, <|end_of_toolresults|>, <|end_of_instructions|>
 //   - U+2581 variant:   <|end▁of▁sentence|>, <|end▁of▁toolresults|>, <|end▁of▁instructions|>
-var leakedMetaMarkerPattern = regexp.MustCompile(`(?i)<[\|\x{ff5c}]\s*(?:assistant|tool|end[_▁]of[_▁]sentence|end[_▁]of[_▁]thinking|end[_▁]of[_▁]thought|end[_▁]of[_▁]toolresults|end[_▁]of[_▁]instructions)\s*[\|\x{ff5c}]>`)
+//   - compound assistant markers: <|Assistant_END_OF_TOOL_CALLS|>
+var leakedMetaMarkerPattern = regexp.MustCompile(`(?i)<[\|\x{ff5c}]\s*(?:assistant(?:[_▁]end[_▁]of[_▁]tool[_▁]?calls)?|tool|end[_▁]of[_▁]sentence|end[_▁]of[_▁]thinking|end[_▁]of[_▁]thought|end[_▁]of[_▁]tool[_▁]?results|end[_▁]of[_▁]tool[_▁]?calls|end[_▁]of[_▁]instructions)\s*[\|\x{ff5c}]>`)
 
 // leakedAgentXMLBlockPatterns catch agent-style XML blocks that leak through
 // when the sieve fails to capture them. These are applied only to complete
@@ -52,6 +56,7 @@ func sanitizeLeakedOutput(text string) string {
 	}
 	out := emptyJSONFencePattern.ReplaceAllString(text, "")
 	out = leakedToolCallArrayPattern.ReplaceAllString(out, "")
+	out = leakedToolResultSectionPattern.ReplaceAllString(out, "")
 	out = leakedToolResultBlobPattern.ReplaceAllString(out, "")
 	out = stripDanglingThinkSuffix(out)
 	out = leakedThinkTagPattern.ReplaceAllString(out, "")
@@ -61,6 +66,40 @@ func sanitizeLeakedOutput(text string) string {
 	out = stripLeakedToolCallWrapperBlocks(out)
 	out = sanitizeLeakedAgentXMLBlocks(out)
 	return out
+}
+
+func stripLeakedToolResultSectionsDelta(text string, inside *bool) string {
+	if text == "" || inside == nil {
+		return text
+	}
+	var b strings.Builder
+	pos := 0
+	for pos < len(text) {
+		if *inside {
+			loc := leakedToolResultCloseMarkerPattern.FindStringIndex(text[pos:])
+			if loc == nil {
+				return b.String()
+			}
+			*inside = false
+			pos += loc[1]
+			continue
+		}
+		loc := leakedToolResultOpenMarkerPattern.FindStringIndex(text[pos:])
+		if loc == nil {
+			b.WriteString(text[pos:])
+			break
+		}
+		start := pos + loc[0]
+		openEnd := pos + loc[1]
+		b.WriteString(text[pos:start])
+		closeLoc := leakedToolResultCloseMarkerPattern.FindStringIndex(text[openEnd:])
+		if closeLoc == nil {
+			*inside = true
+			break
+		}
+		pos = openEnd + closeLoc[1]
+	}
+	return b.String()
 }
 
 func stripLeakedToolCallWrapperBlocks(text string) string {
