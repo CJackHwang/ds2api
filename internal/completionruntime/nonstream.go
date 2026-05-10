@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"ds2api/internal/assistantturn"
 	"ds2api/internal/auth"
@@ -13,6 +14,7 @@ import (
 	dsclient "ds2api/internal/deepseek/client"
 	"ds2api/internal/httpapi/openai/history"
 	"ds2api/internal/httpapi/openai/shared"
+	"ds2api/internal/observe"
 	"ds2api/internal/promptcompat"
 	"ds2api/internal/sse"
 )
@@ -70,6 +72,7 @@ func StartCompletion(ctx context.Context, ds DeepSeekCaller, a *auth.RequestAuth
 	if err != nil {
 		return StartResult{SessionID: sessionID, Payload: payload, Pow: pow, Request: stdReq}, &assistantturn.OutputError{Status: http.StatusInternalServerError, Message: "Failed to get completion.", Code: "error"}
 	}
+	observe.SetUpstreamResponseAt(ctx, time.Now())
 	return StartResult{SessionID: sessionID, Payload: payload, Pow: pow, Response: resp, Request: stdReq}, nil
 }
 
@@ -120,6 +123,7 @@ func ExecuteNonStreamStartedWithRetry(ctx context.Context, ds DeepSeekCaller, a 
 				}
 				if switched.Response != nil {
 					config.Logger.Info("[completion_runtime_account_switch_retry] retrying after 429", "surface", stdReq.Surface, "stream", false, "account", a.AccountID)
+					observe.IncrAccountSwitch(ctx)
 					sessionID = switched.SessionID
 					payload = switched.Payload
 					pow = switched.Pow
@@ -160,6 +164,7 @@ func ExecuteNonStreamStartedWithRetry(ctx context.Context, ds DeepSeekCaller, a 
 				}
 				if switched.Response != nil {
 					config.Logger.Info("[completion_runtime_account_switch_retry] retrying after 429", "surface", stdReq.Surface, "stream", false, "account", a.AccountID)
+					observe.IncrAccountSwitch(ctx)
 					sessionID = switched.SessionID
 					payload = switched.Payload
 					pow = switched.Pow
@@ -175,6 +180,7 @@ func ExecuteNonStreamStartedWithRetry(ctx context.Context, ds DeepSeekCaller, a 
 		}
 
 		attempts++
+		observe.IncrRetry(ctx)
 		config.Logger.Info("[completion_runtime_empty_retry] attempting synthetic retry", "surface", stdReq.Surface, "stream", false, "retry_attempt", attempts, "parent_message_id", turn.ResponseMessageID)
 		retryPow, powErr := ds.GetPow(ctx, a, maxAttempts)
 		if powErr != nil {

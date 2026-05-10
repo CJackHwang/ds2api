@@ -29,6 +29,7 @@ import (
 	"ds2api/internal/httpapi/openai/responses"
 	"ds2api/internal/httpapi/openai/shared"
 	"ds2api/internal/httpapi/requestbody"
+	"ds2api/internal/observe"
 	"ds2api/internal/webui"
 )
 
@@ -74,6 +75,7 @@ func NewApp() (*App, error) {
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
+	r.Use(observe.Middleware(config.Logger))
 	r.Use(middleware.RealIP)
 	r.Use(filteredLogger())
 	r.Use(middleware.Recoverer)

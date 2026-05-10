@@ -14,6 +14,7 @@ import (
 	"ds2api/internal/config"
 	dsprotocol "ds2api/internal/deepseek/protocol"
 	openaifmt "ds2api/internal/format/openai"
+	"ds2api/internal/observe"
 	"ds2api/internal/promptcompat"
 	"ds2api/internal/sse"
 	streamengine "ds2api/internal/stream"
@@ -50,6 +51,8 @@ func (h *Handler) ChatCompletions(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	r = r.WithContext(auth.WithAuth(r.Context(), a))
+	observe.SetAccount(r.Context(), a.AccountID)
+	observe.SetSurface(r.Context(), "openai.chat")
 
 	r.Body = http.MaxBytesReader(w, r.Body, openAIGeneralMaxSize)
 	var req map[string]any
@@ -76,6 +79,7 @@ func (h *Handler) ChatCompletions(w http.ResponseWriter, r *http.Request) {
 		writeOpenAIError(w, status, message)
 		return
 	}
+	observe.SetModel(r.Context(), stdReq.ResponseModel)
 	historySession := startChatHistory(h.ChatHistory, r, a, stdReq)
 
 	if !stdReq.Stream {

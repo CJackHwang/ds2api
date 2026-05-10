@@ -616,6 +616,39 @@ sudo systemctl stop ds2api
 
 ---
 
+## 观测与日志（Observability）
+
+DS2API 在每次 Completion 请求完成后输出一条结构化日志行 `[completion_request]`，包含以下字段：
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `request_id` | string | chi middleware 生成的请求 ID |
+| `route` | string | 匹配的路由模式，如 `/v1/chat/completions` |
+| `model_alias` | string | 用户请求的模型名称 |
+| `account_id` | string | 脱敏后的账号标识（前 4 字符 + `***`） |
+| `surface` | string | 协议表面，如 `openai.chat`、`openai.responses`、`claude.messages`、`gemini.generate_content` |
+| `ttft_ms` | int64 | Time-To-First-Token（毫秒）：流式为首字节写入时间，非流式为总请求时长 |
+| `upstream_ttft_ms` | int64 | 上游首字节时间（毫秒）：从请求开始到上游返回响应头 |
+| `retry_count` | int | 空输出重试次数 |
+| `account_switch_count` | int | 429 限流后切换账号次数 |
+| `total_ms` | int64 | 请求总耗时（毫秒） |
+
+### 日志级别
+
+通过环境变量 `LOG_LEVEL` 控制：`DEBUG`、`INFO`（默认）、`WARN`、`ERROR`。
+
+### 与外部系统集成
+
+当前版本仅输出到 stdout（`slog.TextHandler`），适合与以下工具集成：
+
+- **Docker / systemd**：直接通过 `docker logs` 或 `journalctl` 查看
+- **日志聚合**：可通过 Fluentd / Filebeat / Vector 等采集 stdout 日志，转发到 Elasticsearch / Loki / CloudWatch
+- **监控告警**：可对 `retry_count > 0` 或 `account_switch_count > 0` 设置告警规则
+
+> **后续计划**：M3 / M4 阶段将支持 JSON 日志格式和可选的 Prometheus / OpenTelemetry 指标导出。
+
+---
+
 ## 七、部署后检查
 
 无论使用哪种部署方式，启动后建议依次检查：

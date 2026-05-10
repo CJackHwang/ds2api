@@ -10,6 +10,7 @@ import (
 	"ds2api/internal/auth"
 	"ds2api/internal/config"
 	"ds2api/internal/httpapi/openai/shared"
+	"ds2api/internal/observe"
 )
 
 type StreamRetryOptions struct {
@@ -79,6 +80,7 @@ func ExecuteStreamWithRetry(ctx context.Context, ds DeepSeekCaller, a *auth.Requ
 					return
 				}
 				if switched.Response != nil {
+					observe.IncrAccountSwitch(ctx)
 					config.Logger.Info("[completion_runtime_account_switch_retry] retrying after 429", "surface", surface, "stream", opts.Stream, "account", a.AccountID)
 					currentResp = switched.Response
 					currentPayload = switched.Payload
@@ -99,6 +101,7 @@ func ExecuteStreamWithRetry(ctx context.Context, ds DeepSeekCaller, a *auth.Requ
 		}
 
 		attempts++
+		observe.IncrRetry(ctx)
 		parentMessageID := 0
 		if hooks.ParentMessageID != nil {
 			parentMessageID = hooks.ParentMessageID()

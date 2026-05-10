@@ -18,6 +18,7 @@ import (
 	claudefmt "ds2api/internal/format/claude"
 	"ds2api/internal/httpapi/openai/history"
 	"ds2api/internal/httpapi/requestbody"
+	"ds2api/internal/observe"
 	"ds2api/internal/promptcompat"
 	"ds2api/internal/responsehistory"
 	streamengine "ds2api/internal/stream"
@@ -82,6 +83,9 @@ func (h *Handler) handleClaudeDirect(w http.ResponseWriter, r *http.Request) boo
 		return true
 	}
 	defer h.Auth.Release(a)
+	observe.SetAccount(r.Context(), a.AccountID)
+	observe.SetSurface(r.Context(), "claude.messages")
+	observe.SetModel(r.Context(), norm.Standard.ResponseModel)
 	stdReq, err := h.applyCurrentInputFile(r.Context(), a, norm.Standard)
 	if err != nil {
 		status, message := mapCurrentInputFileError(err)

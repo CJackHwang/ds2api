@@ -85,16 +85,19 @@ DoD：
   - `internal/httpapi/admin/auth/handler_auth.go` 在 login 路径下自动 `Store.Update` 写回新 hash。
   - 单元测试：`internal/auth/admin_test.go` 覆盖 bcrypt round-trip / legacy sha256 验证 / 透明升级 / 拒绝错误密码；`internal/httpapi/admin/auth/handler_auth_test.go` 覆盖 login 端到端迁移与 bcrypt 不重写。
   - `docs/DEPLOY.md` 安全注意事项小节追加“密码哈希算法（bcrypt 默认 / sha256 透明迁移）”。
-- 结构化日志指标 v1（输出到日志，不强求接 metrics 系统）：
-  - `request_id`、`route`、`model_alias`、`account_id`（脱敏）、`ttft_ms`、`upstream_ttft_ms`、`retry_count`、`account_switch_count`。
+- 结构化日志指标 v1（输出到日志，不强求接 metrics 系统）：**已完成**（分支 `feat/m2-governance-observability`）：
+  - `internal/observe/` 包：`RequestMetrics` 上下文累加器 + `Middleware` 中间件，在每次 Completion 请求完成后输出 `[completion_request]` 结构化日志。
+  - 字段：`request_id`、`route`、`model_alias`、`account_id`（脱敏）、`surface`、`ttft_ms`、`upstream_ttft_ms`、`retry_count`、`account_switch_count`、`total_ms`。
+  - `completionruntime` 在空输出重试和账号切换时自动通过 context 累加计数。
+  - OpenAI Chat / Responses / Claude / Gemini 四条协议路径均在 auth 完成后设置 model / account / surface。
   - 与 Tool Parser M2 / Context Engine M2 的指标共用一套 logger 字段约定。
-- 文档：`docs/DEPLOY.md` 增加 “观测与日志” 小节。
+- 文档：`docs/DEPLOY.md` 增加 "观测与日志" 小节。**已完成**。
 
 DoD：
 
 - 密码迁移路径有自动化测试覆盖。✅
-- 关键指标字段在主链路日志中可见。
-- 文档同步。
+- 关键指标字段在主链路日志中可见。 ✅
+- 文档同步。 ✅
 
 分支：`feat/m2-governance-password-hash`（已开发，待合并）、`feat/m2-governance-observability`。
 

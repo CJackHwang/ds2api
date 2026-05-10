@@ -17,6 +17,7 @@ import (
 	"ds2api/internal/config"
 	dsprotocol "ds2api/internal/deepseek/protocol"
 	openaifmt "ds2api/internal/format/openai"
+	"ds2api/internal/observe"
 	"ds2api/internal/promptcompat"
 	"ds2api/internal/responsehistory"
 	"ds2api/internal/sse"
@@ -62,6 +63,8 @@ func (h *Handler) Responses(w http.ResponseWriter, r *http.Request) {
 	}
 	defer h.Auth.Release(a)
 	r = r.WithContext(auth.WithAuth(r.Context(), a))
+	observe.SetAccount(r.Context(), a.AccountID)
+	observe.SetSurface(r.Context(), "openai.responses")
 	owner := responseStoreOwner(a)
 	if owner == "" {
 		writeOpenAIError(w, http.StatusUnauthorized, "unauthorized")
@@ -94,6 +97,7 @@ func (h *Handler) Responses(w http.ResponseWriter, r *http.Request) {
 		writeOpenAIError(w, status, message)
 		return
 	}
+	observe.SetModel(r.Context(), stdReq.ResponseModel)
 
 	responseID := "resp_" + strings.ReplaceAll(uuid.NewString(), "-", "")
 	historySession := responsehistory.Start(responsehistory.StartParams{

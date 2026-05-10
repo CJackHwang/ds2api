@@ -17,6 +17,7 @@ import (
 	"ds2api/internal/completionruntime"
 	"ds2api/internal/httpapi/openai/history"
 	"ds2api/internal/httpapi/requestbody"
+	"ds2api/internal/observe"
 	"ds2api/internal/promptcompat"
 	"ds2api/internal/responsehistory"
 	"ds2api/internal/sse"
@@ -79,6 +80,9 @@ func (h *Handler) handleGeminiDirect(w http.ResponseWriter, r *http.Request, str
 		return true
 	}
 	defer h.Auth.Release(a)
+	observe.SetAccount(r.Context(), a.AccountID)
+	observe.SetSurface(r.Context(), "gemini.generate_content")
+	observe.SetModel(r.Context(), stdReq.ResponseModel)
 	stdReq, err = h.applyCurrentInputFile(r.Context(), a, stdReq)
 	if err != nil {
 		status, message := mapCurrentInputFileError(err)
