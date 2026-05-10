@@ -21,46 +21,56 @@ func Middleware(logger *slog.Logger) func(http.Handler) http.Handler {
 			ctx := WithMetrics(r.Context(), m)
 			next.ServeHTTP(w, r.WithContext(ctx))
 
-			// Only emit for completion routes (model was populated).
+			// Copy fields under lock, then release before I/O.
 			m.mu.Lock()
-			defer m.mu.Unlock()
-			if m.ModelAlias == "" {
+			modelAlias := m.ModelAlias
+			accountID := m.AccountID
+			surface := m.Surface
+			retryCount := m.RetryCount
+			accountSwitchCount := m.AccountSwitchCount
+			startTime := m.StartTime
+			firstByteAt := m.FirstByteAt
+			upstreamResponseAt := m.UpstreamResponseAt
+			routeField := m.Route
+			m.mu.Unlock()
+
+			// Only emit for completion routes (model was populated).
+			if modelAlias == "" {
 				return
 			}
 
 			// Derive route from chi context if not explicitly set.
-			route := m.Route
-			if route == "" {
+			if routeField == "" {
 				if rctx := chi.RouteContext(r.Context()); rctx != nil {
-					route = rctx.RoutePattern()
+					routeField = rctx.RoutePattern()
 				}
 			}
-			if route == "" {
-				route = r.URL.Path
+			if routeField == "" {
+				routeField = r.URL.Path
 			}
 
 			requestID := strings.TrimSpace(chiMiddleware.GetReqID(ctx))
 
-			elapsed := time.Since(m.StartTime)
+			elapsed := time.Since(startTime)
 			ttftMs := elapsed.Milliseconds()
-			if !m.FirstByteAt.IsZero() {
-				ttftMs = m.FirstByteAt.Sub(m.StartTime).Milliseconds()
+			if !firstByteAt.IsZero() {
+				ttftMs = firstByteAt.Sub(startTime).Milliseconds()
 			}
 			var upstreamTTFBMs int64
-			if !m.UpstreamResponseAt.IsZero() {
-				upstreamTTFBMs = m.UpstreamResponseAt.Sub(m.StartTime).Milliseconds()
+			if !upstreamResponseAt.IsZero() {
+				upstreamTTFBMs = upstreamResponseAt.Sub(startTime).Milliseconds()
 			}
 
 			logger.Info("[completion_request]",
 				"request_id", requestID,
-				"route", route,
-				"model_alias", m.ModelAlias,
-				"account_id", m.AccountID,
-				"surface", m.Surface,
+				"route", routeField,
+				"model_alias", modelAlias,
+				"account_id", accountID,
+				"surface", surface,
 				"ttft_ms", ttftMs,
 				"upstream_ttft_ms", upstreamTTFBMs,
-				"retry_count", m.RetryCount,
-				"account_switch_count", m.AccountSwitchCount,
+				"retry_count", retryCount,
+				"account_switch_count", accountSwitchCount,
 				"total_ms", elapsed.Milliseconds(),
 			)
 		})

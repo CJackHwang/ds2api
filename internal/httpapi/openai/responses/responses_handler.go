@@ -220,6 +220,7 @@ func (h *Handler) handleResponsesStream(w http.ResponseWriter, r *http.Request, 
 		nil,
 	)
 	streamRuntime.refFileTokens = refFileTokens
+	streamRuntime.onFirstByte = func() { observe.SetFirstByteAt(r.Context(), time.Now()) }
 	streamRuntime.sendCreated()
 
 	streamengine.ConsumeSSE(streamengine.ConsumeConfig{

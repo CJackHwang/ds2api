@@ -121,6 +121,19 @@ func SetUpstreamResponseAt(ctx context.Context, t time.Time) {
 	}
 }
 
+// ForceSetUpstreamResponseAt unconditionally overwrites the upstream response
+// time. Use this after an account-switch retry where the initial upstream
+// response was a rejected 429 and the retried response is what is actually
+// served; in that case the first-write-wins semantics of SetUpstreamResponseAt
+// would preserve the unhelpful 429 timing.
+func ForceSetUpstreamResponseAt(ctx context.Context, t time.Time) {
+	if m := FromContext(ctx); m != nil {
+		m.mu.Lock()
+		m.UpstreamResponseAt = t
+		m.mu.Unlock()
+	}
+}
+
 // SetFirstByteAt records when the first byte was written to the client.
 func SetFirstByteAt(ctx context.Context, t time.Time) {
 	if m := FromContext(ctx); m != nil {

@@ -48,6 +48,7 @@ type claudeStreamRuntime struct {
 	textEmitted        bool
 	ended              bool
 	upstreamErr        string
+	onFirstByte        func()
 	history            *responsehistory.Session
 }
 

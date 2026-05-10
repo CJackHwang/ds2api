@@ -61,6 +61,7 @@ type responsesStreamRuntime struct {
 	finalErrorMessage string
 	finalErrorCode    string
 
+	onFirstByte     func()
 	persistResponse func(obj map[string]any)
 	history         *responsehistory.Session
 }

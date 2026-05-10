@@ -342,6 +342,7 @@ func (h *Handler) handleClaudeStreamRealtime(w http.ResponseWriter, r *http.Requ
 		buildClaudePromptTokenText(messages, thinkingEnabled),
 		historySession,
 	)
+	streamRuntime.onFirstByte = func() { observe.SetFirstByteAt(r.Context(), time.Now()) }
 	streamRuntime.sendMessageStart()
 
 	initialType := "text"
@@ -400,6 +401,7 @@ func (h *Handler) handleClaudeStreamRealtimeWithRetry(w http.ResponseWriter, r *
 		promptTokenText,
 		historySession,
 	)
+	streamRuntime.onFirstByte = func() { observe.SetFirstByteAt(r.Context(), time.Now()) }
 	streamRuntime.sendMessageStart()
 
 	completionruntime.ExecuteStreamWithRetry(r.Context(), h.DS, a, resp, payload, pow, completionruntime.StreamRetryOptions{

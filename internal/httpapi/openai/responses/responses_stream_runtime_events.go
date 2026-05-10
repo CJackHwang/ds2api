@@ -14,6 +14,10 @@ func (s *responsesStreamRuntime) nextSequence() int {
 }
 
 func (s *responsesStreamRuntime) sendEvent(event string, payload map[string]any) {
+	if s.onFirstByte != nil {
+		s.onFirstByte()
+		s.onFirstByte = nil
+	}
 	if payload == nil {
 		payload = map[string]any{}
 	}

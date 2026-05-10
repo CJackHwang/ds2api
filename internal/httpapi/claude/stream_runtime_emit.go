@@ -9,6 +9,10 @@ import (
 )
 
 func (s *claudeStreamRuntime) send(event string, v any) {
+	if s.onFirstByte != nil {
+		s.onFirstByte()
+		s.onFirstByte = nil
+	}
 	b, _ := json.Marshal(v)
 	_, _ = s.w.Write([]byte("event: "))
 	_, _ = s.w.Write([]byte(event))

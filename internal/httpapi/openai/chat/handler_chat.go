@@ -239,6 +239,7 @@ func (h *Handler) handleStream(w http.ResponseWriter, r *http.Request, resp *htt
 		emitEarlyToolDeltas,
 	)
 	streamRuntime.refFileTokens = refFileTokens
+	streamRuntime.onFirstByte = func() { observe.SetFirstByteAt(r.Context(), time.Now()) }
 
 	streamengine.ConsumeSSE(streamengine.ConsumeConfig{
 		Context:             r.Context(),

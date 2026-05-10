@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"ds2api/internal/assistantturn"
 	"ds2api/internal/auth"
@@ -161,6 +162,7 @@ func startPayloadCompletionOnAlternateAccount(ctx context.Context, ds DeepSeekCa
 	if err != nil {
 		return StartResult{SessionID: sessionID, Payload: nextPayload, Pow: pow}, &assistantturn.OutputError{Status: http.StatusInternalServerError, Message: "Failed to get completion.", Code: "error"}
 	}
+	observe.ForceSetUpstreamResponseAt(ctx, time.Now())
 	return StartResult{SessionID: sessionID, Payload: nextPayload, Pow: pow, Response: resp}, nil
 }
 

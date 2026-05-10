@@ -225,6 +225,7 @@ func startStandardCompletionOnAlternateAccount(ctx context.Context, ds DeepSeekC
 	if err != nil {
 		return StartResult{SessionID: sessionID, Payload: payload, Pow: pow}, &assistantturn.OutputError{Status: http.StatusInternalServerError, Message: "Failed to get completion.", Code: "error"}
 	}
+	observe.ForceSetUpstreamResponseAt(ctx, time.Now())
 	return StartResult{SessionID: sessionID, Payload: payload, Pow: pow, Response: resp, Request: stdReq}, nil
 }
 

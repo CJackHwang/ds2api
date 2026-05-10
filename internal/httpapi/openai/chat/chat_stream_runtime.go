@@ -33,6 +33,7 @@ type chatStreamRuntime struct {
 	stripReferenceMarkers bool
 
 	firstChunkSent       bool
+	onFirstByte          func()
 	bufferToolContent    bool
 	emitEarlyToolDeltas  bool
 	toolCallsEmitted     bool
@@ -147,6 +148,10 @@ func (s *chatStreamRuntime) sendDelta(delta map[string]any) {
 	if !s.firstChunkSent {
 		delta["role"] = "assistant"
 		s.firstChunkSent = true
+		if s.onFirstByte != nil {
+			s.onFirstByte()
+			s.onFirstByte = nil
+		}
 	}
 	s.sendChunk(openaifmt.BuildChatStreamChunk(
 		s.completionID,

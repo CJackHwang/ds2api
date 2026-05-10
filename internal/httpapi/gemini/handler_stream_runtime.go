@@ -12,6 +12,7 @@ import (
 	"ds2api/internal/auth"
 	"ds2api/internal/completionruntime"
 	dsprotocol "ds2api/internal/deepseek/protocol"
+	"ds2api/internal/observe"
 	"ds2api/internal/responsehistory"
 	"ds2api/internal/sse"
 	streamengine "ds2api/internal/stream"
@@ -84,6 +85,7 @@ type geminiStreamRuntime struct {
 	finalErrorStatus  int
 	finalErrorMessage string
 	finalErrorCode    string
+	onFirstByte       func()
 	history           *responsehistory.Session
 }
 
@@ -106,6 +108,7 @@ func (h *Handler) handleStreamGenerateContentWithRetry(w http.ResponseWriter, r 
 	rc := http.NewResponseController(w)
 	_, canFlush := w.(http.Flusher)
 	runtime := newGeminiStreamRuntime(w, rc, canFlush, model, finalPrompt, thinkingEnabled, searchEnabled, stripReferenceMarkersEnabled(), toolNames, toolsRaw, historySession)
+	runtime.onFirstByte = func() { observe.SetFirstByteAt(r.Context(), time.Now()) }
 
 	completionruntime.ExecuteStreamWithRetry(r.Context(), h.DS, a, resp, payload, pow, completionruntime.StreamRetryOptions{
 		Surface:      "gemini.generate_content",
@@ -195,6 +198,10 @@ func newGeminiStreamRuntime(
 
 //nolint:unused // retained for native Gemini stream handling path.
 func (s *geminiStreamRuntime) sendChunk(payload map[string]any) {
+	if s.onFirstByte != nil {
+		s.onFirstByte()
+		s.onFirstByte = nil
+	}
 	b, _ := json.Marshal(payload)
 	_, _ = s.w.Write([]byte("data: "))
 	_, _ = s.w.Write(b)
