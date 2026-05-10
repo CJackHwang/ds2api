@@ -152,7 +152,7 @@ func (s *Store) Start(label, url, accountID string, requestPayload any) *Session
 		label:      strings.TrimSpace(label),
 		url:        strings.TrimSpace(url),
 		accountID:  strings.TrimSpace(accountID),
-		requestRaw: marshalPayload(requestPayload),
+		requestRaw: util.RedactSensitiveFields(marshalPayload(requestPayload)),
 	}
 }
 
