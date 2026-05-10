@@ -597,7 +597,7 @@ sudo systemctl stop ds2api
 
 **DS2API 默认使用不安全的 admin key `"admin"`**，如未配置会在每次鉴权时打印 `ERROR` 级日志。生产环境必须通过以下任一方式配置：
 
-- **推荐**：在 `config.json` 的 `admin.password_hash` 填入 sha256 哈希值（通过 WebUI Admin 页面生成）
+- **推荐**：在 `config.json` 的 `admin.password_hash` 填入 bcrypt/sha256 哈希值（通过 WebUI Admin 页面生成）
 - 或设置环境变量 `DS2API_ADMIN_KEY=<强密钥>`
 
 未配置时，服务**可正常启动**但每次 admin 请求都会打印安全警告。建议在自动化部署中监控此类 `ERROR` 日志以快速发现配置缺失。
