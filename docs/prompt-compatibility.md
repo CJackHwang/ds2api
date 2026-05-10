@@ -429,7 +429,33 @@ Prior conversation history and tool progress.
 - `go test ./internal/toolstream/...`
 - `./tests/scripts/run-unit-node.sh`
 
-## 14. 文档同步约定
+## 14. Context Engine 编译阶段（M1：off — 仅测试）
+
+`internal/contextengine` 包在 M1 阶段**不接入主链路**，仅作为独立包存在并通过单元测试验证。
+
+### 包位置
+
+```
+promptcompat（归一化）→ [contextengine（计划，M1 off）] → completionruntime（发送）
+```
+
+### 当前功能（M1）
+
+- `Compile(CompileInput) (ContextPlan, error)` — 将归一化 message 序列映射为 `ContextSegment` 列表
+- 孤立 tool_call 检测：assistant 有 `tool_calls` 但后继消息不是 `role=tool` 时，标记为 `orphan_tool_call` 并写入 `SegmentsTrimmed` + `Warnings`
+- Token budget 计算（`TokenBudgetReport.Used`），**不截断**（截断为 M3 任务）
+
+### 测试入口
+
+```bash
+go test ./internal/contextengine/...
+```
+
+覆盖 M0 四个 fixtures：`plain_multiturn`、`tool_loop_read`、`orphan_tool_call`、`long_history_token_budget`。
+
+---
+
+## 15. 文档同步约定
 
 本文档是这条兼容链路的专项说明。
 
