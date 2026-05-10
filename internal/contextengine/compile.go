@@ -96,6 +96,10 @@ func buildSegments(messages []map[string]any) []ContextSegment {
 	segs := make([]ContextSegment, 0, len(messages))
 	for _, msg := range messages {
 		role := strings.ToLower(strings.TrimSpace(asString(msg["role"])))
+		if role == "" {
+			// Skip messages with missing or non-string roles
+			continue
+		}
 		content := strings.TrimSpace(asString(msg["content"]))
 
 		switch role {
@@ -111,7 +115,9 @@ func buildSegments(messages []map[string]any) []ContextSegment {
 			// If the assistant message carries tool_calls, emit a SegToolCall.
 			if toolCalls := msg["tool_calls"]; toolCalls != nil {
 				tcContent := marshalToolCalls(toolCalls)
-				segs = append(segs, makeSegment(SegToolCall, "tool", tcContent))
+				if tcContent != "" {
+					segs = append(segs, makeSegment(SegToolCall, "tool", tcContent))
+				}
 			}
 		case "tool", "function":
 			segs = append(segs, makeSegment(SegToolResult, "tool", content))

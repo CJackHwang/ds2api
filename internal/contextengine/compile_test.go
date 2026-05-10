@@ -171,3 +171,95 @@ func TestDigestDeterministic(t *testing.T) {
 		t.Error("different inputs produced same digest")
 	}
 }
+
+func TestCompileSkipsMessagesWithNonStringRole(t *testing.T) {
+	messages := []map[string]any{
+		{"role": "user", "content": "valid message"},
+		{"role": 123, "content": "invalid role - integer"}, // non-string role
+		{"role": nil, "content": "invalid role - nil"},     // nil role
+		{"role": "system", "content": "another valid"},
+	}
+
+	plan, err := Compile(CompileInput{Messages: messages})
+	if err != nil {
+		t.Fatalf("Compile error: %v", err)
+	}
+
+	// Should only have 2 segments (user and system), the invalid ones are skipped
+	if len(plan.SegmentsIncluded) != 2 {
+		t.Errorf("expected 2 segments after skipping invalid roles, got %d", len(plan.SegmentsIncluded))
+	}
+}
+
+func TestCompileSkipsEmptyToolCalls(t *testing.T) {
+	messages := []map[string]any{
+		{"role": "user", "content": "hello"},
+		{"role": "assistant", "content": "hi", "tool_calls": []any{}}, // empty array
+		{"role": "assistant", "content": "bye", "tool_calls": ""},      // empty string
+	}
+
+	plan, err := Compile(CompileInput{Messages: messages})
+	if err != nil {
+		t.Fatalf("Compile error: %v", err)
+	}
+
+	// Should have user + 2 assistant text segments, but NO SegToolCall segments
+	toolCallCount := 0
+	for _, seg := range plan.SegmentsIncluded {
+		if seg.Type == SegToolCall {
+			toolCallCount++
+		}
+	}
+	if toolCallCount != 0 {
+		t.Errorf("expected no SegToolCall segments for empty tool_calls, got %d", toolCallCount)
+	}
+}
+
+func TestCompileHandlesMalformedToolCalls(t *testing.T) {
+	messages := []map[string]any{
+		{"role": "user", "content": "hello"},
+		{"role": "assistant", "content": "response", "tool_calls": []any{
+			map[string]any{"invalid": "structure"}, // missing "function" key
+		}},
+	}
+
+	plan, err := Compile(CompileInput{Messages: messages})
+	if err != nil {
+		t.Fatalf("Compile error: %v", err)
+	}
+
+	// Should have user + assistant segments, but malformed tool_call should produce empty content
+	// and thus not create a SegToolCall segment
+	toolCallCount := 0
+	for _, seg := range plan.SegmentsIncluded {
+		if seg.Type == SegToolCall {
+			toolCallCount++
+		}
+	}
+	if toolCallCount != 0 {
+		t.Errorf("expected no SegToolCall segment for malformed tool_calls, got %d", toolCallCount)
+	}
+}
+
+func TestCompileHandlesMissingFields(t *testing.T) {
+	messages := []map[string]any{
+		{"role": "user"},           // missing content
+		{"content": "hello"},       // missing role
+		{"role": "assistant"},      // missing content and tool_calls
+	}
+
+	plan, err := Compile(CompileInput{Messages: messages})
+	if err != nil {
+		t.Fatalf("Compile error: %v", err)
+	}
+
+	// First message: user with empty content should still create a segment
+	// Second message: missing role should be skipped
+	// Third message: assistant with empty content and no tool_calls should create no segment
+	if len(plan.SegmentsIncluded) != 1 {
+		t.Errorf("expected 1 segment (user with empty content), got %d", len(plan.SegmentsIncluded))
+	}
+	if len(plan.SegmentsIncluded) > 0 && plan.SegmentsIncluded[0].Type != SegUser {
+		t.Errorf("expected first segment to be SegUser, got %s", plan.SegmentsIncluded[0].Type)
+	}
+}
