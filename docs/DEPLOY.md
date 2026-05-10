@@ -591,6 +591,38 @@ sudo systemctl stop ds2api
 
 ---
 
+## 安全注意事项
+
+### Admin 鉴权配置
+
+**DS2API 默认使用不安全的 admin key `"admin"`**，如未配置会在每次鉴权时打印 `ERROR` 级日志。生产环境必须通过以下任一方式配置：
+
+- **推荐**：在 `config.json` 的 `admin.password_hash` 填入 sha256 哈希值（通过 WebUI Admin 页面生成）
+- 或设置环境变量 `DS2API_ADMIN_KEY=<强密钥>`
+
+未配置时，服务**可正常启动**但每次 admin 请求都会打印安全警告。建议在自动化部署中监控此类 `ERROR` 日志以快速发现配置缺失。
+
+### CORS 配置
+
+默认行为（`cors.allow_origins` 未设置）：服务**回显任意 Origin**，兼容所有浏览器客户端（等同于宽松模式）。
+
+如需限制跨域来源，在 `config.json` 中添加：
+
+```json
+{
+  "cors": {
+    "allow_origins": [
+      "https://your-frontend.example.com",
+      "app://obsidian.md"
+    ]
+  }
+}
+```
+
+配置后，只有列表中的 Origin 会收到 `Access-Control-Allow-Origin` 响应头；不在列表中的来源不会收到该头，浏览器会拦截跨域请求。**空列表或不配置时行为与旧版本完全一致（零回归）。**
+
+---
+
 ## 七、部署后检查
 
 无论使用哪种部署方式，启动后建议依次检查：

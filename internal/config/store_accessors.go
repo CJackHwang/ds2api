@@ -174,3 +174,19 @@ func (s *Store) ThinkingInjectionPrompt() string {
 	defer s.mu.RUnlock()
 	return strings.TrimSpace(s.cfg.ThinkingInjection.Prompt)
 }
+
+func (s *Store) CORSAllowOrigins() []string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	raw := s.cfg.CORS.AllowOrigins
+	if len(raw) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(raw))
+	for _, o := range raw {
+		if v := strings.TrimSpace(o); v != "" {
+			out = append(out, v)
+		}
+	}
+	return out
+}

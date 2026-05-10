@@ -8,7 +8,7 @@ import (
 )
 
 func TestCORSPreflightAllowsThirdPartyRequestedHeaders(t *testing.T) {
-	handler := cors(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	handler := corsMiddleware(nil)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusTeapot)
 	}))
 
@@ -45,6 +45,42 @@ func TestCORSPreflightAllowsThirdPartyRequestedHeaders(t *testing.T) {
 		if !strings.Contains(vary, want) {
 			t.Fatalf("expected vary to include %q, got %q", want, rec.Header().Get("Vary"))
 		}
+	}
+}
+
+func TestCORSAllowlistBlocksUnknownOrigin(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/v1/chat/completions", nil)
+	req.Header.Set("Origin", "https://evil.example.com")
+	rec := httptest.NewRecorder()
+
+	setCORSHeaders(rec, req, []string{"https://trusted.example.com"})
+
+	if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "" {
+		t.Fatalf("expected no ACAO header for blocked origin, got %q", got)
+	}
+}
+
+func TestCORSAllowlistPermitsKnownOrigin(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/v1/chat/completions", nil)
+	req.Header.Set("Origin", "https://trusted.example.com")
+	rec := httptest.NewRecorder()
+
+	setCORSHeaders(rec, req, []string{"https://trusted.example.com"})
+
+	if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "https://trusted.example.com" {
+		t.Fatalf("expected origin reflected, got %q", got)
+	}
+}
+
+func TestCORSEmptyAllowlistEchoesOrigin(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/v1/chat/completions", nil)
+	req.Header.Set("Origin", "https://any.example.com")
+	rec := httptest.NewRecorder()
+
+	setCORSHeaders(rec, req, nil)
+
+	if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "https://any.example.com" {
+		t.Fatalf("expected origin echoed when no allowlist, got %q", got)
 	}
 }
 
