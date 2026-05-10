@@ -57,6 +57,9 @@ func Compile(input CompileInput) (ContextPlan, error) {
 				Reason: "orphan_tool_call",
 			})
 			warnings = append(warnings, fmt.Sprintf("segment %s: orphan tool_call — no matching tool_result follows", seg.ID))
+			if i > 0 && segs[i-1].Type == SegAssistant {
+				warnings = append(warnings, fmt.Sprintf("segment %s: companion SegAssistant retained for orphaned SegToolCall %s", segs[i-1].ID, seg.ID))
+			}
 		}
 	}
 
@@ -104,9 +107,13 @@ func buildSegments(messages []map[string]any) []ContextSegment {
 
 		switch role {
 		case "system":
-			segs = append(segs, makeSegment(SegSystem, "request", content))
+			if content != "" {
+				segs = append(segs, makeSegment(SegSystem, "request", content))
+			}
 		case "user":
-			segs = append(segs, makeSegment(SegUser, "request", content))
+			if content != "" {
+				segs = append(segs, makeSegment(SegUser, "request", content))
+			}
 		case "assistant":
 			// Emit the text content segment first (may be empty).
 			if content != "" {
@@ -180,6 +187,6 @@ func marshalToolCalls(v any) string {
 		}
 		return strings.Join(parts, "; ")
 	default:
-		return fmt.Sprintf("%v", v)
+		return ""
 	}
 }

@@ -125,10 +125,14 @@ func TestCompileOrphanToolCall(t *testing.T) {
 		}
 	}
 
-	// Orphan segment must NOT appear in SegmentsIncluded.
+	// Trimmed segment IDs must NOT appear in SegmentsIncluded.
+	trimmedIDs := make(map[string]struct{}, len(plan.SegmentsTrimmed))
+	for _, ts := range plan.SegmentsTrimmed {
+		trimmedIDs[ts.ID] = struct{}{}
+	}
 	for _, seg := range plan.SegmentsIncluded {
-		if seg.Type == SegToolCall {
-			t.Errorf("orphan SegToolCall should not be in SegmentsIncluded, but found seg %s", seg.ID)
+		if _, found := trimmedIDs[seg.ID]; found {
+			t.Errorf("trimmed segment %s (type %s) should not be in SegmentsIncluded", seg.ID, seg.Type)
 		}
 	}
 }
@@ -253,13 +257,8 @@ func TestCompileHandlesMissingFields(t *testing.T) {
 		t.Fatalf("Compile error: %v", err)
 	}
 
-	// First message: user with empty content should still create a segment
-	// Second message: missing role should be skipped
-	// Third message: assistant with empty content and no tool_calls should create no segment
-	if len(plan.SegmentsIncluded) != 1 {
-		t.Errorf("expected 1 segment (user with empty content), got %d", len(plan.SegmentsIncluded))
-	}
-	if len(plan.SegmentsIncluded) > 0 && plan.SegmentsIncluded[0].Type != SegUser {
-		t.Errorf("expected first segment to be SegUser, got %s", plan.SegmentsIncluded[0].Type)
+	// All three messages have empty/missing content or missing role: no segments expected.
+	if len(plan.SegmentsIncluded) != 0 {
+		t.Errorf("expected 0 segments for empty/missing content and roles, got %d", len(plan.SegmentsIncluded))
 	}
 }
