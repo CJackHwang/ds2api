@@ -15,6 +15,17 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/crypto/bcrypt"
+)
+
+// bcryptCost is the cost parameter used for new admin password hashes.
+// Kept at the library default (10) to balance CPU cost against login latency.
+const bcryptCost = bcrypt.DefaultCost
+
+const (
+	bcryptHashPrefix = "bcrypt:"
+	sha256HashPrefix = "sha256:"
 )
 
 var warnOnce sync.Once
@@ -166,21 +177,43 @@ func VerifyAdminRequestWithStore(r *http.Request, store AdminConfigReader) error
 }
 
 func VerifyAdminCredential(candidate string, store AdminConfigReader) bool {
+	ok, _ := VerifyAdminCredentialWithUpgrade(candidate, store)
+	return ok
+}
+
+// VerifyAdminCredentialWithUpgrade verifies the admin candidate against the
+// configured password hash (or fallback admin key). When the stored hash uses
+// a legacy algorithm (currently sha256) and verification succeeds, the
+// returned upgradedHash is a freshly generated bcrypt hash that the caller
+// should persist transparently. upgradedHash is empty when no rewrite is
+// needed (already bcrypt, fallback admin-key path, or verification failed).
+func VerifyAdminCredentialWithUpgrade(candidate string, store AdminConfigReader) (ok bool, upgradedHash string) {
 	candidate = strings.TrimSpace(candidate)
 	if candidate == "" {
-		return false
+		return false, ""
 	}
 	if store != nil {
 		hash := strings.TrimSpace(store.AdminPasswordHash())
 		if hash != "" {
-			return verifyAdminPasswordHash(candidate, hash)
+			if !verifyAdminPasswordHash(candidate, hash) {
+				return false, ""
+			}
+			if isLegacyHash(hash) {
+				if up := HashAdminPassword(candidate); up != "" {
+					return true, up
+				}
+			}
+			return true, ""
 		}
 	}
 	key := effectiveAdminKey(store)
 	if key == "" {
-		return false
+		return false, ""
 	}
-	return subtle.ConstantTimeCompare([]byte(candidate), []byte(key)) == 1
+	if subtle.ConstantTimeCompare([]byte(candidate), []byte(key)) != 1 {
+		return false, ""
+	}
+	return true, ""
 }
 
 func UsingDefaultAdminKey(store AdminConfigReader) bool {
@@ -190,27 +223,60 @@ func UsingDefaultAdminKey(store AdminConfigReader) bool {
 	return strings.TrimSpace(os.Getenv("DS2API_ADMIN_KEY")) == ""
 }
 
+// HashAdminPassword produces a bcrypt-prefixed hash for the supplied raw
+// password. Empty input returns an empty string. Legacy sha256-prefixed
+// hashes are still accepted by verifyAdminPasswordHash for backward
+// compatibility but never produced here.
 func HashAdminPassword(raw string) string {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return ""
 	}
-	sum := sha256.Sum256([]byte(raw))
-	return "sha256:" + hex.EncodeToString(sum[:])
+	digest, err := bcrypt.GenerateFromPassword([]byte(raw), bcryptCost)
+	if err != nil {
+		// bcrypt.GenerateFromPassword only fails on absurd cost values; fall
+		// back to the legacy sha256 form rather than returning an empty hash
+		// which would silently disable the admin password.
+		slog.Error("bcrypt hash generation failed; falling back to legacy sha256 hash", "err", err)
+		sum := sha256.Sum256([]byte(raw))
+		return sha256HashPrefix + hex.EncodeToString(sum[:])
+	}
+	return bcryptHashPrefix + string(digest)
 }
 
-func verifyAdminPasswordHash(candidate, encoded string) bool {
-	encoded = strings.TrimSpace(strings.ToLower(encoded))
+// isLegacyHash reports whether the encoded hash uses an algorithm that should
+// be transparently upgraded on next successful verification.
+func isLegacyHash(encoded string) bool {
+	encoded = strings.TrimSpace(encoded)
 	if encoded == "" {
 		return false
 	}
-	if strings.HasPrefix(encoded, "sha256:") {
-		want := strings.TrimPrefix(encoded, "sha256:")
+	lower := strings.ToLower(encoded)
+	return !strings.HasPrefix(lower, bcryptHashPrefix)
+}
+
+func verifyAdminPasswordHash(candidate, encoded string) bool {
+	encoded = strings.TrimSpace(encoded)
+	if encoded == "" {
+		return false
+	}
+	// Only lowercase the prefix marker; the body of bcrypt hashes is
+	// case-sensitive (modular crypt format / Base64) and must be preserved.
+	lower := strings.ToLower(encoded)
+	switch {
+	case strings.HasPrefix(lower, bcryptHashPrefix):
+		hash := encoded[len(bcryptHashPrefix):]
+		return bcrypt.CompareHashAndPassword([]byte(hash), []byte(candidate)) == nil
+	case strings.HasPrefix(lower, sha256HashPrefix):
+		want := lower[len(sha256HashPrefix):]
 		sum := sha256.Sum256([]byte(candidate))
 		got := hex.EncodeToString(sum[:])
 		return subtle.ConstantTimeCompare([]byte(got), []byte(want)) == 1
+	default:
+		// Legacy plaintext (no recognised prefix): constant-time compare
+		// against the lowercased value to preserve historical behaviour.
+		return subtle.ConstantTimeCompare([]byte(candidate), []byte(lower)) == 1
 	}
-	return subtle.ConstantTimeCompare([]byte(candidate), []byte(encoded)) == 1
 }
 
 func signHS256(msg string, store AdminConfigReader) []byte {

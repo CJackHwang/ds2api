@@ -2,12 +2,14 @@ package auth
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"os"
 	"strings"
 	"time"
 
 	authn "ds2api/internal/auth"
+	"ds2api/internal/config"
 )
 
 func (h *Handler) requireAdmin(next http.Handler) http.Handler {
@@ -25,9 +27,21 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewDecoder(r.Body).Decode(&req)
 	adminKey, _ := req["admin_key"].(string)
 	expireHours := intFrom(req["expire_hours"])
-	if !authn.VerifyAdminCredential(adminKey, h.Store) {
+	ok, upgradedHash := authn.VerifyAdminCredentialWithUpgrade(adminKey, h.Store)
+	if !ok {
 		writeJSON(w, http.StatusUnauthorized, map[string]any{"detail": "Invalid admin key"})
 		return
+	}
+	if upgradedHash != "" {
+		// Transparent migration from a legacy (sha256) hash to bcrypt. We
+		// persist the new hash before minting the JWT so the token is
+		// signed under the post-migration secret.
+		if err := h.Store.Update(func(c *config.Config) error {
+			c.Admin.PasswordHash = upgradedHash
+			return nil
+		}); err != nil {
+			slog.Error("admin password hash bcrypt upgrade persist failed", "err", err)
+		}
 	}
 	token, err := authn.CreateJWTWithStore(expireHours, h.Store)
 	if err != nil {
