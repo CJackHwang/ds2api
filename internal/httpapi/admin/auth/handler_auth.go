@@ -33,14 +33,27 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if upgradedHash != "" {
-		// Transparent migration from a legacy (sha256) hash to bcrypt. We
-		// persist the new hash before minting the JWT so the token is
-		// signed under the post-migration secret.
-		if err := h.Store.Update(func(c *config.Config) error {
-			c.Admin.PasswordHash = upgradedHash
-			return nil
-		}); err != nil {
-			slog.Error("admin password hash bcrypt upgrade persist failed", "err", err)
+		// Transparent migration from a legacy (sha256) hash to bcrypt.
+		//
+		// Skip on non-persistent stores (env-backed without writeback, or
+		// Vercel serverless) where Update would mutate only in-memory state.
+		// Such an upgrade would break JWT verification on the next request that
+		// lands on a fresh process/lambda that reloads the original sha256 hash
+		// from the environment variable.
+		nonPersistent := h.Store.IsEnvBacked() && (config.IsVercel() || !h.Store.IsEnvWritebackEnabled())
+		if nonPersistent {
+			slog.Warn("admin password hash bcrypt upgrade skipped: store is non-persistent (env-only); set DS2API_JWT_SECRET to suppress this warning")
+		} else {
+			// Persist the new hash before minting the JWT so the token is
+			// signed under the post-migration secret.
+			if err := h.Store.Update(func(c *config.Config) error {
+				c.Admin.PasswordHash = upgradedHash
+				return nil
+			}); err != nil {
+				slog.Error("admin password hash bcrypt upgrade persist failed", "err", err)
+				writeJSON(w, http.StatusInternalServerError, map[string]any{"detail": "credential upgrade failed; please try again"})
+				return
+			}
 		}
 	}
 	token, err := authn.CreateJWTWithStore(expireHours, h.Store)

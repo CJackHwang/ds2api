@@ -227,16 +227,21 @@ func UsingDefaultAdminKey(store AdminConfigReader) bool {
 // password. Empty input returns an empty string. Legacy sha256-prefixed
 // hashes are still accepted by verifyAdminPasswordHash for backward
 // compatibility but never produced here.
+//
+// The raw password is pre-hashed with SHA-256 before being fed to bcrypt so
+// that passwords longer than bcrypt's 72-byte input limit are handled
+// correctly rather than silently falling back to the legacy sha256 algorithm.
+// Both HashAdminPassword and verifyAdminPasswordHash apply the same
+// normalization step, keeping the stored format opaque to callers.
 func HashAdminPassword(raw string) string {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return ""
 	}
-	digest, err := bcrypt.GenerateFromPassword([]byte(raw), bcryptCost)
+	normalized := prehashForBcrypt(raw)
+	digest, err := bcrypt.GenerateFromPassword([]byte(normalized), bcryptCost)
 	if err != nil {
-		// bcrypt.GenerateFromPassword only fails on absurd cost values; fall
-		// back to the legacy sha256 form rather than returning an empty hash
-		// which would silently disable the admin password.
+		// Should not happen with a 64-char hex input, but guard anyway.
 		slog.Error("bcrypt hash generation failed; falling back to legacy sha256 hash", "err", err)
 		sum := sha256.Sum256([]byte(raw))
 		return sha256HashPrefix + hex.EncodeToString(sum[:])
@@ -244,15 +249,24 @@ func HashAdminPassword(raw string) string {
 	return bcryptHashPrefix + string(digest)
 }
 
+// prehashForBcrypt converts the raw password to a 64-character hex-encoded
+// SHA-256 digest so that bcrypt always receives input well within its 72-byte
+// limit, regardless of how long the raw password is.
+func prehashForBcrypt(raw string) string {
+	sum := sha256.Sum256([]byte(raw))
+	return hex.EncodeToString(sum[:])
+}
+
 // isLegacyHash reports whether the encoded hash uses an algorithm that should
-// be transparently upgraded on next successful verification.
+// be transparently upgraded on next successful verification. Only the known
+// legacy sha256 prefix is treated as upgradeable; unrecognised or future
+// prefixes are left untouched to avoid silently overwriting them.
 func isLegacyHash(encoded string) bool {
 	encoded = strings.TrimSpace(encoded)
 	if encoded == "" {
 		return false
 	}
-	lower := strings.ToLower(encoded)
-	return !strings.HasPrefix(lower, bcryptHashPrefix)
+	return strings.HasPrefix(strings.ToLower(encoded), sha256HashPrefix)
 }
 
 func verifyAdminPasswordHash(candidate, encoded string) bool {
@@ -266,7 +280,7 @@ func verifyAdminPasswordHash(candidate, encoded string) bool {
 	switch {
 	case strings.HasPrefix(lower, bcryptHashPrefix):
 		hash := encoded[len(bcryptHashPrefix):]
-		return bcrypt.CompareHashAndPassword([]byte(hash), []byte(candidate)) == nil
+		return bcrypt.CompareHashAndPassword([]byte(hash), []byte(prehashForBcrypt(candidate))) == nil
 	case strings.HasPrefix(lower, sha256HashPrefix):
 		want := lower[len(sha256HashPrefix):]
 		sum := sha256.Sum256([]byte(candidate))

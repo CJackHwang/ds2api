@@ -27,6 +27,23 @@ func TestHashAdminPasswordUsesBcryptByDefault(t *testing.T) {
 	}
 }
 
+func TestHashAdminPasswordLongInputUsesBcrypt(t *testing.T) {
+	// Passwords longer than bcrypt's 72-byte input limit must still be stored
+	// as bcrypt (via the sha256 pre-hash path) rather than silently falling
+	// back to the legacy sha256 algorithm.
+	longPwd := strings.Repeat("x", 100)
+	hash := HashAdminPassword(longPwd)
+	if !strings.HasPrefix(hash, bcryptHashPrefix) {
+		t.Fatalf("expected bcrypt hash for long password, got %q", hash)
+	}
+	if !verifyAdminPasswordHash(longPwd, hash) {
+		t.Fatal("long-password bcrypt round-trip failed")
+	}
+	if verifyAdminPasswordHash(strings.Repeat("x", 99), hash) {
+		t.Fatal("different long password should not verify")
+	}
+}
+
 func TestVerifyAdminPasswordHashAcceptsLegacySha256(t *testing.T) {
 	sum := sha256.Sum256([]byte("legacy-pass"))
 	legacy := sha256HashPrefix + hex.EncodeToString(sum[:])

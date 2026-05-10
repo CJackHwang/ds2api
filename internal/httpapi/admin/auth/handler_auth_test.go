@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -16,9 +18,19 @@ import (
 
 func TestLoginHandlerUpgradesLegacySha256ToBcrypt(t *testing.T) {
 	t.Setenv("DS2API_ADMIN_KEY", "")
+	t.Setenv("DS2API_CONFIG_JSON", "") // must be empty so store is file-backed
 	sum := sha256.Sum256([]byte("legacy-pwd"))
 	legacy := "sha256:" + hex.EncodeToString(sum[:])
-	t.Setenv("DS2API_CONFIG_JSON", `{"admin":{"password_hash":"`+legacy+`"}}`)
+
+	// Write config to a temp file so the store is file-backed and Update can
+	// persist the bcrypt upgrade. Env-only stores skip the upgrade (see Fix #1).
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.json")
+	cfgContent := `{"admin":{"password_hash":"` + legacy + `"}}`
+	if err := os.WriteFile(cfgPath, []byte(cfgContent), 0o600); err != nil {
+		t.Fatalf("write temp config: %v", err)
+	}
+	t.Setenv("DS2API_CONFIG_PATH", cfgPath)
 
 	store := config.LoadStore()
 	h := &Handler{Store: store}
@@ -44,6 +56,32 @@ func TestLoginHandlerUpgradesLegacySha256ToBcrypt(t *testing.T) {
 	// Wrong password is rejected against the new bcrypt hash.
 	if authn.VerifyAdminCredential("legacy-pwd-wrong", store) {
 		t.Fatal("expected wrong password to fail after migration")
+	}
+}
+
+func TestLoginHandlerSkipsUpgradeOnEnvOnlyStore(t *testing.T) {
+	t.Setenv("DS2API_ADMIN_KEY", "")
+	sum := sha256.Sum256([]byte("legacy-pwd"))
+	legacy := "sha256:" + hex.EncodeToString(sum[:])
+	// Load from env without writeback: Update is a no-op on disk.
+	t.Setenv("DS2API_CONFIG_JSON", `{"admin":{"password_hash":"`+legacy+`"}}`)
+	t.Setenv("DS2API_ENV_WRITEBACK", "")
+
+	store := config.LoadStore()
+	h := &Handler{Store: store}
+
+	body := []byte(`{"admin_key":"legacy-pwd"}`)
+	rec := httptest.NewRecorder()
+	h.login(rec, httptest.NewRequest(http.MethodPost, "/admin/login", bytes.NewReader(body)))
+
+	// Login must succeed even though upgrade is skipped.
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	// Hash must remain sha256 (upgrade was skipped to protect token validity).
+	stored := strings.TrimSpace(store.AdminPasswordHash())
+	if !strings.HasPrefix(stored, "sha256:") {
+		t.Fatalf("expected hash to remain sha256 on env-only store, got %q", stored)
 	}
 }
 

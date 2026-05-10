@@ -184,7 +184,7 @@ func (s *Store) CORSAllowOrigins() []string {
 	}
 	out := make([]string, 0, len(raw))
 	for _, o := range raw {
-		if v := strings.TrimSpace(o); v != "" {
+		if v := strings.ToLower(strings.TrimSpace(o)); v != "" {
 			out = append(out, v)
 		}
 	}
