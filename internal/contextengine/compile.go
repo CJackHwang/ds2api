@@ -127,7 +127,9 @@ func buildSegments(messages []map[string]any) []ContextSegment {
 				}
 			}
 		case "tool", "function":
-			segs = append(segs, makeSegment(SegToolResult, "tool", content))
+			if content != "" {
+				segs = append(segs, makeSegment(SegToolResult, "tool", content))
+			}
 		}
 	}
 	return segs
@@ -175,6 +177,9 @@ func marshalToolCalls(v any) string {
 	case string:
 		return x
 	case []any:
+		if len(x) == 0 {
+			return ""
+		}
 		parts := make([]string, 0, len(x))
 		for _, item := range x {
 			if m, ok := item.(map[string]any); ok {
@@ -184,6 +189,12 @@ func marshalToolCalls(v any) string {
 					parts = append(parts, name+"("+args+")")
 				}
 			}
+		}
+		if len(parts) == 0 {
+			// Items present but none have a parseable "function" key.
+			// Return a sentinel so the SegToolCall is still emitted and
+			// orphan detection is not silently bypassed.
+			return "<unparseable_tool_calls>"
 		}
 		return strings.Join(parts, "; ")
 	default:

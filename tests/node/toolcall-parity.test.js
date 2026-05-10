@@ -49,7 +49,15 @@ function collectFixtures(dir, relPrefix) {
   return cases;
 }
 
+if (!fs.existsSync(FIXTURES_ROOT)) {
+  throw new Error(`toolcall-parity: fixture directory not found: ${FIXTURES_ROOT}`);
+}
+
 const fixtures = collectFixtures(FIXTURES_ROOT, '');
+
+if (fixtures.length === 0) {
+  throw new Error(`toolcall-parity: no fixture files found under ${FIXTURES_ROOT}`);
+}
 
 for (const { name, fixturePath, expectedPath } of fixtures) {
   test(`toolcall parity: ${name}`, () => {

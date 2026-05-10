@@ -199,7 +199,7 @@ func TestCompileSkipsEmptyToolCalls(t *testing.T) {
 	messages := []map[string]any{
 		{"role": "user", "content": "hello"},
 		{"role": "assistant", "content": "hi", "tool_calls": []any{}}, // empty array
-		{"role": "assistant", "content": "bye", "tool_calls": ""},      // empty string
+		{"role": "assistant", "content": "bye", "tool_calls": ""},     // empty string
 	}
 
 	plan, err := Compile(CompileInput{Messages: messages})
@@ -232,24 +232,34 @@ func TestCompileHandlesMalformedToolCalls(t *testing.T) {
 		t.Fatalf("Compile error: %v", err)
 	}
 
-	// Should have user + assistant segments, but malformed tool_call should produce empty content
-	// and thus not create a SegToolCall segment
-	toolCallCount := 0
+	// Malformed tool_calls (non-empty array, but no parseable "function" key) should still
+	// emit a SegToolCall (with sentinel content) so orphan detection fires.
+	// Since there is no following tool result, it must be orphaned → in SegmentsTrimmed,
+	// not in SegmentsIncluded.
 	for _, seg := range plan.SegmentsIncluded {
 		if seg.Type == SegToolCall {
-			toolCallCount++
+			t.Errorf("orphaned malformed SegToolCall should not be in SegmentsIncluded, but found id=%s", seg.ID)
 		}
 	}
-	if toolCallCount != 0 {
-		t.Errorf("expected no SegToolCall segment for malformed tool_calls, got %d", toolCallCount)
+	found := false
+	for _, ts := range plan.SegmentsTrimmed {
+		if ts.Type == SegToolCall && ts.Reason == "orphan_tool_call" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("expected malformed tool_calls to produce an orphaned SegToolCall in SegmentsTrimmed")
 	}
 }
 
 func TestCompileHandlesMissingFields(t *testing.T) {
 	messages := []map[string]any{
-		{"role": "user"},           // missing content
-		{"content": "hello"},       // missing role
-		{"role": "assistant"},      // missing content and tool_calls
+		{"role": "user"},      // missing content
+		{"content": "hello"},  // missing role
+		{"role": "assistant"}, // missing content and tool_calls
+		{"role": "tool"},      // missing content
+		{"role": "function"},  // missing content
 	}
 
 	plan, err := Compile(CompileInput{Messages: messages})
@@ -257,7 +267,7 @@ func TestCompileHandlesMissingFields(t *testing.T) {
 		t.Fatalf("Compile error: %v", err)
 	}
 
-	// All three messages have empty/missing content or missing role: no segments expected.
+	// All messages have empty/missing content or missing role: no segments expected.
 	if len(plan.SegmentsIncluded) != 0 {
 		t.Errorf("expected 0 segments for empty/missing content and roles, got %d", len(plan.SegmentsIncluded))
 	}
