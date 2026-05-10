@@ -44,6 +44,10 @@ TP_SPECS = [
     ("dsml_multi_read_trio.json",        "chat_94c6f11d8ce2435e94c9885341b936ff.json"),
     ("dsml_drift_no_open_pipe.json",     "chat_7a52fd84243d4aabb1c2839af8d73877.json"),
     ("dsml_drift_bash_command.json",     "chat_9d19122eb404427d866c10d51493c527.json"),
+    # DSML variant without separator: tool calls are present (true-positive).
+    # tool_names forced explicitly because the allowed list is broader than what
+    # extract_tool_names() would derive from the invoke tags alone.
+    ("dsml_no_separator_variant.json",   "chat_5f9480bd9c6741b6a4ec8456c1f07c89.json", ["Read", "Edit", "Bash"]),
 ]
 
 # ---------------------------------------------------------------------------
@@ -52,7 +56,6 @@ TP_SPECS = [
 FP_SPECS = [
     ("code_block_dpr_analysis.json",    "chat_117b05c673f34c6ca8f314d5f2c3690f.json", ["Read", "Edit", "Bash"]),
     ("dsml_like_wrapper_only.json",     "chat_9c447b70813a4d978135e5edb06986a2.json", ["Read", "Edit", "Bash"]),
-    ("dsml_no_separator_variant.json",  "chat_5f9480bd9c6741b6a4ec8456c1f07c89.json", ["Read", "Edit", "Bash"]),
 ]
 
 FENCED_TEXT = (
@@ -73,9 +76,10 @@ PLAIN_HTML = (
 
 def main() -> None:
     print("=== true_positive ===")
-    for out_name, src in TP_SPECS:
+    for spec in TP_SPECS:
+        out_name, src = spec[0], spec[1]
         content = load_content(src)
-        names = extract_tool_names(content)
+        names = spec[2] if len(spec) > 2 else extract_tool_names(content)
         write_json(os.path.join(TP_DIR, out_name), {"text": content, "tool_names": names})
 
     print("=== false_positive ===")

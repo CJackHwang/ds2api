@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -100,6 +101,14 @@ func TestGoCompatToolCallFixtures(t *testing.T) {
 				if got.Calls[i].Name != want.Calls[i].Name {
 					t.Errorf("call[%d].name: got=%q want=%q", i, got.Calls[i].Name, want.Calls[i].Name)
 				}
+				if !reflect.DeepEqual(got.Calls[i].Input, want.Calls[i].Input) {
+					gotJSON, _ := json.Marshal(got.Calls[i].Input)
+					wantJSON, _ := json.Marshal(want.Calls[i].Input)
+					t.Errorf("call[%d].input: got=%s want=%s", i, gotJSON, wantJSON)
+				}
+			}
+			if !reflect.DeepEqual(got.RejectedToolNames, want.RejectedToolNames) {
+				t.Errorf("rejectedToolNames: got=%v want=%v", got.RejectedToolNames, want.RejectedToolNames)
 			}
 		})
 		return nil
