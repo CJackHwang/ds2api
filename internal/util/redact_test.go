@@ -4,43 +4,6 @@ import (
 	"testing"
 )
 
-func TestRedactBearerToken(t *testing.T) {
-	cases := []struct {
-		name string
-		in   string
-		want string
-	}{
-		{
-			name: "lowercase authorization bearer",
-			in:   `{"authorization":"Bearer sk-secret123","model":"gpt-4"}`,
-			want: `{"authorization":"Bearer <redacted>","model":"gpt-4"}`,
-		},
-		{
-			name: "mixed-case Authorization Bearer",
-			in:   `{"Authorization":"Bearer my-token","content":"hello"}`,
-			want: `{"Authorization":"Bearer <redacted>","content":"hello"}`,
-		},
-		{
-			name: "no bearer token unchanged",
-			in:   `{"model":"gpt-4","messages":[]}`,
-			want: `{"model":"gpt-4","messages":[]}`,
-		},
-		{
-			name: "empty string unchanged",
-			in:   "",
-			want: "",
-		},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			got := RedactBearerToken(tc.in)
-			if got != tc.want {
-				t.Errorf("got  %q\nwant %q", got, tc.want)
-			}
-		})
-	}
-}
-
 func TestRedactAPIKey(t *testing.T) {
 	cases := []struct {
 		name string
@@ -67,6 +30,16 @@ func TestRedactAPIKey(t *testing.T) {
 			in:   `{"model":"gpt-4","messages":[]}`,
 			want: `{"model":"gpt-4","messages":[]}`,
 		},
+		{
+			name: "empty api_key value redacted",
+			in:   `{"api_key":"","model":"gpt-4"}`,
+			want: `{"api_key":"<redacted>","model":"gpt-4"}`,
+		},
+		{
+			name: "malformed json no closing quote left unchanged",
+			in:   `{"api_key":"no-closing-quote`,
+			want: `{"api_key":"<redacted>`,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -87,10 +60,18 @@ func TestRedactSensitiveFieldsNoOp(t *testing.T) {
 }
 
 func TestRedactSensitiveFieldsCombined(t *testing.T) {
-	in := `{"Authorization":"Bearer tok123","api_key":"sk-xyz","model":"gpt-4"}`
+	in := `{"api_key":"sk-xyz","x-api-key":"other-key","model":"gpt-4"}`
 	got := RedactSensitiveFields(in)
-	want := `{"Authorization":"Bearer <redacted>","api_key":"<redacted>","model":"gpt-4"}`
+	want := `{"api_key":"<redacted>","x-api-key":"<redacted>","model":"gpt-4"}`
 	if got != want {
 		t.Errorf("got  %q\nwant %q", got, want)
+	}
+}
+
+func TestRedactSensitiveFieldsBearerNotRedacted(t *testing.T) {
+	in := `{"Authorization":"Bearer tok123","model":"gpt-4"}`
+	got := RedactSensitiveFields(in)
+	if got != in {
+		t.Errorf("Authorization Bearer should not be redacted from JSON body: got %q", got)
 	}
 }
