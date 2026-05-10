@@ -602,6 +602,25 @@ sudo systemctl stop ds2api
 
 未配置时，服务**可正常启动**但每次 admin 请求都会打印安全警告。建议在自动化部署中监控此类 `ERROR` 日志以快速发现配置缺失。
 
+### CORS 配置
+
+默认行为（`cors.allow_origins` 未设置）：服务**回显任意 Origin**，兼容所有浏览器客户端（等同于宽松模式）。
+
+如需限制跨域来源，在 `config.json` 中添加：
+
+```json
+{
+  "cors": {
+    "allow_origins": [
+      "https://your-frontend.example.com",
+      "app://obsidian.md"
+    ]
+  }
+}
+```
+
+配置后，只有列表中的 Origin 会收到 `Access-Control-Allow-Origin` 响应头；不在列表中的来源不会收到该头，浏览器会拦截跨域请求。**空列表或不配置时行为与旧版本完全一致（零回归）。**
+
 ---
 
 ## 七、部署后检查

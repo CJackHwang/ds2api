@@ -21,6 +21,7 @@ type Config struct {
 	CurrentInputFile  CurrentInputFileConfig  `json:"current_input_file,omitempty"`
 	ThinkingInjection ThinkingInjectionConfig `json:"thinking_injection,omitempty"`
 	Vercel            VercelConfig            `json:"vercel,omitempty"`
+	CORS              CORSConfig              `json:"cors,omitempty"`
 	VercelSyncHash    string                  `json:"_vercel_sync_hash,omitempty"`
 	VercelSyncTime    int64                   `json:"_vercel_sync_time,omitempty"`
 	AdditionalFields  map[string]any          `json:"-"`
@@ -182,6 +183,10 @@ type VercelConfig struct {
 	Token     string `json:"token,omitempty"`
 	ProjectID string `json:"project_id,omitempty"`
 	TeamID    string `json:"team_id,omitempty"`
+}
+
+type CORSConfig struct {
+	AllowOrigins []string `json:"allow_origins,omitempty"`
 }
 
 func NormalizeVercelConfig(v VercelConfig) VercelConfig {

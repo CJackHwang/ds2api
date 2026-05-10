@@ -77,7 +77,7 @@ func NewApp() (*App, error) {
 	r.Use(middleware.RealIP)
 	r.Use(filteredLogger())
 	r.Use(middleware.Recoverer)
-	r.Use(cors)
+	r.Use(corsMiddleware(store))
 	r.Use(requestbody.ValidateJSONUTF8)
 	r.Use(timeout(0))
 
@@ -189,21 +189,35 @@ var blockedCORSRequestHeaders = map[string]struct{}{
 	"x-ds2-internal-token": {},
 }
 
-func cors(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		setCORSHeaders(w, r)
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
+func corsMiddleware(store *config.Store) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			var allowList []string
+			if store != nil {
+				allowList = store.CORSAllowOrigins()
+			}
+			setCORSHeaders(w, r, allowList)
+			if r.Method == http.MethodOptions {
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
-func setCORSHeaders(w http.ResponseWriter, r *http.Request) {
+func setCORSHeaders(w http.ResponseWriter, r *http.Request, allowList []string) {
 	origin := strings.TrimSpace(r.Header.Get("Origin"))
 	if origin == "" {
+		// No Origin header: not a cross-origin request, allow all.
 		w.Header().Set("Access-Control-Allow-Origin", "*")
+	} else if len(allowList) > 0 {
+		// Allowlist configured: only reflect origin when it matches.
+		if containsString(allowList, origin) {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			addVaryHeaderToken(w.Header(), "Origin")
+		}
+		// Non-matching origin: no ACAO header → browser will block.
 	} else {
 		w.Header().Set("Access-Control-Allow-Origin", origin)
 		addVaryHeaderToken(w.Header(), "Origin")
@@ -317,6 +331,15 @@ func addVaryHeaderToken(h http.Header, token string) {
 		merged = append(merged, token)
 	}
 	h.Set("Vary", strings.Join(merged, ", "))
+}
+
+func containsString(slice []string, s string) bool {
+	for _, v := range slice {
+		if v == s {
+			return true
+		}
+	}
+	return false
 }
 
 func WriteUnhandledError(w http.ResponseWriter, err error) {
