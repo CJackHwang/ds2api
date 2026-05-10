@@ -84,6 +84,29 @@ func TestWrapBodyTruncatesByLimit(t *testing.T) {
 	}
 }
 
+func TestWrapBodyRedactsAPIKeyInResponseBody(t *testing.T) {
+	s := &Store{enabled: true, limit: 5, maxBodyBytes: 1024}
+	session := s.Start("test", "http://x", "acc1", map[string]any{"model": "gpt-4"})
+	if session == nil {
+		t.Fatal("expected session")
+	}
+	errBody := `{"error":{"type":"authentication_error","api_key":"sk-secret123","message":"invalid key"}}`
+	rc := session.WrapBody(io.NopCloser(strings.NewReader(errBody)), 401)
+	_, _ = io.ReadAll(rc)
+	_ = rc.Close()
+
+	items := s.Snapshot()
+	if len(items) != 1 {
+		t.Fatalf("expected 1 item, got %d", len(items))
+	}
+	if strings.Contains(items[0].ResponseBody, "sk-secret123") {
+		t.Fatalf("expected api_key to be redacted in response body, got %q", items[0].ResponseBody)
+	}
+	if !strings.Contains(items[0].ResponseBody, "<redacted>") {
+		t.Fatalf("expected <redacted> marker in response body, got %q", items[0].ResponseBody)
+	}
+}
+
 func TestWrapBodyTruncatesUTF8WithoutBreakingRune(t *testing.T) {
 	s := &Store{enabled: true, limit: 5, maxBodyBytes: 5}
 	session := s.Start("test", "http://x", "acc1", map[string]any{"x": 1})

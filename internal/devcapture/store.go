@@ -217,7 +217,7 @@ func (c *captureBody) finalize() {
 		AccountID:         c.s.accountID,
 		StatusCode:        c.statusCode,
 		RequestBody:       c.s.requestRaw,
-		ResponseBody:      c.buf.String(),
+		ResponseBody:      util.RedactSensitiveFields(c.buf.String()),
 		ResponseTruncated: c.truncated,
 	}
 	c.s.store.push(entry)
