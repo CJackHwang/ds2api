@@ -15,13 +15,13 @@
 [![Deploy on Zeabur](https://zeabur.com/button.svg)](https://zeabur.com/templates/L4CFHP)
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/CJackHwang/ds2api)
 
-语言 / Language: [中文](README.MD) | [English](README.en.md)
+Ngôn ngữ / Language: [中文](README.MD) | [English](README.en.md)
 
-将 DeepSeek Web 对话能力转换为 OpenAI、Claude 与 Gemini 兼容 API。核心后端以 **Go** 实现，Vercel 流式桥接额外使用少量 Node Runtime，前端为 React WebUI 管理台（源码在 `webui/`，部署时自动构建到 `static/admin`）。
+Chuyển đổi khả năng hội thoại của DeepSeek Web thành API tương thích với OpenAI, Claude và Gemini. Backend cốt lõi được viết bằng **Go**; phần cầu nối stream trên Vercel sử dụng thêm một lượng nhỏ Node Runtime; frontend là React WebUI dùng làm trang quản trị, mã nguồn nằm trong `webui/`, khi deploy sẽ tự động build vào `static/admin`.
 
-文档入口：[文档导航](docs/README.md) / [架构说明](docs/ARCHITECTURE.md) / [接口文档](API.md)
+Lối vào tài liệu: [Điều hướng tài liệu](docs/README.md) / [Mô tả kiến trúc](docs/ARCHITECTURE.md) / [Tài liệu API](API.md)
 
-【感谢Linux.do社区及GitHub社区各位开发者对项目的支持与贡献】
+【Cảm ơn cộng đồng Linux.do và các developer trong cộng đồng GitHub đã hỗ trợ và đóng góp cho dự án】
 
 ## Star History
 
@@ -33,66 +33,66 @@
  </picture>
 </a>
 
-> **重要免责声明**
+> **Tuyên bố miễn trừ trách nhiệm quan trọng**
 >
-> 本仓库仅供学习、研究、个人实验和内部验证使用，不提供任何形式的商业授权、适用性保证或结果保证。
+> Repository này chỉ dùng cho mục đích học tập, nghiên cứu, thử nghiệm cá nhân và xác minh nội bộ. Dự án không cung cấp bất kỳ hình thức cấp phép thương mại, bảo đảm tính phù hợp hay bảo đảm kết quả nào.
 >
-> 作者及仓库维护者不对因使用、修改、分发、部署或依赖本项目而产生的任何直接或间接损失、账号封禁、数据丢失、法律风险或第三方索赔负责。
+> Tác giả và người duy trì repository không chịu trách nhiệm đối với bất kỳ thiệt hại trực tiếp hoặc gián tiếp nào phát sinh từ việc sử dụng, chỉnh sửa, phân phối, deploy hoặc phụ thuộc vào dự án này, bao gồm nhưng không giới hạn ở việc khóa tài khoản, mất dữ liệu, rủi ro pháp lý hoặc khiếu nại từ bên thứ ba.
 >
-> 请勿将本项目用于违反服务条款、协议、法律法规或平台规则的场景。商业使用前请自行确认 `LICENSE`、相关协议以及你是否获得了作者的书面许可。
+> Không sử dụng dự án này trong các trường hợp vi phạm điều khoản dịch vụ, thỏa thuận, pháp luật, quy định hoặc quy tắc nền tảng. Trước khi sử dụng cho mục đích thương mại, vui lòng tự xác nhận `LICENSE`, các thỏa thuận liên quan và việc bạn đã có văn bản cho phép từ tác giả hay chưa.
 
-## 目录
+## Mục lục
 
-- [架构概览（摘要）](#架构概览摘要)
-- [核心能力](#核心能力)
-- [平台兼容矩阵](#平台兼容矩阵)
-- [模型支持](#模型支持)
-  - [OpenAI 接口](#openai-接口get-v1models)
-  - [Claude 接口](#claude-接口get-anthropicv1models)
-  - [Gemini 接口](#gemini-接口)
-- [快速开始](#快速开始)
-  - [方式一：下载 Release 构建包](#方式一下载-release-构建包)
-  - [方式二：Docker 运行](#方式二docker-运行)
-  - [方式三：Vercel 部署](#方式三vercel-部署)
-  - [方式四：本地源码运行](#方式四本地源码运行)
-- [配置说明](#配置说明)
-- [鉴权模式](#鉴权模式)
-- [并发模型](#并发模型)
-- [Tool Call 适配](#tool-call-适配)
-- [本地开发抓包工具](#本地开发抓包工具)
-- [文档索引](#文档索引)
-- [测试](#测试)
-- [Release 自动构建（GitHub Actions）](#release-自动构建github-actions)
-- [免责声明](#免责声明)
+- [Tổng quan kiến trúc tóm tắt](#tổng-quan-kiến-trúc-tóm-tắt)
+- [Năng lực cốt lõi](#năng-lực-cốt-lõi)
+- [Ma trận tương thích nền tảng](#ma-trận-tương-thích-nền-tảng)
+- [Hỗ trợ model](#hỗ-trợ-model)
+  - [Giao diện OpenAI](#giao-diện-openai-get-v1models)
+  - [Giao diện Claude](#giao-diện-claude-get-anthropicv1models)
+  - [Giao diện Gemini](#giao-diện-gemini)
+- [Bắt đầu nhanh](#bắt-đầu-nhanh)
+  - [Cách 1: Tải gói build từ Release](#cách-1-tải-gói-build-từ-release)
+  - [Cách 2: Chạy bằng Docker](#cách-2-chạy-bằng-docker)
+  - [Cách 3: Deploy lên Vercel](#cách-3-deploy-lên-vercel)
+  - [Cách 4: Chạy source code local](#cách-4-chạy-source-code-local)
+- [Mô tả cấu hình](#mô-tả-cấu-hình)
+- [Chế độ xác thực](#chế-độ-xác-thực)
+- [Mô hình xử lý đồng thời](#mô-hình-xử-lý-đồng-thời)
+- [Thích ứng Tool Call](#thích-ứng-tool-call)
+- [Công cụ bắt gói khi phát triển local](#công-cụ-bắt-gói-khi-phát-triển-local)
+- [Chỉ mục tài liệu](#chỉ-mục-tài-liệu)
+- [Kiểm thử](#kiểm-thử)
+- [Tự động build Release bằng GitHub Actions](#tự-động-build-release-bằng-github-actions)
+- [Tuyên bố miễn trừ trách nhiệm](#tuyên-bố-miễn-trừ-trách-nhiệm)
 
-## 架构概览（摘要）
+## Tổng quan kiến trúc tóm tắt
 
 ```mermaid
 flowchart LR
-    Client["🖥️ 客户端 / SDK\n(OpenAI / Claude / Gemini)"]
+    Client["🖥️ Client / SDK\n(OpenAI / Claude / Gemini)"]
     Upstream["☁️ DeepSeek API"]
 
-    subgraph DS2API["DS2API 4.x（模块化 HTTP surface + PromptCompat 内核）"]
-        Router["chi Router + 中间件\n(RequestID / RealIP / Logger / Recoverer / CORS)"]
+    subgraph DS2API["DS2API 4.x（HTTP surface dạng module + lõi PromptCompat）"]
+        Router["chi Router + Middleware\n(RequestID / RealIP / Logger / Recoverer / CORS)"]
 
         subgraph HTTP["HTTP API surface"]
             OA["OpenAI\nchat / responses / files / embeddings"]
             CA["Claude\n/anthropic/* + /v1/messages"]
             GA["Gemini\n/v1beta/models/* + /v1/models/*"]
-            Admin["Admin API\n资源子包"]
-            WebUI["WebUI\n/admin（静态托管）"]
+            Admin["Admin API\nresource subpackage"]
+            WebUI["WebUI\n/admin（static hosting）"]
             Vercel["Vercel Node Stream\n/v1/chat/completions"]
         end
 
-        subgraph Runtime["运行时核心能力"]
-            Compat["PromptCompat\n(API -> 网页纯文本上下文)"]
+        subgraph Runtime["Năng lực runtime cốt lõi"]
+            Compat["PromptCompat\n(API -> ngữ cảnh văn bản thuần từ web)"]
             Completion["Completion Runtime\n(Session / PoW / Completion)"]
-            Turn["AssistantTurn\n(输出语义归一)"]
+            Turn["AssistantTurn\n(chuẩn hóa ngữ nghĩa đầu ra)"]
             Auth["Auth Resolver\n(API key / bearer / x-goog-api-key)"]
-            Pool["Account Pool + Queue\n(并发槽位 + 等待队列)"]
+            Pool["Account Pool + Queue\n(slot đồng thời + hàng đợi)"]
             DSClient["DeepSeek Client\n(Session / Auth / Completion / Files)"]
-            Pow["PoW 实现\n(纯 Go)"]
-            Tool["Tool Sieve\n(Go/Node 语义对齐)"]
+            Pow["Triển khai PoW\n(Go thuần)"]
+            Tool["Tool Sieve\n(đồng bộ ngữ nghĩa Go/Node)"]
             History["Current Input File\n(DS2API_HISTORY.txt)"]
         end
     end
@@ -106,14 +106,14 @@ flowchart LR
     OA --> Compat
     CA & GA --> Compat
     Compat --> Completion
-    Completion -.完整上下文.-> History
+    Completion -.ngữ cảnh đầy đủ.-> History
     Completion --> Turn
     Vercel -.Go prepare.-> Completion
     Vercel -.Node SSE.-> Tool
     Completion --> Auth
-    Completion -.账号轮询.-> Pool
-    Completion -.工具调用解析.-> Tool
-    Completion -.PoW 计算.-> Pow
+    Completion -.xoay vòng tài khoản.-> Pool
+    Completion -.phân tích tool call.-> Tool
+    Completion -.tính toán PoW.-> Pow
     Auth --> DSClient
     DSClient --> Upstream
     Upstream --> DSClient
@@ -121,273 +121,305 @@ flowchart LR
     Vercel --> Client
 ```
 
-详细架构拆分与目录职责见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
+Chi tiết phân tách kiến trúc và trách nhiệm từng thư mục xem tại [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-- **后端**：Go（`cmd/ds2api/`、`api/`、`internal/`），不依赖 Python 运行时
-- **前端**：React 管理台（`webui/`），运行时托管静态构建产物
-- **部署**：本地运行、Docker、Vercel Serverless、Linux systemd
+- **Backend**: Go (`cmd/ds2api/`, `api/`, `internal/`), không phụ thuộc Python runtime
+- **Frontend**: React trang quản trị (`webui/`), runtime host static build artifact
+- **Deploy**: Chạy local, Docker, Vercel Serverless, Linux systemd
 
-## 核心能力
+## Năng lực cốt lõi
 
-| 能力 | 说明 |
+| Năng lực | Mô tả |
 | --- | --- |
-| OpenAI 兼容 | `GET /v1/models`、`GET /v1/models/{id}`、`POST /v1/chat/completions`、`POST /v1/responses`、`GET /v1/responses/{response_id}`、`POST /v1/embeddings`、`POST /v1/files`、`GET /v1/files/{file_id}` |
-| Claude 兼容 | `GET /anthropic/v1/models`、`POST /anthropic/v1/messages`、`POST /anthropic/v1/messages/count_tokens`（及快捷路径 `/v1/messages`、`/messages`） |
-| Gemini 兼容 | `POST /v1beta/models/{model}:generateContent`、`POST /v1beta/models/{model}:streamGenerateContent`（及 `/v1/models/{model}:*` 路径） |
-| Ollama 兼容 | `GET /api/version`、`GET /api/tags`、`POST /api/show` |
-| 统一 CORS 兼容 | `/v1/*`、`/anthropic/*`、`/v1beta/models/*`、`/api/*`、`/admin/*` 统一走同一套 CORS 策略；Vercel 上 `/v1/chat/completions` 的 Node Runtime 也对齐相同放行规则，尽量减少第三方预检请求头限制 |
-| 多账号轮询 | 自动 token 刷新、邮箱/手机号双登录方式 |
-| 并发队列控制 | 每账号 in-flight 上限 + 等待队列，动态计算建议并发值 |
-| DeepSeek PoW | 纯 Go 高性能实现（DeepSeekHashV1），毫秒级响应 |
-| Tool Calling | 防泄漏处理：非代码块高置信特征识别、`delta.tool_calls` 早发、结构化增量输出 |
-| Admin API | 配置管理、运行时设置热更新、代理管理、账号测试 / 批量测试、会话清理、导入导出、Vercel 同步、版本检查 |
-| WebUI 管理台 | `/admin` 单页应用（中英文双语、深色模式，支持查看服务器端对话记录） |
-| 运维探针 | `GET /healthz`（存活）、`GET /readyz`（就绪） |
+| Tương thích OpenAI | `GET /v1/models`, `GET /v1/models/{id}`, `POST /v1/chat/completions`, `POST /v1/responses`, `GET /v1/responses/{response_id}`, `POST /v1/embeddings`, `POST /v1/files`, `GET /v1/files/{file_id}` |
+| Tương thích Claude | `GET /anthropic/v1/models`, `POST /anthropic/v1/messages`, `POST /anthropic/v1/messages/count_tokens` và các path rút gọn `/v1/messages`, `/messages` |
+| Tương thích Gemini | `POST /v1beta/models/{model}:generateContent`, `POST /v1beta/models/{model}:streamGenerateContent` và các path `/v1/models/{model}:*` |
+| Tương thích Ollama | `GET /api/version`, `GET /api/tags`, `POST /api/show` |
+| CORS thống nhất | `/v1/*`, `/anthropic/*`, `/v1beta/models/*`, `/api/*`, `/admin/*` dùng chung một bộ CORS strategy; trên Vercel, Node Runtime của `/v1/chat/completions` cũng đồng bộ cùng quy tắc allow, nhằm giảm tối đa giới hạn preflight request header từ client bên thứ ba |
+| Xoay vòng nhiều tài khoản | Tự động refresh token, hỗ trợ đăng nhập bằng email hoặc số điện thoại |
+| Kiểm soát hàng đợi đồng thời | Giới hạn in-flight theo từng tài khoản + hàng đợi chờ, tự động tính giá trị đồng thời khuyến nghị |
+| DeepSeek PoW | Triển khai hiệu năng cao bằng Go thuần (`DeepSeekHashV1`), phản hồi cấp mili-giây |
+| Tool Calling | Chống rò rỉ: nhận diện đặc trưng độ tin cậy cao ngoài code block, gửi sớm `delta.tool_calls`, xuất incremental có cấu trúc |
+| Admin API | Quản lý cấu hình, hot update runtime settings, quản lý proxy, test tài khoản / test hàng loạt, dọn dẹp session, import/export, đồng bộ Vercel, kiểm tra phiên bản |
+| WebUI quản trị | Single page app tại `/admin`, hỗ trợ song ngữ Trung/Anh, dark mode, xem lịch sử hội thoại phía server |
+| Probe vận hành | `GET /healthz` để kiểm tra còn sống, `GET /readyz` để kiểm tra sẵn sàng |
 
-OpenAI `/v1/*` 仍是推荐的规范路径；同时支持 `/models`、`/chat/completions`、`/responses`、`/embeddings`、`/files`、`/files/{file_id}` 等根路径快捷路由，方便只配置 DS2API 根地址的第三方客户端。
+OpenAI `/v1/*` vẫn là path chuẩn được khuyến nghị. Đồng thời dự án cũng hỗ trợ các root shortcut route như `/models`, `/chat/completions`, `/responses`, `/embeddings`, `/files`, `/files/{file_id}` để thuận tiện cho client bên thứ ba chỉ cấu hình root address của DS2API.
 
-## 平台兼容矩阵
+## Ma trận tương thích nền tảng
 
-| 级别 | 平台 | 当前状态 |
+| Cấp độ | Nền tảng | Trạng thái hiện tại |
 | --- | --- | --- |
-| P0 | Codex CLI/SDK（`wire_api=chat` / `wire_api=responses`） | ✅ |
-| P0 | OpenAI SDK（JS/Python，chat + responses） | ✅ |
-| P0 | Vercel AI SDK（openai-compatible） | ✅ |
-| P0 | Anthropic SDK（messages） | ✅ |
-| P0 | Google Gemini SDK（generateContent） | ✅ |
-| P1 | LangChain / LlamaIndex / OpenWebUI（OpenAI 兼容接入） | ✅ |
+| P0 | Codex CLI/SDK (`wire_api=chat` / `wire_api=responses`) | ✅ |
+| P0 | OpenAI SDK JS/Python, chat + responses | ✅ |
+| P0 | Vercel AI SDK, openai-compatible | ✅ |
+| P0 | Anthropic SDK, messages | ✅ |
+| P0 | Google Gemini SDK, generateContent | ✅ |
+| P1 | LangChain / LlamaIndex / OpenWebUI, kết nối tương thích OpenAI | ✅ |
 
-## 模型支持
+## Hỗ trợ model
 
-### OpenAI 接口（`GET /v1/models`）
+### Giao diện OpenAI (`GET /v1/models`)
 
-| 模型类型 | 模型 ID | thinking | search |
+| Loại model | Model ID | thinking | search |
 | --- | --- | --- | --- |
-| default | `deepseek-v4-flash` | 默认开启，可由请求参数控制 | ❌ |
-| default | `deepseek-v4-flash-nothinking` | 永久关闭，不受请求参数影响 | ❌ |
-| expert | `deepseek-v4-pro` | 默认开启，可由请求参数控制 | ❌ |
-| expert | `deepseek-v4-pro-nothinking` | 永久关闭，不受请求参数影响 | ❌ |
-| default | `deepseek-v4-flash-search` | 默认开启，可由请求参数控制 | ✅ |
-| default | `deepseek-v4-flash-search-nothinking` | 永久关闭，不受请求参数影响 | ✅ |
-| expert | `deepseek-v4-pro-search` | 默认开启，可由请求参数控制 | ✅ |
-| expert | `deepseek-v4-pro-search-nothinking` | 永久关闭，不受请求参数影响 | ✅ |
-| vision | `deepseek-v4-vision` | 默认开启，可由请求参数控制 | ❌ |
-| vision | `deepseek-v4-vision-nothinking` | 永久关闭，不受请求参数影响 | ❌ |
+| default | `deepseek-v4-flash` | Bật mặc định, có thể điều khiển bằng request parameter | ❌ |
+| default | `deepseek-v4-flash-nothinking` | Tắt vĩnh viễn, không chịu ảnh hưởng bởi request parameter | ❌ |
+| expert | `deepseek-v4-pro` | Bật mặc định, có thể điều khiển bằng request parameter | ❌ |
+| expert | `deepseek-v4-pro-nothinking` | Tắt vĩnh viễn, không chịu ảnh hưởng bởi request parameter | ❌ |
+| default | `deepseek-v4-flash-search` | Bật mặc định, có thể điều khiển bằng request parameter | ✅ |
+| default | `deepseek-v4-flash-search-nothinking` | Tắt vĩnh viễn, không chịu ảnh hưởng bởi request parameter | ✅ |
+| expert | `deepseek-v4-pro-search` | Bật mặc định, có thể điều khiển bằng request parameter | ✅ |
+| expert | `deepseek-v4-pro-search-nothinking` | Tắt vĩnh viễn, không chịu ảnh hưởng bởi request parameter | ✅ |
+| vision | `deepseek-v4-vision` | Bật mặc định, có thể điều khiển bằng request parameter | ❌ |
+| vision | `deepseek-v4-vision-nothinking` | Tắt vĩnh viễn, không chịu ảnh hưởng bởi request parameter | ❌ |
 
-除原生模型外，也支持常见 alias 输入（如 `gpt-4.1`、`gpt-5`、`gpt-5-codex`、`o3`、`claude-*`、`gemini-*` 等），但 `/v1/models` 返回的是规范化后的 DeepSeek 原生模型 ID。若 alias 名本身追加 `-nothinking` 后缀，也会映射到对应的强制关思考模型。完整 alias 行为以 [API.md](API.md#模型-alias-解析策略) 和 `config.example.json` 为准。
-当前上游视觉模型只暴露 `vision` 通道，不提供独立的联网搜索视觉变体。
+Ngoài model gốc, dự án cũng hỗ trợ các alias phổ biến như `gpt-4.1`, `gpt-5`, `gpt-5-codex`, `o3`, `claude-*`, `gemini-*`, v.v. Tuy nhiên, `/v1/models` trả về DeepSeek native model ID đã được chuẩn hóa. Nếu alias tự nó có hậu tố `-nothinking`, alias đó cũng sẽ được mapping sang model tương ứng có ngữ nghĩa bắt buộc tắt thinking. Hành vi alias đầy đủ lấy [API.md](API.md#模型-alias-解析策略) và `config.example.json` làm chuẩn.
 
-### Claude 接口（`GET /anthropic/v1/models`）
+Hiện tại upstream vision model chỉ expose kênh `vision`, không cung cấp biến thể vision riêng có web search.
 
-| 当前常用模型 | 默认映射 |
+### Giao diện Claude (`GET /anthropic/v1/models`)
+
+| Model thường dùng hiện tại | Mapping mặc định |
 | --- | --- |
 | `claude-sonnet-4-6` | `deepseek-v4-flash` |
 | `claude-sonnet-4-6-nothinking` | `deepseek-v4-flash-nothinking` |
-| `claude-haiku-4-5`（兼容 `claude-3-5-haiku-latest`） | `deepseek-v4-flash` |
+| `claude-haiku-4-5`, tương thích `claude-3-5-haiku-latest` | `deepseek-v4-flash` |
 | `claude-haiku-4-5-nothinking` | `deepseek-v4-flash-nothinking` |
 | `claude-opus-4-6` | `deepseek-v4-pro` |
 | `claude-opus-4-6-nothinking` | `deepseek-v4-pro-nothinking` |
 
-可通过配置中的 `model_aliases` 覆盖映射关系；若请求模型名带 `-nothinking`，会在最终映射结果上强制追加无思考语义。
-`/anthropic/v1/models` 除上述主别名外，还会返回 Claude 4.x snapshots、3.x 历史模型 ID 与常见 alias，便于旧客户端直接兼容。
+Có thể override quan hệ mapping thông qua `model_aliases` trong cấu hình. Nếu tên model trong request có hậu tố `-nothinking`, kết quả mapping cuối cùng sẽ bị ép thêm ngữ nghĩa tắt thinking.
 
-#### Claude Code 接入避坑（实测）
+Ngoài các alias chính ở trên, `/anthropic/v1/models` cũng trả về Claude 4.x snapshots, model ID lịch sử 3.x và alias phổ biến, giúp client cũ tương thích trực tiếp.
 
-- `ANTHROPIC_BASE_URL` 推荐直接指向 DS2API 根地址（例如 `http://127.0.0.1:5001`），Claude Code 会请求 `/v1/messages?beta=true`。
-- `ANTHROPIC_API_KEY` 需要与 `config.json` 中 `keys` 一致；建议同时保留常规 key 与 `sk-ant-*` 形态 key，兼容不同客户端校验习惯。
-- 若系统设置了代理，建议对 DS2API 地址配置 `NO_PROXY=127.0.0.1,localhost,<你的主机IP>`，避免本地回环请求被代理拦截。
-- 如遇“工具调用输出成文本、未执行”问题，请优先检查模型输出是否为推荐的全角分隔符 DSML 工具块：`<｜DSML｜tool_calls><｜DSML｜invoke name="..."><｜DSML｜parameter name="...">...`。兼容层也接受半角 DSML 与旧式 canonical XML：`<tool_calls><invoke name="..."><parameter name="...">...`；旧式 `<tools>` / `<tool_call>` / `<tool_name>` / `<param>`、`<function_call>`、`tool_use` 或纯 JSON `tool_calls` 片段不会执行，会作为普通文本处理。
+#### Tránh lỗi khi kết nối Claude Code, đã test thực tế
 
-### Gemini 接口
+- `ANTHROPIC_BASE_URL` nên trỏ trực tiếp đến root address của DS2API, ví dụ `http://127.0.0.1:5001`; Claude Code sẽ request `/v1/messages?beta=true`.
+- `ANTHROPIC_API_KEY` cần trùng với `keys` trong `config.json`; khuyến nghị giữ cả key thường và dạng `sk-ant-*` để tương thích với thói quen validate của các client khác nhau.
+- Nếu hệ thống có proxy, nên cấu hình `NO_PROXY=127.0.0.1,localhost,<IP máy của bạn>` cho địa chỉ DS2API để tránh request loopback local bị proxy chặn.
+- Nếu gặp lỗi “tool call xuất ra dạng text, không thực thi”, hãy ưu tiên kiểm tra model output có phải là DSML tool block dùng dấu phân cách full-width được khuyến nghị không: `<｜DSML｜tool_calls><｜DSML｜invoke name="..."><｜DSML｜parameter name="...">...`. Lớp tương thích cũng chấp nhận DSML half-width và canonical XML cũ: `<tool_calls><invoke name="..."><parameter name="...">...`. Các dạng cũ như `<tools>` / `<tool_call>` / `<tool_name>` / `<param>`, `<function_call>`, `tool_use` hoặc đoạn JSON thuần `tool_calls` sẽ không được thực thi, mà được xử lý như text bình thường.
 
-Gemini 适配器将模型名通过 `model_aliases` 或内置精确 alias 映射到 DeepSeek 原生模型（覆盖 `gemini-2.5-*`、`gemini-3*`、`gemini-pro-vision` 等常见名称），支持 `generateContent` 和 `streamGenerateContent` 两种调用方式，并完整支持 Tool Calling（`functionDeclarations` → `functionCall` 输出）。若 Gemini 模型名带 `-nothinking` 后缀，例如 `gemini-2.5-pro-nothinking`，会映射到对应的强制关闭思考模型。
+### Giao diện Gemini
 
-## 快速开始
+Gemini adapter mapping tên model sang DeepSeek native model thông qua `model_aliases` hoặc alias chính xác tích hợp sẵn, bao phủ các tên phổ biến như `gemini-2.5-*`, `gemini-3*`, `gemini-pro-vision`, v.v. Adapter hỗ trợ hai cách gọi `generateContent` và `streamGenerateContent`, đồng thời hỗ trợ đầy đủ Tool Calling, chuyển `functionDeclarations` thành output `functionCall`. Nếu tên Gemini model có hậu tố `-nothinking`, ví dụ `gemini-2.5-pro-nothinking`, model đó sẽ được mapping sang model tương ứng bắt buộc tắt thinking.
 
-### 部署方式优先级建议
+## Bắt đầu nhanh
 
-推荐按以下顺序选择部署方式：
+### Thứ tự ưu tiên lựa chọn cách deploy
 
-1. **下载 Release 构建包运行**：最省事，产物已编译完成，最适合大多数用户。
-2. **Docker / GHCR 镜像部署**：适合需要容器化、编排或云环境部署。
-3. **Vercel 部署**：适合已有 Vercel 环境且接受其平台约束的场景。
-4. **本地源码运行 / 自行编译**：适合开发、调试或需要自行修改代码的场景。
+Khuyến nghị chọn cách deploy theo thứ tự sau:
 
-### 通用第一步（所有部署方式）
+1. **Tải gói build từ Release để chạy**: đơn giản nhất, artifact đã được compile sẵn, phù hợp với đa số người dùng.
+2. **Deploy bằng Docker / GHCR image**: phù hợp khi cần container hóa, orchestration hoặc deploy trên cloud.
+3. **Deploy lên Vercel**: phù hợp khi đã có môi trường Vercel và chấp nhận các ràng buộc của nền tảng này.
+4. **Chạy source code local / tự compile**: phù hợp cho phát triển, debug hoặc cần tự chỉnh sửa code.
 
-把 `config.json` 作为唯一配置源（推荐做法）：
+### Bước chung đầu tiên cho mọi cách deploy
+
+Dùng `config.json` làm nguồn cấu hình duy nhất, đây là cách được khuyến nghị:
 
 ```bash
 cp config.example.json config.json
-# 编辑 config.json
+# Chỉnh sửa config.json
 ```
 
-后续部署建议：
-- 本地运行：直接读取 `config.json`
-- Docker / Vercel：由 `config.json` 生成 `DS2API_CONFIG_JSON`（Base64）注入环境变量，也可以直接写原始 JSON
+Khuyến nghị deploy về sau:
 
-WebUI 管理台里的“全量配置模板”也直接复用同一份 `config.example.json`，所以更新示例文件后，前端模板会自动保持一致。
+- Chạy local: đọc trực tiếp `config.json`
+- Docker / Vercel: tạo `DS2API_CONFIG_JSON` dạng Base64 từ `config.json` rồi inject vào environment variable, cũng có thể ghi JSON gốc trực tiếp
 
-### 方式一：下载 Release 构建包
+“Mẫu cấu hình đầy đủ” trong WebUI quản trị cũng dùng lại cùng một `config.example.json`, vì vậy sau khi cập nhật file ví dụ, template phía frontend sẽ tự động đồng bộ.
 
-每次发布 Release 时，GitHub Actions 会自动构建多平台二进制包：
+### Cách 1: Tải gói build từ Release
+
+Mỗi lần phát hành Release, GitHub Actions sẽ tự động build binary package cho nhiều nền tảng:
 
 ```bash
-# 下载对应平台的压缩包后
+# Sau khi tải gói nén tương ứng với nền tảng
 tar -xzf ds2api_<tag>_linux_amd64.tar.gz
 cd ds2api_<tag>_linux_amd64
 cp config.example.json config.json
-# 编辑 config.json
+# Chỉnh sửa config.json
 ./ds2api
 ```
 
-### 方式二：Docker 运行
+### Cách 2: Chạy bằng Docker
 
 ```bash
-# 1. 准备环境变量和配置文件
+# 1. Chuẩn bị environment variable và file cấu hình
 cp .env.example .env
 cp config.example.json config.json
 
-# 2. 编辑 .env（至少设置 DS2API_ADMIN_KEY；如需修改宿主机端口，可额外设置 DS2API_HOST_PORT）
-#    DS2API_ADMIN_KEY=请替换为强密码
+# 2. Chỉnh sửa .env, tối thiểu cần set DS2API_ADMIN_KEY
+#    Nếu cần đổi port trên host, có thể set thêm DS2API_HOST_PORT
+#    DS2API_ADMIN_KEY=hãy_thay_bằng_mật_khẩu_mạnh
 
-# 3. 启动
+# 3. Khởi động
 docker-compose up -d
 
-# 4. 查看日志
+# 4. Xem log
 docker-compose logs -f
 ```
 
-默认 `docker-compose.yml` 会把宿主机 `6011` 映射到容器内的 `5001`。如果你希望直接对外暴露 `5001`，请设置 `DS2API_HOST_PORT=5001`（或者手动调整 `ports` 配置）。
-同时默认把 `./config.json` 挂载到容器 `/data/config.json`，并设置 `DS2API_CONFIG_PATH=/data/config.json`，用于避免 `/app` 只读导致运行时 token 持久化失败。
-镜像会预创建 `/data` 并授权给非 root 的 `ds2api` 用户；如果使用单文件 bind mount，请确保宿主机 `config.json` 对容器用户可读写，例如 `chmod 644 config.json`。
+Mặc định `docker-compose.yml` sẽ map port `6011` của host sang `5001` trong container. Nếu bạn muốn expose trực tiếp `5001` ra bên ngoài, hãy set `DS2API_HOST_PORT=5001` hoặc chỉnh thủ công phần `ports`.
 
-更新镜像：`docker-compose up -d --build`
+Đồng thời, mặc định `./config.json` sẽ được mount vào `/data/config.json` trong container và set `DS2API_CONFIG_PATH=/data/config.json`, nhằm tránh việc `/app` chỉ đọc làm token runtime không thể lưu bền vững.
 
-#### Zeabur 一键部署（Dockerfile）
+Image sẽ tạo sẵn `/data` và cấp quyền cho user không phải root là `ds2api`. Nếu dùng single-file bind mount, hãy đảm bảo `config.json` trên host cho phép container user đọc/ghi, ví dụ:
 
-1. 点击上方 “Deploy on Zeabur” 按钮，一键部署。
-2. 部署完成后访问 `/admin`，使用 Zeabur 环境变量/模板指引中的 `DS2API_ADMIN_KEY` 登录。
-3. 在管理台导入/编辑配置（会写入并持久化到 `/data/config.json`）。
+```bash
+chmod 644 config.json
+```
 
-Zeabur 首次空卷启动时可以没有 `/data/config.json`；DS2API 会先使用空的文件模式配置启动，并在管理台首次保存时创建该文件。
+Cập nhật image:
 
-不依赖模板手动部署时，在 Zeabur 中选择 GitHub 仓库服务，Root Directory 保持 `/`，使用仓库根目录 `Dockerfile` 构建；添加持久卷 `/data`，设置 `PORT=5001`、`DS2API_ADMIN_KEY=你的强密钥`、`DS2API_CONFIG_PATH=/data/config.json`，然后暴露 HTTP 端口 `5001`。更完整步骤见 [docs/DEPLOY.md](docs/DEPLOY.md#不使用模板手动部署)。
+```bash
+docker-compose up -d --build
+```
 
-说明：Zeabur 使用仓库内 `Dockerfile` 直接构建时，不需要额外传入 `BUILD_VERSION`；镜像会优先读取该构建参数，未提供时自动回退到仓库根目录的 `VERSION` 文件。
+#### Deploy một lần bằng Zeabur, dùng Dockerfile
 
-### 方式三：Vercel 部署
+1. Nhấn nút “Deploy on Zeabur” ở phía trên để deploy một lần.
+2. Sau khi deploy xong, truy cập `/admin`, dùng `DS2API_ADMIN_KEY` trong hướng dẫn environment variable/template của Zeabur để đăng nhập.
+3. Import hoặc chỉnh sửa cấu hình trong trang quản trị; cấu hình sẽ được ghi và lưu bền vững vào `/data/config.json`.
 
-1. Fork 仓库到自己的 GitHub
-2. 在 Vercel 上导入项目
-3. 配置环境变量（最少设置 `DS2API_ADMIN_KEY`；推荐同时设置 `DS2API_CONFIG_JSON`）
-4. 部署
+Khi Zeabur khởi động lần đầu với volume trống, có thể chưa có `/data/config.json`; DS2API sẽ khởi động trước bằng cấu hình file mode rỗng và tạo file này khi bạn lưu lần đầu trong trang quản trị.
 
-建议先在仓库目录复制模板并填写：
+Nếu deploy thủ công không dùng template, chọn GitHub repository service trong Zeabur, giữ Root Directory là `/`, build bằng `Dockerfile` ở root repository; thêm persistent volume `/data`, set `PORT=5001`, `DS2API_ADMIN_KEY=mật_khóa_mạnh_của_bạn`, `DS2API_CONFIG_PATH=/data/config.json`, sau đó expose HTTP port `5001`. Các bước đầy đủ hơn xem tại [docs/DEPLOY.md](docs/DEPLOY.md#不使用模板手动部署).
+
+Lưu ý: Khi Zeabur build trực tiếp bằng `Dockerfile` trong repository, không cần truyền thêm `BUILD_VERSION`; image sẽ ưu tiên đọc build argument này, nếu không có thì tự động fallback sang file `VERSION` ở root repository.
+
+### Cách 3: Deploy lên Vercel
+
+1. Fork repository về GitHub của bạn
+2. Import project trên Vercel
+3. Cấu hình environment variable, tối thiểu cần set `DS2API_ADMIN_KEY`; khuyến nghị set thêm `DS2API_CONFIG_JSON`
+4. Deploy
+
+Khuyến nghị trước tiên copy template và điền trong thư mục repository:
 
 ```bash
 cp config.example.json config.json
-# 编辑 config.json
+# Chỉnh sửa config.json
 ```
 
-推荐：先本地把 `config.json` 转成 Base64，再粘贴到 `DS2API_CONFIG_JSON`，避免 JSON 格式错误：
+Khuyến nghị: trước tiên chuyển `config.json` local thành Base64 rồi dán vào `DS2API_CONFIG_JSON`, để tránh lỗi format JSON:
 
 ```bash
 base64 < config.json | tr -d '\n'
 ```
 
-> **流式说明**：OpenAI Chat 流式在 Vercel 上会由 `api/chat-stream.js`（Node Runtime）承接，但 `vercel.json` 只把规范路径 `/v1/chat/completions` 重写到 Node；根路径快捷别名 `/chat/completions` 仍走 Go 主链路。鉴权、账号选择、会话/PoW 准备仍由 Go 内部 prepare 接口完成；流式响应（含 `tools`）在 Node 侧执行与 Go 对齐的输出组装与防泄漏处理。Vercel 上需要实时流式时请使用 `/v1/chat/completions`。
+> **Mô tả stream**: Trên Vercel, OpenAI Chat stream sẽ do `api/chat-stream.js` bằng Node Runtime xử lý, nhưng `vercel.json` chỉ rewrite path chuẩn `/v1/chat/completions` sang Node; alias root path `/chat/completions` vẫn đi qua Go main chain. Xác thực, chọn tài khoản, chuẩn bị session/PoW vẫn do internal prepare interface của Go hoàn thành; stream response, bao gồm `tools`, được xử lý ở phía Node với logic lắp ráp output và chống rò rỉ đồng bộ với Go. Nếu cần stream thời gian thực trên Vercel, hãy dùng `/v1/chat/completions`.
 
-详细部署说明请参阅 [部署指南](docs/DEPLOY.md)。
+Chi tiết deploy xem tại [Hướng dẫn deploy](docs/DEPLOY.md).
 
-### 方式四：本地源码运行
+### Cách 4: Chạy source code local
 
-**前置要求**：Go 1.26+，Node.js `20.19+` 或 `22.12+`（仅在需要构建 WebUI 时；CI / Docker 构建使用 Node 24）；同时确保 `npm` 可用，建议 `npm 10+`
+**Yêu cầu trước**: Go 1.26+, Node.js `20.19+` hoặc `22.12+` nếu cần build WebUI; CI / Docker build dùng Node 24. Đồng thời bảo đảm có `npm`, khuyến nghị `npm 10+`.
 
 ```bash
-# 1. 克隆仓库
+# 1. Clone repository
 git clone https://github.com/CJackHwang/ds2api.git
 cd ds2api
 
-# 2. 配置
+# 2. Cấu hình
 cp config.example.json config.json
-# 编辑 config.json，填入你的 DeepSeek 账号信息和 API key
+# Chỉnh sửa config.json, điền thông tin tài khoản DeepSeek và API key của bạn
 
-# 3. 启动
+# 3. Khởi động
 go run ./cmd/ds2api
 ```
 
-默认本地访问地址：`http://127.0.0.1:5001`
+Địa chỉ truy cập local mặc định:
 
-服务实际绑定：`0.0.0.0:5001`，因此同一局域网设备通常也可以通过你的内网 IP 访问。
-
-> **WebUI 自动构建**：本地首次启动时，若 WebUI 静态目录不存在，会自动尝试执行 `npm ci --prefix webui`（仅在缺少依赖时）和 `npm run build --prefix webui -- --outDir static/admin --emptyOutDir`（需要本机有 Node.js 和 npm；静态目录可用 `DS2API_STATIC_ADMIN_DIR` 覆盖）。你也可以手动构建：`./scripts/build-webui.sh`
-
-## 配置说明
-
-`README` 只保留快速入口，完整字段请以 [config.example.json](config.example.json) 为模板，并参考 [部署指南](docs/DEPLOY.md#0-前置要求) 与 [API 配置最佳实践](API.md#配置最佳实践)。
-
-常用字段：
-
-- `keys` / `api_keys`：客户端访问密钥，`api_keys` 支持 `name` 与 `remark` 元信息，`keys` 继续兼容。
-- `accounts`：DeepSeek 托管账号，支持 `email` 或 `mobile` 登录，可配置代理、名称和备注。
-- `model_aliases`：OpenAI / Claude / Gemini 共用的模型 alias 映射。
-- `runtime`：账号并发、队列与 token 刷新策略，可通过 Admin Settings 热更新。
-- `auto_delete.mode`：请求结束后的远端会话清理策略，支持 `none` / `single` / `all`。
-- `current_input_file`：全局生效的上下文拆分上传策略；默认开启且阈值为 `0`，触发时将完整上下文合并上传为 `DS2API_HISTORY.txt` 上下文文件。
-- 如果关闭 `current_input_file`，请求会直接透传，不上传拆分上下文文件。
-- `thinking_injection`：默认开启；在最新 user 消息末尾追加思考增强提示词，提高高强度推理与工具调用前的思考稳定性；`prompt` 留空时使用内置默认提示词。
-
-环境变量完整列表见 [部署指南](docs/DEPLOY.md)，接口鉴权规则见 [API.md](API.md#鉴权规则)。
-
-## 鉴权模式
-
-调用业务接口（`/v1/*`、`/anthropic/*`、Gemini 路由）时支持两种模式：
-
-| 模式 | 说明 |
-| --- | --- |
-| **托管账号模式** | `Bearer` 或 `x-api-key` 传入 `config.keys` 中的 key，由服务自动轮询选择账号 |
-| **直通 token 模式** | 传入 token 不在 `config.keys` 中时，直接作为 DeepSeek token 使用 |
-
-可选请求头 `X-Ds2-Target-Account`：指定使用某个托管账号（值为 email 或 mobile）。
-如果指定账号不存在，或者当前管理账号队列已满，请求会返回 `429`；当前 `429` 不附带 `Retry-After` 头。若账号存在但登录/刷新失败，则返回对应的鉴权错误。
-未指定目标账号时，如果 completion 因上游 thinking-only 空输出在同账号补偿重试后仍将返回 `429 upstream_empty_output`，托管账号模式会自动切到下一个可用账号，新建 session，并用原始 payload 再 fresh retry 一次。
-Gemini 路由还可以使用 `x-goog-api-key`，或在没有认证头时使用 `?key=` / `?api_key=` 作为调用方凭据。
-
-## 并发模型
-
-```
-每账号可用并发 = DS2API_ACCOUNT_MAX_INFLIGHT（默认 2）
-建议并发值 = 账号数量 × 每账号并发上限
-等待队列上限 = DS2API_ACCOUNT_MAX_QUEUE（默认 = 建议并发值）
-429 阈值 = in-flight + 等待队列 ≈ 账号数量 × 4
+```text
+http://127.0.0.1:5001
 ```
 
-- 当 in-flight 槽位满时，请求进入等待队列，**不会立即 429**
-- 超出总承载上限后才返回 `429 Too Many Requests`，当前响应不附带 `Retry-After`
-- completion 空输出类 429 会先做同账号补偿重试；托管账号模式还会在最终返回 429 前切到另一个可用账号 fresh retry 一次
-- `GET /admin/queue/status` 返回实时并发状态
+Service thực tế bind vào:
 
-## Tool Call 适配
+```text
+0.0.0.0:5001
+```
 
-当请求中带 `tools` 时，DS2API 会做防泄漏处理与结构化转译：
+Vì vậy thiết bị trong cùng LAN thường cũng có thể truy cập thông qua IP nội bộ của máy bạn.
 
-1. 只在**非代码块上下文**启用执行型 toolcall 识别（代码块示例默认不触发）
-2. 解析层当前把全角分隔符 DSML 外壳视为推荐可执行调用：`<｜DSML｜tool_calls>` → `<｜DSML｜invoke name="...">` → `<｜DSML｜parameter name="...">`；兼容半角 DSML、旧式 canonical XML `<tool_calls>` → `<invoke name="...">` → `<parameter name="...">`，以及若干 DSML 前缀/分隔符漂移。DSML 只是外壳别名，内部仍以 XML 解析语义为准；旧式 `<tools>` / `<tool_call>` / `<tool_name>` / `<param>`、`<function_call>`、`tool_use` / antml 变体与纯 JSON `tool_calls` 片段都会按普通文本处理，完整但 malformed 的 wrapper 也会作为普通文本释放
-3. `responses` 流式严格使用官方 item 生命周期事件（`response.output_item.*`、`response.content_part.*`、`response.function_call_arguments.*`）
-4. `responses` 支持并执行 `tool_choice`（`auto`/`none`/`required`/强制函数）；`required` 违规时非流式返回 `422`，流式返回 `response.failed`
-5. 客户端请求哪种协议，就按该协议返回工具调用（OpenAI/Claude/Gemini 各自原生结构）；模型侧优先约束输出规范 XML，再由兼容层转译
-
-> 说明：当前版本 parser 层以”尽量解析成功”为优先，所有格式合法的 XML 工具调用都会通过，不做工具名 allow-list 过滤。
-> 解析层会保留显式空字符串或纯空白参数；Prompt 会要求模型不要主动输出空参数，缺参/空命令的拒绝应由工具执行侧或客户端 schema 校验负责。
+> **WebUI tự động build**: Khi khởi động local lần đầu, nếu thư mục static của WebUI chưa tồn tại, chương trình sẽ tự động thử chạy `npm ci --prefix webui` nếu thiếu dependency và `npm run build --prefix webui -- --outDir static/admin --emptyOutDir`, yêu cầu máy local có Node.js và npm. Static directory có thể override bằng `DS2API_STATIC_ADMIN_DIR`. Bạn cũng có thể build thủ công bằng:
 >
-> 想评估”把工具调用封装成 XML 再输入模型”的方案，可参考：`docs/toolcall-semantics.md`。
+> ```bash
+> ./scripts/build-webui.sh
+> ```
 
-## 本地开发抓包工具
+## Mô tả cấu hình
 
-用于定位「responses 思考流/工具调用」等问题。开启后会自动记录最近 N 条 DeepSeek 对话上游请求体与响应体（默认 20 条，超出自动淘汰；单条响应体默认最多记录 5 MB）。
+`README` chỉ giữ phần lối vào nhanh. Các field đầy đủ vui lòng lấy [config.example.json](config.example.json) làm template, đồng thời tham khảo [Hướng dẫn deploy](docs/DEPLOY.md#0-前置要求) và [Best practice cấu hình API](API.md#配置最佳实践).
 
-启用示例：
+Các field thường dùng:
+
+- `keys` / `api_keys`: access key phía client; `api_keys` hỗ trợ metadata `name` và `remark`; `keys` tiếp tục được giữ để tương thích.
+- `accounts`: tài khoản DeepSeek được quản lý, hỗ trợ đăng nhập bằng `email` hoặc `mobile`, có thể cấu hình proxy, tên và ghi chú.
+- `model_aliases`: mapping alias model dùng chung cho OpenAI / Claude / Gemini.
+- `runtime`: chiến lược đồng thời theo tài khoản, hàng đợi và refresh token, có thể hot update qua Admin Settings.
+- `auto_delete.mode`: chiến lược dọn dẹp remote session sau khi request kết thúc, hỗ trợ `none` / `single` / `all`.
+- `current_input_file`: chiến lược upload tách ngữ cảnh có hiệu lực toàn cục; mặc định bật và threshold là `0`. Khi được kích hoạt, toàn bộ ngữ cảnh sẽ được gộp và upload thành file ngữ cảnh `DS2API_HISTORY.txt`.
+- Nếu tắt `current_input_file`, request sẽ được pass-through trực tiếp, không upload file ngữ cảnh tách riêng.
+- `thinking_injection`: mặc định bật; thêm prompt tăng cường thinking vào cuối user message mới nhất để cải thiện độ ổn định khi reasoning cường độ cao và trước tool calling. Khi `prompt` để trống, sẽ dùng prompt mặc định tích hợp sẵn.
+
+Danh sách environment variable đầy đủ xem tại [Hướng dẫn deploy](docs/DEPLOY.md). Quy tắc xác thực interface xem tại [API.md](API.md#鉴权规则).
+
+## Chế độ xác thực
+
+Khi gọi business interface như `/v1/*`, `/anthropic/*`, Gemini route, hỗ trợ hai chế độ:
+
+| Chế độ | Mô tả |
+| --- | --- |
+| **Chế độ tài khoản được quản lý** | Truyền key nằm trong `config.keys` bằng `Bearer` hoặc `x-api-key`; service sẽ tự động xoay vòng chọn tài khoản |
+| **Chế độ token pass-through** | Khi token truyền vào không nằm trong `config.keys`, token đó sẽ được dùng trực tiếp như DeepSeek token |
+
+Request header tùy chọn `X-Ds2-Target-Account`: chỉ định dùng một tài khoản được quản lý cụ thể, giá trị là email hoặc mobile.
+
+Nếu tài khoản được chỉ định không tồn tại, hoặc hàng đợi của tài khoản quản lý hiện tại đã đầy, request sẽ trả về `429`. Hiện tại `429` không kèm header `Retry-After`. Nếu tài khoản tồn tại nhưng đăng nhập hoặc refresh thất bại, hệ thống sẽ trả về lỗi xác thực tương ứng.
+
+Khi không chỉ định tài khoản mục tiêu, nếu completion do upstream thinking-only empty output mà sau khi retry bù trên cùng tài khoản vẫn trả về `429 upstream_empty_output`, chế độ tài khoản được quản lý sẽ tự động chuyển sang tài khoản khả dụng tiếp theo, tạo session mới, rồi dùng payload gốc để fresh retry thêm một lần.
+
+Gemini route còn có thể dùng `x-goog-api-key`, hoặc khi không có authentication header thì dùng `?key=` / `?api_key=` làm credential phía caller.
+
+## Mô hình xử lý đồng thời
+
+```text
+Đồng thời khả dụng trên mỗi tài khoản = DS2API_ACCOUNT_MAX_INFLIGHT, mặc định 2
+Giá trị đồng thời khuyến nghị = số tài khoản × giới hạn đồng thời mỗi tài khoản
+Giới hạn hàng đợi chờ = DS2API_ACCOUNT_MAX_QUEUE, mặc định = giá trị đồng thời khuyến nghị
+Ngưỡng 429 = in-flight + hàng đợi chờ ≈ số tài khoản × 4
+```
+
+- Khi slot in-flight đã đầy, request sẽ đi vào hàng đợi chờ, **không trả 429 ngay**
+- Chỉ khi vượt quá tổng sức chứa mới trả về `429 Too Many Requests`; hiện tại response không kèm `Retry-After`
+- 429 thuộc loại completion empty output sẽ được retry bù trên cùng tài khoản trước; trong chế độ tài khoản được quản lý, trước khi trả 429 cuối cùng còn chuyển sang tài khoản khả dụng khác để fresh retry thêm một lần
+- `GET /admin/queue/status` trả về trạng thái đồng thời theo thời gian thực
+
+## Thích ứng Tool Call
+
+Khi request có `tools`, DS2API sẽ xử lý chống rò rỉ và chuyển đổi có cấu trúc:
+
+1. Chỉ bật nhận diện toolcall thực thi trong ngữ cảnh **không nằm trong code block**; ví dụ trong code block mặc định sẽ không kích hoạt.
+2. Parser hiện xem DSML wrapper dùng dấu phân cách full-width là dạng gọi thực thi được khuyến nghị: `<｜DSML｜tool_calls>` → `<｜DSML｜invoke name="...">` → `<｜DSML｜parameter name="...">`; đồng thời tương thích DSML half-width, canonical XML cũ `<tool_calls>` → `<invoke name="...">` → `<parameter name="...">`, cũng như một số trường hợp drift ở prefix/delimiter DSML. DSML chỉ là alias lớp vỏ; bên trong vẫn phân tích ngữ nghĩa theo XML. Các dạng cũ như `<tools>` / `<tool_call>` / `<tool_name>` / `<param>`, `<function_call>`, biến thể `tool_use` / antml và đoạn JSON thuần `tool_calls` đều sẽ được xử lý như text bình thường. Wrapper đầy đủ nhưng malformed cũng sẽ được release như text bình thường.
+3. `responses` stream sử dụng nghiêm ngặt event lifecycle chính thức của item: `response.output_item.*`, `response.content_part.*`, `response.function_call_arguments.*`.
+4. `responses` hỗ trợ và thực thi `tool_choice`: `auto` / `none` / `required` / forced function. Khi `required` bị vi phạm, non-stream trả về `422`, stream trả về `response.failed`.
+5. Client request protocol nào thì trả về tool call theo native structure của protocol đó: OpenAI / Claude / Gemini. Phía model ưu tiên ràng buộc output theo XML chuẩn, sau đó lớp tương thích chuyển đổi.
+
+> Lưu ý: Phiên bản hiện tại của parser ưu tiên “cố gắng parse thành công”; mọi XML tool call hợp lệ về format đều sẽ đi qua, không lọc tool name bằng allow-list.
+>
+> Parser sẽ giữ lại tham số là empty string rõ ràng hoặc chỉ gồm whitespace. Prompt sẽ yêu cầu model không chủ động output empty parameter; việc từ chối thiếu tham số hoặc command rỗng nên do phía tool executor hoặc client schema validation phụ trách.
+>
+> Nếu muốn đánh giá phương án “đóng gói tool call thành XML rồi đưa vào model”, có thể tham khảo: `docs/toolcall-semantics.md`.
+
+## Công cụ bắt gói khi phát triển local
+
+Dùng để định vị các vấn đề như `responses thinking stream` / tool call. Sau khi bật, công cụ sẽ tự động ghi lại request body và response body upstream gần nhất của N cuộc hội thoại DeepSeek, mặc định 20 bản ghi; vượt quá sẽ tự loại bỏ bản cũ. Mỗi response body mặc định ghi tối đa 5 MB.
+
+Ví dụ bật:
 
 ```bash
 DS2API_DEV_PACKET_CAPTURE=true \
@@ -395,63 +427,64 @@ DS2API_DEV_PACKET_CAPTURE_LIMIT=20 \
 go run ./cmd/ds2api
 ```
 
-查询/清空（需 Admin JWT）：
+Truy vấn hoặc xóa, yêu cầu Admin JWT:
 
-- `GET /admin/dev/captures`：查看抓包列表（最新在前）
-- `DELETE /admin/dev/captures`：清空抓包
-- `GET /admin/dev/raw-samples/query?q=关键词&limit=20`：按问题关键词查询当前内存抓包，并按 `chat_session_id` 归并 `completion + continue` 链
-- `POST /admin/dev/raw-samples/save`：把命中的某条抓包链保存为 `tests/raw_stream_samples/<sample-id>/` 回放样本
+- `GET /admin/dev/captures`: xem danh sách bản ghi bắt gói, mới nhất ở trước
+- `DELETE /admin/dev/captures`: xóa toàn bộ bản ghi bắt gói
+- `GET /admin/dev/raw-samples/query?q=từ_khóa&limit=20`: tìm kiếm bản ghi bắt gói hiện có trong memory theo keyword của câu hỏi, rồi gom theo `chat_session_id` thành chuỗi `completion + continue`
+- `POST /admin/dev/raw-samples/save`: lưu một chuỗi bản ghi bắt gói khớp thành replay sample trong `tests/raw_stream_samples/<sample-id>/`
 
-返回字段包含：
+Các field trả về bao gồm:
 
-- `request_body`：发送给 DeepSeek 的完整请求体
-- `response_body`：上游返回的原始流式内容拼接文本
-- `response_truncated`：是否触发单条大小截断
+- `request_body`: request body đầy đủ gửi tới DeepSeek
+- `response_body`: nội dung stream gốc từ upstream sau khi ghép lại
+- `response_truncated`: có bị cắt do vượt giới hạn kích thước mỗi bản ghi hay không
 
-保存接口支持用 `query`、`chain_key` 或 `capture_id` 选中目标。例如：
+API lưu sample hỗ trợ chọn mục tiêu bằng `query`, `chain_key` hoặc `capture_id`. Ví dụ:
 
 ```json
-{"query":"广州天气","sample_id":"gz-weather-from-memory"}
+{"query":"thời tiết Quảng Châu","sample_id":"gz-weather-from-memory"}
 ```
 
-## 文档索引
+## Chỉ mục tài liệu
 
-| 文档 | 说明 |
+| Tài liệu | Mô tả |
 | --- | --- |
-| [API.md](API.md) / [API.en.md](API.en.md) | API 接口文档（含请求/响应示例） |
-| [DEPLOY.md](docs/DEPLOY.md) / [DEPLOY.en.md](docs/DEPLOY.en.md) | 部署指南（本地/Docker/Vercel/systemd） |
-| [CONTRIBUTING.md](docs/CONTRIBUTING.md) / [CONTRIBUTING.en.md](docs/CONTRIBUTING.en.md) | 贡献指南 |
-| [TESTING.md](docs/TESTING.md) | 测试集使用指南 |
+| [API.md](API.md) / [API.en.md](API.en.md) | Tài liệu API interface, gồm ví dụ request/response |
+| [DEPLOY.md](docs/DEPLOY.md) / [DEPLOY.en.md](docs/DEPLOY.en.md) | Hướng dẫn deploy: local / Docker / Vercel / systemd |
+| [CONTRIBUTING.md](docs/CONTRIBUTING.md) / [CONTRIBUTING.en.md](docs/CONTRIBUTING.en.md) | Hướng dẫn đóng góp |
+| [TESTING.md](docs/TESTING.md) | Hướng dẫn sử dụng bộ test |
 
-## 测试
+## Kiểm thử
 
-详细测试指南请参阅 [docs/TESTING.md](docs/TESTING.md)。
+Hướng dẫn kiểm thử chi tiết xem tại [docs/TESTING.md](docs/TESTING.md).
 
-### 快速测试命令
+### Lệnh kiểm thử nhanh
 
 ```bash
-# 本地 PR 门禁
+# Gate PR local
 ./scripts/lint.sh
 ./tests/scripts/check-refactor-line-gate.sh
 ./tests/scripts/run-unit-all.sh
 npm run build --prefix webui
 
-# 端到端全链路测试（真实账号，生成完整请求/响应日志）
+# Kiểm thử end-to-end toàn chuỗi, dùng tài khoản thật, sinh log request/response đầy đủ
 ./tests/scripts/run-live.sh
 ```
 
-## Release 自动构建（GitHub Actions）
+## Tự động build Release bằng GitHub Actions
 
-工作流文件：`.github/workflows/release-artifacts.yml`
+Workflow file: `.github/workflows/release-artifacts.yml`
 
-- **触发条件**：默认仅在 GitHub Release `published` 时自动触发；也支持在 Actions 页面手动 `workflow_dispatch`，并填写 `release_tag` 复跑/补发
-- **构建产物**：多平台二进制包（`linux/amd64`、`linux/arm64`、`linux/armv7`、`darwin/amd64`、`darwin/arm64`、`windows/amd64`、`windows/arm64`）、Linux Docker 镜像导出包 + `sha256sums.txt`
-- **容器镜像发布**：仅推送到 GHCR（`ghcr.io/cjackhwang/ds2api`）
-- **每个二进制压缩包包含**：`ds2api` 可执行文件、`static/admin`、`config.example.json`、`.env.example`、`README.MD`、`README.en.md`、`LICENSE`
+- **Điều kiện kích hoạt**: Mặc định chỉ tự động kích hoạt khi GitHub Release được `published`; cũng hỗ trợ chạy thủ công bằng `workflow_dispatch` trong trang Actions và điền `release_tag` để chạy lại hoặc phát hành bù.
+- **Build artifact**: Gói binary đa nền tảng: `linux/amd64`, `linux/arm64`, `linux/armv7`, `darwin/amd64`, `darwin/arm64`, `windows/amd64`, `windows/arm64`; Linux Docker image export package + `sha256sums.txt`.
+- **Phát hành container image**: Chỉ push lên GHCR: `ghcr.io/cjackhwang/ds2api`.
+- **Mỗi gói nén binary bao gồm**: file thực thi `ds2api`, `static/admin`, `config.example.json`, `.env.example`, `README.MD`, `README.en.md`, `LICENSE`.
 
-## 免责声明
+## Tuyên bố miễn trừ trách nhiệm
 
-本项目基于逆向方式实现，仅供学习、研究、个人实验和内部验证使用，不提供任何商业授权、稳定性保证或可用性保证。
-作者及仓库维护者不对因使用、修改、分发、部署或依赖本项目而产生的任何直接或间接损失、账号封禁、数据丢失、法律风险或第三方索赔负责。
+Dự án này được triển khai dựa trên phương pháp reverse engineering, chỉ dùng cho mục đích học tập, nghiên cứu, thử nghiệm cá nhân và xác minh nội bộ. Dự án không cung cấp bất kỳ cấp phép thương mại, bảo đảm ổn định hay bảo đảm khả dụng nào.
 
-请勿将本项目用于违反服务条款、协议、法律法规或平台规则的场景。商业使用前请自行确认 `LICENSE`、相关协议以及你是否获得了作者的书面许可。
+Tác giả và người duy trì repository không chịu trách nhiệm đối với bất kỳ thiệt hại trực tiếp hoặc gián tiếp nào phát sinh từ việc sử dụng, chỉnh sửa, phân phối, deploy hoặc phụ thuộc vào dự án này, bao gồm nhưng không giới hạn ở việc khóa tài khoản, mất dữ liệu, rủi ro pháp lý hoặc khiếu nại từ bên thứ ba.
+
+Không sử dụng dự án này trong các trường hợp vi phạm điều khoản dịch vụ, thỏa thuận, pháp luật, quy định hoặc quy tắc nền tảng. Trước khi sử dụng cho mục đích thương mại, vui lòng tự xác nhận `LICENSE`, các thỏa thuận liên quan và việc bạn đã có văn bản cho phép từ tác giả hay chưa.
