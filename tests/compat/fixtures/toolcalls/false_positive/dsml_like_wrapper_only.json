@@ -1,0 +1,8 @@
+{
+  "text": "<dsml>\n<invoke name=\"Read\">\n<parameter name=\"file_path\" string=\"true\">/Users/activer/developer/game-01/game.js</parameter>\n</invoke>\n</dsml>",
+  "tool_names": [
+    "Read",
+    "Edit",
+    "Bash"
+  ]
+}

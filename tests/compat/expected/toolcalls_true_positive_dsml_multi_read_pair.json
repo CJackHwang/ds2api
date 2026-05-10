@@ -1,0 +1,23 @@
+{
+  "calls": [
+    {
+      "name": "Read",
+      "input": {
+        "file_path": "/Users/activer/developer/game-01/game.js",
+        "limit": 50,
+        "offset": 515
+      }
+    },
+    {
+      "name": "Read",
+      "input": {
+        "file_path": "/Users/activer/developer/game-01/game.js",
+        "limit": 80,
+        "offset": 670
+      }
+    }
+  ],
+  "sawToolCallSyntax": true,
+  "rejectedByPolicy": false,
+  "rejectedToolNames": []
+}

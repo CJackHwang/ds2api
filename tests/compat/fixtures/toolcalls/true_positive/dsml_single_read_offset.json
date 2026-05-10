@@ -1,0 +1,6 @@
+{
+  "text": "NEXT/HOLD 预览区域修复已完成。让我验证修复结果：\n\n<｜DSML｜tool_calls>\n  <｜DSML｜invoke name=\"Read\">\n    <｜DSML｜parameter name=\"file_path\"><![CDATA[/Users/activer/developer/game-01/game.js]]></｜DSML｜parameter>\n    <｜DSML｜parameter name=\"offset\"><![CDATA[1208]]></｜DSML｜parameter>\n    <｜DSML｜parameter name=\"limit\"><![CDATA[42]]></｜DSML｜parameter>\n  </｜DSML｜invoke>\n</｜DSML｜tool_calls>",
+  "tool_names": [
+    "Read"
+  ]
+}
