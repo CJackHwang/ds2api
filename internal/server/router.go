@@ -212,10 +212,11 @@ func setCORSHeaders(w http.ResponseWriter, r *http.Request, allowList []string) 
 		// No Origin header: not a cross-origin request, allow all.
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 	} else if len(allowList) > 0 {
-		// Allowlist configured: only reflect origin when it matches.
+		// Allowlist configured: always vary by Origin so caches don't serve a
+		// blocked-origin response to a trusted origin.
+		addVaryHeaderToken(w.Header(), "Origin")
 		if containsString(allowList, origin) {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
-			addVaryHeaderToken(w.Header(), "Origin")
 		}
 		// Non-matching origin: no ACAO header → browser will block.
 	} else {

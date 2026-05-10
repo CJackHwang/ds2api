@@ -72,6 +72,18 @@ func TestCORSAllowlistPermitsKnownOrigin(t *testing.T) {
 	}
 }
 
+func TestCORSAllowlistBlockedOriginStillSetsVary(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/v1/chat/completions", nil)
+	req.Header.Set("Origin", "https://evil.example.com")
+	rec := httptest.NewRecorder()
+
+	setCORSHeaders(rec, req, []string{"https://trusted.example.com"})
+
+	if got := rec.Header().Get("Vary"); !strings.Contains(strings.ToLower(got), "origin") {
+		t.Fatalf("expected Vary to include Origin for blocked request, got %q", got)
+	}
+}
+
 func TestCORSEmptyAllowlistEchoesOrigin(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/v1/chat/completions", nil)
 	req.Header.Set("Origin", "https://any.example.com")

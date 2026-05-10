@@ -188,5 +188,8 @@ func (s *Store) CORSAllowOrigins() []string {
 			out = append(out, v)
 		}
 	}
+	if len(out) == 0 {
+		return nil
+	}
 	return out
 }
