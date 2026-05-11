@@ -49,6 +49,39 @@ func TestMaybeShadow_LogsOnShadow(t *testing.T) {
 	}
 }
 
+// TestRedactWarnings_ScrubsSensitiveFields guards the PR #12 review fix:
+// Compile diagnostics that incidentally carry JSON-shaped credentials or PII
+// must not reach the admin-exposed PlanBuffer unredacted.
+func TestRedactWarnings_ScrubsSensitiveFields(t *testing.T) {
+	in := []string{
+		`segment rejected: body={"api_key":"sk-live-abc","email":"u@x.com"}`,
+		`ok`,
+	}
+	out := redactWarnings(in)
+	if len(out) != 2 {
+		t.Fatalf("expected 2 entries, got %d", len(out))
+	}
+	if strings.Contains(out[0], "sk-live-abc") || strings.Contains(out[0], "u@x.com") {
+		t.Errorf("sensitive payload leaked through redactWarnings: %q", out[0])
+	}
+	if !strings.Contains(out[0], "<redacted>") {
+		t.Errorf("expected <redacted> marker, got: %q", out[0])
+	}
+	if out[1] != "ok" {
+		t.Errorf("plain warning must not be rewritten, got: %q", out[1])
+	}
+}
+
+func TestRedactWarnings_NilPreserved(t *testing.T) {
+	if out := redactWarnings(nil); out != nil {
+		t.Errorf("expected nil passthrough, got %#v", out)
+	}
+	empty := []string{}
+	if out := redactWarnings(empty); len(out) != 0 {
+		t.Errorf("expected empty passthrough, got %#v", out)
+	}
+}
+
 func TestMaybeShadow_NoopWhenEnforce(t *testing.T) {
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&buf, nil))

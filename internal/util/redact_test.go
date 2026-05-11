@@ -133,6 +133,20 @@ func TestRedactToken(t *testing.T) {
 			in:   `{"content":"please refresh the token in settings"}`,
 			want: `{"content":"please refresh the token in settings"}`,
 		},
+		{
+			name: "free-form 'Bearer xyz' in user content not affected",
+			// Regression for PR #12 review: reBearer must be anchored to
+			// authorization-family JSON fields so that chat payloads whose
+			// user content happens to contain the word "Bearer" are not
+			// silently rewritten.
+			in:   `{"content":"please send a Bearer abc123 example to support"}`,
+			want: `{"content":"please send a Bearer abc123 example to support"}`,
+		},
+		{
+			name: "proxy-authorization field is also scoped for Bearer",
+			in:   `{"proxy-authorization":"Bearer pxy-tok"}`,
+			want: `{"proxy-authorization":"Bearer <redacted>"}`,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

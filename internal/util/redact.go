@@ -38,11 +38,15 @@ var (
 		`token|access[_-]token|refresh[_-]token|id[_-]token|auth[_-]token|bearer[_-]token|session[_-]token`,
 	)
 
-	// Bearer scheme inside JSON string values. Matches `"Bearer <token>"`
-	// anywhere a JSON string can carry an Authorization header (including
-	// devcapture-recorded request headers). Group 1 keeps the literal
-	// "Bearer " (case-preserved) so the scheme stays visible.
-	reBearer = regexp.MustCompile(`(?i)(Bearer\s+)[A-Za-z0-9._~\-+/=]+`)
+	// Bearer scheme inside an authorization-family JSON field value.
+	// Anchored to `"<auth-field>"\s*:\s*"Bearer <token>"` so free-form user
+	// text that merely mentions the word "Bearer" (e.g. inside
+	// `"content":"…Bearer abc…"`) is NOT redacted. Group 1 captures the
+	// field key + colon + opening quote + literal `Bearer ` so the scheme
+	// and field key stay visible; case preserved via the group.
+	reBearer = regexp.MustCompile(
+		`(?i)("(?:authorization|proxy-authorization|x-authorization)"\s*:\s*"Bearer\s+)[A-Za-z0-9._~\-+/=]+`,
+	)
 
 	// Email-family JSON field values.
 	reEmailField = fieldValueRedactor(`email|e[_-]mail|mail|email[_-]address`)
