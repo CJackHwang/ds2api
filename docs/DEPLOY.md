@@ -616,6 +616,53 @@ sudo systemctl stop ds2api
 
 ---
 
+## CORS 跨域配置
+
+DS2API 的 CORS 中间件（`internal/server/router.go:corsMiddleware`）默认对所有来源开放，便于本地开发与第三方客户端调试。**生产部署强烈建议显式配置 allowlist**，仅放行受信前端来源。
+
+### 行为概览
+
+- 请求**无 `Origin` 头**（如 curl、服务端到服务端调用）：响应 `Access-Control-Allow-Origin: *`，不受 allowlist 影响。
+- 请求**带 `Origin` 头**：
+  - **未配置 allowlist**：原样回显 Origin（兼容模式）。
+  - **配置了 allowlist**：仅当 Origin 命中列表时回显；否则**不下发** `Access-Control-Allow-Origin`，浏览器会按同源策略阻断。
+- 内部头 `x-ds2-internal-token` 始终被 CORS 屏蔽，不会出现在 `Access-Control-Allow-Headers` 中。
+- 响应始终带 `Vary: Origin`，避免缓存把"被阻断的响应"投递给受信 Origin。
+
+### 配置入口
+
+**配置文件**（`config.json` / `DS2API_CONFIG_JSON`）：
+
+```json
+{
+  "cors": {
+    "allow_origins": [
+      "https://app.example.com",
+      "https://admin.example.com"
+    ]
+  }
+}
+```
+
+- 字段 `cors.allow_origins` 是字符串数组。
+- 匹配采用 **小写完整字符串相等**（中间件先将请求 Origin 做 `strings.ToLower(strings.TrimSpace(...))`）。
+- 不支持通配符 / 子域模糊匹配；如需放行 `https://*.example.com`，请逐条枚举或在前置反代里集中收敛。
+
+环境变量整体覆盖：通过 `DS2API_CONFIG_JSON` 一次性传入完整 JSON 即可，无独立 `DS2API_CORS_*` 变量。
+
+### 生产部署建议
+
+- **务必配置 allowlist**：未配置时任何带 Origin 的请求都会被回显，等同于 `Access-Control-Allow-Origin: *` 的副本，**这不是生产安全的默认值**。
+- 同时为 Admin / 用户前端 / 第三方 client 三类来源列出独立条目，便于审计与下线。
+- 与上游反代（Nginx / Caddy / Cloudflare）的 CORS 设置叠加时，建议**只在 DS2API 这一层下发 CORS 头**，避免双重写入互相覆盖。
+
+### 验证
+
+- 命中：`curl -H 'Origin: https://app.example.com' -i https://<your-host>/v1/chat/completions -X OPTIONS` 应收到 `Access-Control-Allow-Origin: https://app.example.com`。
+- 未命中：`curl -H 'Origin: https://evil.example.com' -i https://<your-host>/v1/chat/completions -X OPTIONS` 应**不带** `Access-Control-Allow-Origin`，仅有 `Vary: Origin`。
+
+---
+
 ## 观测与日志（Observability）
 
 DS2API 在每次 Completion 请求完成后输出一条结构化日志行 `[completion_request]`，包含以下字段：
