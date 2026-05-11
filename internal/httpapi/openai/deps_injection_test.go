@@ -43,6 +43,7 @@ func (m mockOpenAIConfig) ThinkingInjectionEnabled() bool {
 	return *m.thinkingInjection
 }
 func (m mockOpenAIConfig) ThinkingInjectionPrompt() string { return m.thinkingPrompt }
+func (m mockOpenAIConfig) ContextEngineMode() string       { return "off" }
 
 func TestNormalizeOpenAIChatRequestWithConfigInterface(t *testing.T) {
 	cfg := mockOpenAIConfig{

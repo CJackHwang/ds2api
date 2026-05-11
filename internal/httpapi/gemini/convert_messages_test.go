@@ -85,7 +85,7 @@ func TestGeminiMessagesFromRequestPreservesThoughtOnFunctionCallHistory(t *testi
 	if len(tc) != 1 {
 		t.Fatalf("expected one tool call, got %#v", assistant["tool_calls"])
 	}
-	prompt, _ := promptcompat.BuildOpenAIPromptForAdapter(got, nil, "", true)
+	prompt, _ := promptcompat.BuildOpenAIPromptForAdapter(got, nil, "", true, "off")
 	if !strings.Contains(prompt, "[reasoning_content]\nneed current state before answering\n[/reasoning_content]") {
 		t.Fatalf("expected thought in prompt history, got %q", prompt)
 	}

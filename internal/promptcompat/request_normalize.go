@@ -10,6 +10,7 @@ import (
 
 type ConfigReader interface {
 	ModelAliases() map[string]string
+	ContextEngineMode() string
 }
 
 func NormalizeOpenAIChatRequest(store ConfigReader, req map[string]any, traceID string) (StandardRequest, error) {
@@ -32,7 +33,7 @@ func NormalizeOpenAIChatRequest(store ConfigReader, req map[string]any, traceID 
 		responseModel = resolvedModel
 	}
 	toolPolicy := DefaultToolChoicePolicy()
-	finalPrompt, toolNames := BuildOpenAIPrompt(messagesRaw, req["tools"], traceID, toolPolicy, thinkingEnabled)
+	finalPrompt, toolNames := BuildOpenAIPrompt(messagesRaw, req["tools"], traceID, toolPolicy, thinkingEnabled, store.ContextEngineMode())
 	toolNames = ensureToolDetectionEnabled(toolNames, req["tools"])
 	passThrough := collectOpenAIChatPassThrough(req)
 	refFileIDs := CollectOpenAIRefFileIDs(req)
@@ -81,7 +82,7 @@ func NormalizeOpenAIResponsesRequest(store ConfigReader, req map[string]any, tra
 	if err != nil {
 		return StandardRequest{}, err
 	}
-	finalPrompt, toolNames := BuildOpenAIPrompt(messagesRaw, req["tools"], traceID, toolPolicy, thinkingEnabled)
+	finalPrompt, toolNames := BuildOpenAIPrompt(messagesRaw, req["tools"], traceID, toolPolicy, thinkingEnabled, store.ContextEngineMode())
 	toolNames = ensureToolDetectionEnabled(toolNames, req["tools"])
 	if !toolPolicy.IsNone() {
 		toolPolicy.Allowed = namesToSet(toolNames)

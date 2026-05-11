@@ -2,6 +2,7 @@ package config
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"os"
 	"strings"
@@ -460,5 +461,40 @@ func TestAccountTestStatusIsRuntimeOnlyAndNotPersisted(t *testing.T) {
 	}
 	if strings.Contains(string(content), "test_status") {
 		t.Fatalf("expected test_status to stay out of persisted config, got: %s", content)
+	}
+}
+
+func TestCORSConfigRoundTrip(t *testing.T) {
+	t.Setenv("DS2API_CONFIG_JSON", `{"cors":{"allow_origins":["https://example.com","https://app.example.com"]}}`)
+
+	store := LoadStore()
+	origins := store.CORSAllowOrigins()
+	if len(origins) != 2 {
+		t.Fatalf("expected 2 origins, got %v", origins)
+	}
+	if origins[0] != "https://example.com" || origins[1] != "https://app.example.com" {
+		t.Fatalf("unexpected origins: %v", origins)
+	}
+
+	b, err := json.Marshal(store.Snapshot())
+	if err != nil {
+		t.Fatalf("marshal snapshot: %v", err)
+	}
+	if !strings.Contains(string(b), `"cors"`) {
+		t.Fatalf("expected cors to be present in marshalled snapshot, got: %s", b)
+	}
+	if !strings.Contains(string(b), "https://example.com") {
+		t.Fatalf("expected allow_origins to survive marshal, got: %s", b)
+	}
+}
+
+func TestCORSConfigClone(t *testing.T) {
+	cfg := Config{
+		CORS: CORSConfig{AllowOrigins: []string{"https://a.com", "https://b.com"}},
+	}
+	clone := cfg.Clone()
+	clone.CORS.AllowOrigins[0] = "https://mutated.com"
+	if cfg.CORS.AllowOrigins[0] != "https://a.com" {
+		t.Fatal("Clone() did not deep-copy CORS.AllowOrigins; original was mutated")
 	}
 }

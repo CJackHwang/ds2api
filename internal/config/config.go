@@ -22,6 +22,7 @@ type Config struct {
 	ThinkingInjection ThinkingInjectionConfig `json:"thinking_injection,omitempty"`
 	Vercel            VercelConfig            `json:"vercel,omitempty"`
 	CORS              CORSConfig              `json:"cors,omitempty"`
+	ContextEngine     ContextEngineConfig     `json:"context_engine,omitempty"`
 	VercelSyncHash    string                  `json:"_vercel_sync_hash,omitempty"`
 	VercelSyncTime    int64                   `json:"_vercel_sync_time,omitempty"`
 	AdditionalFields  map[string]any          `json:"-"`
@@ -187,6 +188,12 @@ type VercelConfig struct {
 
 type CORSConfig struct {
 	AllowOrigins []string `json:"allow_origins,omitempty"`
+}
+
+// ContextEngineConfig controls the context compilation feature flag.
+// Mode must be one of "off" (default) | "shadow" | "enforce".
+type ContextEngineConfig struct {
+	Mode string `json:"mode,omitempty"`
 }
 
 func NormalizeVercelConfig(v VercelConfig) VercelConfig {

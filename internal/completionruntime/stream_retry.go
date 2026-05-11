@@ -82,6 +82,7 @@ func ExecuteStreamWithRetry(ctx context.Context, ds DeepSeekCaller, a *auth.Requ
 				}
 				if switched.Response != nil {
 					observe.IncrAccountSwitch(ctx)
+					observe.SetAccount(ctx, a.AccountID)
 					config.Logger.Info("[completion_runtime_account_switch_retry] retrying after 429", "surface", surface, "stream", opts.Stream, "account", a.AccountID)
 					currentResp = switched.Response
 					currentPayload = switched.Payload
@@ -121,6 +122,7 @@ func ExecuteStreamWithRetry(ctx context.Context, ds DeepSeekCaller, a *auth.Requ
 			config.Logger.Warn("[completion_runtime_empty_retry] retry request failed", "surface", surface, "stream", opts.Stream, "retry_attempt", attempts, "error", err)
 			return
 		}
+		observe.ForceSetUpstreamResponseAt(ctx, time.Now())
 		if nextResp.StatusCode != http.StatusOK {
 			body, readErr := io.ReadAll(nextResp.Body)
 			if readErr != nil {

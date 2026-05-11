@@ -429,17 +429,53 @@ Prior conversation history and tool progress.
 - `go test ./internal/toolstream/...`
 - `./tests/scripts/run-unit-node.sh`
 
-## 14. Context Engine 编译阶段（M1：off — 仅测试）
+## 14. Context Engine 编译阶段（M2：shadow 模式接入主链路）
 
-`internal/contextengine` 包在 M1 阶段**不接入主链路**，仅作为独立包存在并通过单元测试验证。
+`internal/contextengine` 包在 M2 阶段通过三态 feature flag 接入主链路。
+**默认 `off`，不影响任何现有行为。**
 
-### 包位置
+### 数据流
 
 ```
-promptcompat（归一化）→ [contextengine（计划，M1 off）] → completionruntime（发送）
+promptcompat.NormalizeOpenAIMessagesForPrompt()
+  → contextengine.MaybeShadow(mode, messages, logger)   ← M2 新增（side-effect only）
+  → prompt.MessagesPrepareWithThinking()                 ← 最终 prompt 不变
+  → completionruntime
 ```
 
-### 当前功能（M1）
+`MaybeShadow` 在 `BuildOpenAIPrompt`（`internal/promptcompat/prompt_build.go`）中调用，位于消息归一化之后、tool prompt 注入之前。`shadow` 模式下，函数调用 `Compile` 产出 `ContextPlan` 并以 `[context_engine_shadow]` 结构化日志输出摘要，**不修改最终 prompt**。
+
+### Feature Flag
+
+| 控制方式 | 值 | 优先级 |
+|---|---|---|
+| 环境变量 `DS2API_CONTEXT_ENGINE` | `off` \| `shadow` \| `enforce` | 高（覆盖配置文件） |
+| 配置文件 `context_engine.mode` | `off` \| `shadow` \| `enforce` | 低 |
+| 默认值 | `off` | — |
+
+> **M2 阶段只允许使用 `shadow` 模式。`enforce` 字段已定义但保留给 M3，当前行为等同于 `off`。**
+
+### Shadow 模式日志字段
+
+当 `mode=shadow` 时，每次 `BuildOpenAIPrompt` 调用都会在 `config.Logger` 输出一条结构化日志：
+
+```
+level=INFO msg="[context_engine_shadow]"
+  plan_id=plan_<uuid>
+  segments_included=<n>
+  segments_trimmed=<n>
+  token_budget_used=<n>
+  token_budget_overflow=false
+  warnings="none" | "<warning1>; <warning2>"
+```
+
+日志只含摘要字段，**不含任何消息原文**，避免敏感信息泄漏。
+
+### 回滚
+
+任何时候将 `DS2API_CONTEXT_ENGINE` 设为 `off`（或不设置）即可完全关闭 shadow，主链路行为与 M1 完全一致。
+
+### M1 功能（保留）
 
 - `Compile(CompileInput) (ContextPlan, error)` — 将归一化 message 序列映射为 `ContextSegment` 列表
 - 孤立 tool_call 检测：assistant 有 `tool_calls` 但后继消息不是 `role=tool` 时，标记为 `orphan_tool_call` 并写入 `SegmentsTrimmed` + `Warnings`
@@ -449,9 +485,11 @@ promptcompat（归一化）→ [contextengine（计划，M1 off）] → completi
 
 ```bash
 go test ./internal/contextengine/...
+go test ./internal/config/... -run TestContextEngine
 ```
 
 覆盖 M0 四个 fixtures：`plain_multiturn`、`tool_loop_read`、`orphan_tool_call`、`long_history_token_budget`。
+M2 新增：`TestMaybeShadow_*`（4 组）+ `TestContextEngineMode_*`（6 组）+ `TestContextEngineConfig_*`（2 组）。
 
 ---
 

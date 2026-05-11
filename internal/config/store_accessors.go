@@ -175,6 +175,28 @@ func (s *Store) ThinkingInjectionPrompt() string {
 	return strings.TrimSpace(s.cfg.ThinkingInjection.Prompt)
 }
 
+// ContextEngineMode returns the context engine feature flag value.
+// Valid values: "off" (default) | "shadow" | "enforce".
+// The DS2API_CONTEXT_ENGINE environment variable takes precedence over the
+// config file value.
+func (s *Store) ContextEngineMode() string {
+	if raw := strings.ToLower(strings.TrimSpace(os.Getenv("DS2API_CONTEXT_ENGINE"))); raw != "" {
+		switch raw {
+		case "shadow", "enforce":
+			return raw
+		case "off":
+			return "off"
+		}
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	switch strings.ToLower(strings.TrimSpace(s.cfg.ContextEngine.Mode)) {
+	case "shadow", "enforce":
+		return strings.ToLower(strings.TrimSpace(s.cfg.ContextEngine.Mode))
+	}
+	return "off"
+}
+
 func (s *Store) CORSAllowOrigins() []string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
