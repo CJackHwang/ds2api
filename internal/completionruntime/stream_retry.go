@@ -121,6 +121,7 @@ func ExecuteStreamWithRetry(ctx context.Context, ds DeepSeekCaller, a *auth.Requ
 			config.Logger.Warn("[completion_runtime_empty_retry] retry request failed", "surface", surface, "stream", opts.Stream, "retry_attempt", attempts, "error", err)
 			return
 		}
+		observe.ForceSetUpstreamResponseAt(ctx, time.Now())
 		if nextResp.StatusCode != http.StatusOK {
 			body, readErr := io.ReadAll(nextResp.Body)
 			if readErr != nil {

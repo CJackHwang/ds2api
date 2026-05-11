@@ -46,6 +46,7 @@ func (m mockOpenAIConfig) ThinkingInjectionEnabled() bool {
 	return *m.thinkingInjection
 }
 func (m mockOpenAIConfig) ThinkingInjectionPrompt() string { return m.thinkingPrompt }
+func (m mockOpenAIConfig) ContextEngineMode() string       { return "off" }
 
 type streamStatusAuthStub struct{}
 

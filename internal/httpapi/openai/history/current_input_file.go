@@ -80,7 +80,7 @@ func (s Service) ApplyCurrentInputFile(ctx context.Context, a *auth.RequestAuth,
 	stdReq.HistoryText = fileText
 	stdReq.CurrentInputFileApplied = true
 	stdReq.RefFileIDs = prependUniqueRefFileID(stdReq.RefFileIDs, fileID)
-	stdReq.FinalPrompt, stdReq.ToolNames = promptcompat.BuildOpenAIPrompt(messages, stdReq.ToolsRaw, "", stdReq.ToolChoice, stdReq.Thinking)
+	stdReq.FinalPrompt, stdReq.ToolNames = promptcompat.BuildOpenAIPrompt(messages, stdReq.ToolsRaw, "", stdReq.ToolChoice, stdReq.Thinking, "off")
 	// Token accounting must reflect the actual downstream context:
 	// the uploaded DS2API_HISTORY.txt file content + the continuation live prompt.
 	stdReq.PromptTokenText = fileText + "\n" + stdReq.FinalPrompt
