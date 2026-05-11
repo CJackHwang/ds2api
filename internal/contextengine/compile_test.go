@@ -254,6 +254,125 @@ func TestCompileLongHistoryTokenBudget(t *testing.T) {
 	}
 }
 
+func TestCompileBudgetTrimmingBasic(t *testing.T) {
+	// Build a sequence with enough tokens to trigger trimming:
+	// system + 3 history user/assistant pairs + current user request.
+	// Budget is set to only keep ~system + current user.
+	bigText := strings.Repeat("word ", 200) // ~200 tokens
+
+	messages := []map[string]any{
+		{"role": "system", "content": "You are a helpful assistant."},
+		{"role": "user", "content": bigText + "turn 1"},
+		{"role": "assistant", "content": bigText + "reply 1"},
+		{"role": "user", "content": bigText + "turn 2"},
+		{"role": "assistant", "content": bigText + "reply 2"},
+		{"role": "user", "content": "What is 2+2?"},
+	}
+
+	plan, err := Compile(CompileInput{
+		Messages:        messages,
+		TokenBudgetHint: 50,
+	})
+	if err != nil {
+		t.Fatalf("Compile error: %v", err)
+	}
+
+	// System must survive.
+	hasSystem := false
+	for _, seg := range plan.SegmentsIncluded {
+		if seg.Type == SegSystem {
+			hasSystem = true
+			break
+		}
+	}
+	if !hasSystem {
+		t.Error("system segment must be pinned and survive budget trimming")
+	}
+
+	// Last user message must survive.
+	lastUser := ""
+	for _, seg := range plan.SegmentsIncluded {
+		if seg.Type == SegUser {
+			lastUser = seg.Content
+		}
+	}
+	if !strings.Contains(lastUser, "What is 2+2?") {
+		t.Errorf("last user message must survive trimming, got last user: %q", lastUser)
+	}
+
+	// Some segments must have been trimmed for budget.
+	hasBudgetTrim := false
+	for _, ts := range plan.SegmentsTrimmed {
+		if ts.Reason == "token_budget" {
+			hasBudgetTrim = true
+			break
+		}
+	}
+	if !hasBudgetTrim {
+		t.Error("expected at least one segment trimmed with reason 'token_budget'")
+	}
+
+	// Overflow must be false after trimming (budget should be satisfied).
+	if plan.TokenBudget.Overflow {
+		t.Errorf("expected Overflow=false after trimming, Used=%d Budget=%d",
+			plan.TokenBudget.Used, plan.TokenBudget.Budget)
+	}
+}
+
+func TestCompileBudgetTrimmingPreservesToolPair(t *testing.T) {
+	bigText := strings.Repeat("word ", 200)
+
+	messages := []map[string]any{
+		{"role": "system", "content": "Be helpful."},
+		{"role": "user", "content": bigText + "history q"},
+		{
+			"role":    "assistant",
+			"content": bigText + "calling tool",
+			"tool_calls": []any{
+				map[string]any{
+					"id":   "call_old",
+					"type": "function",
+					"function": map[string]any{
+						"name":      "Read",
+						"arguments": `{"file_path":"/tmp/x.go"}`,
+					},
+				},
+			},
+		},
+		{"role": "tool", "tool_call_id": "call_old", "name": "Read", "content": bigText + "file contents"},
+		{"role": "user", "content": "Short current request."},
+	}
+
+	plan, err := Compile(CompileInput{
+		Messages:        messages,
+		TokenBudgetHint: 50,
+	})
+	if err != nil {
+		t.Fatalf("Compile error: %v", err)
+	}
+
+	// The tool exchange (SegAssistant+SegToolCall+SegToolResult) should be
+	// trimmed as a unit — we must not end up with a lone SegToolCall or
+	// SegToolResult in SegmentsIncluded.
+	for _, seg := range plan.SegmentsIncluded {
+		if seg.Type == SegToolCall || seg.Type == SegToolResult {
+			t.Errorf("tool call/result should have been trimmed as a unit for budget, found id=%s type=%s", seg.ID, seg.Type)
+		}
+	}
+
+	// Last user message must survive.
+	foundCurrentUser := false
+	for _, seg := range plan.SegmentsIncluded {
+		if seg.Type == SegUser && strings.Contains(seg.Content, "Short current request.") {
+			foundCurrentUser = true
+			break
+		}
+	}
+	if !foundCurrentUser {
+		t.Error("current user request must survive budget trimming")
+	}
+}
+
 func TestDigestDeterministic(t *testing.T) {
 	d1 := SHA256Digest("hello world")
 	d2 := SHA256Digest("hello world")

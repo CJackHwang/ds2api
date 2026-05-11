@@ -77,6 +77,19 @@ func Compile(input CompileInput) (ContextPlan, error) {
 		totalTokens += seg.TokenCost
 	}
 
+	// Fourth pass: priority budget trimming (M3 Stage 2).
+	// Only runs when a budget hint is set and the total exceeds it.
+	var budgetWarnings []string
+	if input.TokenBudgetHint > 0 && totalTokens > input.TokenBudgetHint {
+		included, trimmed, budgetWarnings = applyBudgetTrimming(included, trimmed, input.TokenBudgetHint)
+		warnings = append(warnings, budgetWarnings...)
+		// Recompute used tokens after trimming.
+		totalTokens = 0
+		for _, seg := range included {
+			totalTokens += seg.TokenCost
+		}
+	}
+
 	overflow := input.TokenBudgetHint > 0 && totalTokens > input.TokenBudgetHint
 
 	return ContextPlan{
@@ -203,6 +216,135 @@ func validateToolPairs(segs []ContextSegment) (orphanCalls, orphanResults []int,
 	}
 
 	return orphanCalls, orphanResults, warnings
+}
+
+// applyBudgetTrimming trims segments from oldest to newest until the total
+// token cost is within budget. Trimming rules:
+//
+//   - SegSystem is pinned — never trimmed.
+//   - The last SegUser in the slice is pinned — the current user request must survive.
+//   - A SegToolCall and all immediately-following SegToolResult(s) are treated as
+//     an indivisible unit; they are trimmed together (including any SegAssistant
+//     segment that immediately precedes the SegToolCall in the same exchange).
+//   - All other segments (SegAssistant, SegUser) are trimmable individually.
+//
+// Returns the updated included/trimmed slices and any diagnostic warnings.
+func applyBudgetTrimming(
+	included []ContextSegment,
+	alreadyTrimmed []TrimmedSegment,
+	budget int,
+) (newIncluded []ContextSegment, newTrimmed []TrimmedSegment, warnings []string) {
+	newTrimmed = alreadyTrimmed
+
+	// Compute total tokens.
+	total := 0
+	for _, seg := range included {
+		total += seg.TokenCost
+	}
+	if total <= budget {
+		return included, newTrimmed, nil
+	}
+
+	// Find the last SegUser index (pinned).
+	lastUserIdx := -1
+	for i := len(included) - 1; i >= 0; i-- {
+		if included[i].Type == SegUser {
+			lastUserIdx = i
+			break
+		}
+	}
+
+	// Build indivisible trim units. Each unit is a slice of indices into included.
+	// Tool exchanges: (optional SegAssistant peer) + SegToolCall + SegToolResult* → one unit.
+	// Everything else: individual segment.
+	type unit struct {
+		idxs   []int
+		cost   int
+		pinned bool
+	}
+
+	units := make([]unit, 0, len(included))
+	i := 0
+	for i < len(included) {
+		seg := included[i]
+		isPinned := seg.Type == SegSystem || i == lastUserIdx
+
+		// Detect the start of a tool exchange: look ahead for SegToolCall
+		// after an optional SegAssistant text segment.
+		if seg.Type == SegAssistant && i+1 < len(included) && included[i+1].Type == SegToolCall {
+			// Group: SegAssistant + SegToolCall + SegToolResult*
+			u := unit{idxs: []int{i, i + 1}, cost: seg.TokenCost + included[i+1].TokenCost}
+			j := i + 2
+			for j < len(included) && included[j].Type == SegToolResult {
+				u.idxs = append(u.idxs, j)
+				u.cost += included[j].TokenCost
+				j++
+			}
+			// Pinned if any component is pinned (shouldn't happen for tool
+			// exchanges but be safe).
+			for _, idx := range u.idxs {
+				if included[idx].Type == SegSystem || idx == lastUserIdx {
+					u.pinned = true
+					break
+				}
+			}
+			units = append(units, u)
+			i = j
+			continue
+		}
+
+		if seg.Type == SegToolCall {
+			// Bare SegToolCall (no preceding SegAssistant in this position).
+			u := unit{idxs: []int{i}, cost: seg.TokenCost}
+			j := i + 1
+			for j < len(included) && included[j].Type == SegToolResult {
+				u.idxs = append(u.idxs, j)
+				u.cost += included[j].TokenCost
+				j++
+			}
+			for _, idx := range u.idxs {
+				if included[idx].Type == SegSystem || idx == lastUserIdx {
+					u.pinned = true
+					break
+				}
+			}
+			units = append(units, u)
+			i = j
+			continue
+		}
+
+		units = append(units, unit{idxs: []int{i}, cost: seg.TokenCost, pinned: isPinned})
+		i++
+	}
+
+	// Greedily trim oldest non-pinned units until within budget.
+	trimSet := make(map[string]struct{})
+	for _, u := range units {
+		if total <= budget {
+			break
+		}
+		if u.pinned {
+			continue
+		}
+		for _, idx := range u.idxs {
+			seg := included[idx]
+			trimSet[seg.ID] = struct{}{}
+			newTrimmed = append(newTrimmed, TrimmedSegment{ID: seg.ID, Type: seg.Type, Reason: "token_budget"})
+			warnings = append(warnings, fmt.Sprintf(
+				"segment %s (%s, %d tokens): trimmed for token budget", seg.ID, seg.Type, seg.TokenCost,
+			))
+		}
+		total -= u.cost
+	}
+
+	// Rebuild included from non-trimmed segments preserving order.
+	newIncluded = make([]ContextSegment, 0, len(included))
+	for _, seg := range included {
+		if _, drop := trimSet[seg.ID]; !drop {
+			newIncluded = append(newIncluded, seg)
+		}
+	}
+	return newIncluded, newTrimmed, warnings
 }
 
 // segCallCount returns the expected number of tool_call results from the
