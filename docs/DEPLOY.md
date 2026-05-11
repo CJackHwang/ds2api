@@ -766,7 +766,23 @@ curl http://127.0.0.1:5001/v1/chat/completions \
 
 ---
 
-## 八、发布前进行本地回归
+## 八、功能开关（Feature Flags）
+
+以下环境变量控制 v2 渐进式功能的启用阶段（`off` → `shadow` → `enforce`）。
+功能上线时应先在 staging 环境跑 shadow 模式收集数据，满足发布候选 checklist
+后再切 enforce。详见 `docs/dev-plan-context-engine.md` 附录 B 和
+`docs/dev-plan-toolparser.md` 附录 A。
+
+| 变量名 | 默认值 | 可选值 | 说明 |
+|--------|--------|--------|------|
+| `DS2API_CONTEXT_ENGINE` | `off` | `off` / `shadow` / `enforce` | Context Engine 功能开关。`shadow`：并行编译 ContextPlan 并写日志，不影响响应；`enforce`：ContextPlan 控制最终 prompt（需先满足 Stage 8 B2 checklist）。 |
+| `DS2API_PARSER_V2` | `off` | `off` / `shadow` / `enforce` | Tool Parser v2 开关。`shadow`：并行运行新解析器并记录 diff 日志；`enforce`：新解析器进入主链路（需先满足 Stage 8 A2 checklist）。 |
+
+> **回滚**：任何时刻将变量设回 `off` 即可恢复原路径，无 schema 迁移。
+
+---
+
+## 九、发布前进行本地回归
 
 建议在发布前执行完整的端到端测试集（使用真实账号）：
 

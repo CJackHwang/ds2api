@@ -260,3 +260,55 @@ tests/compat/fixtures/context/
   orphan_tool_call.json         — assistant tool_call 后无 tool result（验证孤立检测）
   long_history_token_budget.json — 525k 历史截取前 16k，token_budget_hint=4096
 ```
+
+---
+
+## 附录 B — 发布候选 Checklist（M3 Stage 8）
+
+> 状态：`context.engine` 默认仍为 `off`。  
+> 本 checklist 定义"何时可以把默认改为 `shadow`"和"何时可以改为 `enforce`"。  
+> 每项需有 **代码/日志/fixture 证据链接**，不接受主观判断。
+
+### B1. `off` → `shadow`（在 staging 环境开启 shadow 收集）
+
+| 条件 | 验证方式 | 当前状态 |
+|------|---------|---------|
+| 所有 M3 单元测试通过（tool pair / budget / reasoning） | `./tests/scripts/run-unit-all.sh` 全绿 | ✅ |
+| `Compile()` 在 shadow 模式下不影响最终 prompt（promptcompat 仍是事实来源） | `TestBuildOpenAIPromptShadowMode` + code review | ✅ |
+| Shadow plan 日志字段完整（plan_id / segments / trimmed / warnings） | `contextengine.MaybeShadow` 结构化日志 | ✅ |
+| Fuzz seed corpus 无 panic（`FuzzParseToolCalls` seed 阶段） | `go test -run FuzzParse` | ✅ |
+| Benchmark 基线已记录（无性能悬崖） | `BenchmarkParseToolCallsDSML ≈ 230 µs` | ✅ |
+| E2E 跨主题集成测试通过（Chat/Responses/Gemini） | `TestBuildOpenAIPromptShadowMode` 等 4 个 E2E 测试 | ✅ |
+| Stage 6 smoke checklist 填写并通过脚本检查 | `./tests/scripts/check-stage6-manual-smoke.sh` | ✅ (automated-CI) |
+| **实际流量 shadow 收集 ≥ 24h，无 5xx 新增** | staging 日志审查 | ⏳ 待 staging 部署 |
+
+**晋级操作**：设置 `DS2API_CONTEXT_ENGINE=shadow`（或 config `context_engine.mode: shadow`）部署 staging。
+
+---
+
+### B2. `shadow` → `enforce`（在生产环境启用 ContextPlan 主链路）
+
+在满足 B1 所有条件并完成以下额外检查后方可执行。
+
+| 条件 | 验证方式 | 当前状态 |
+|------|---------|---------|
+| Shadow 流量 diff 率 < 1% 持续 72h | `[context_engine_shadow] has_diff=true` 日志统计 | ⏳ 待数据 |
+| Token budget 触发时 prompt 语义等价（人工 review 10 个截断样本） | 抽样审阅 `artifacts/testsuite/` 日志 | ⏳ 待数据 |
+| Reasoning summary 对话质量无回退（A/B 对照 ≥ 50 次调用） | 生产 / staging 对比 | ⏳ 待数据 |
+| Orphan tool_call 警告量与预期一致（无异常峰值） | `[context_engine_shadow] warnings` 日志 | ⏳ 待数据 |
+| `./tests/scripts/run-live.sh` 端到端通过 | 实时请求脚本 | ⏳ 待 live 环境 |
+| DEPLOY.md 已更新（`DS2API_CONTEXT_ENGINE` 说明） | 文档 review | ✅ (见下 §B3) |
+| 回滚方案已确认（设 `off` 恢复，无 schema 迁移） | 操作手册 | ✅ 直接设 env 即可 |
+
+**晋级操作**：设置 `DS2API_CONTEXT_ENGINE=enforce`（或 config）部署生产；发布 CHANGELOG。
+
+---
+
+### B3. DEPLOY.md 新增环境变量说明
+
+以下字段需在 `docs/DEPLOY.md` 的环境变量章节补充：
+
+| 变量名 | 默认值 | 说明 |
+|--------|--------|------|
+| `DS2API_CONTEXT_ENGINE` | `off` | Context Engine 功能开关：`off`（默认，不编译 plan）/ `shadow`（并行编译，日志可观测）/ `enforce`（ContextPlan 控制最终 prompt） |
+| `DS2API_PARSER_V2` | `off` | Tool Parser v2 开关（同三态）；`shadow` 模式记录 diff 日志 |
