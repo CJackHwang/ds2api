@@ -24,6 +24,7 @@ func (testGeminiConfig) ModelAliases() map[string]string { return nil }
 func (testGeminiConfig) CurrentInputFileEnabled() bool   { return true }
 func (testGeminiConfig) CurrentInputFileMinChars() int   { return 0 }
 func (testGeminiConfig) ContextEngineMode() string       { return "off" }
+func (testGeminiConfig) ParserV2Mode() string            { return "off" }
 
 type testGeminiAuth struct {
 	a   *auth.RequestAuth

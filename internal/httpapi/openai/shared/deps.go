@@ -46,6 +46,7 @@ type ConfigReader interface {
 	ThinkingInjectionEnabled() bool
 	ThinkingInjectionPrompt() string
 	ContextEngineMode() string
+	ParserV2Mode() string
 }
 
 type Deps struct {

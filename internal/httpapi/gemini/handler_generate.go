@@ -118,6 +118,13 @@ func (h *Handler) handleGeminiDirect(w http.ResponseWriter, r *http.Request, str
 	return true
 }
 
+func (h *Handler) parserV2Mode() string {
+	if h == nil || h.Store == nil {
+		return ""
+	}
+	return h.Store.ParserV2Mode()
+}
+
 func (h *Handler) applyCurrentInputFile(ctx context.Context, a *auth.RequestAuth, stdReq promptcompat.StandardRequest) (promptcompat.StandardRequest, error) {
 	if h == nil {
 		return stdReq, nil

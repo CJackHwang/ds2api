@@ -28,6 +28,13 @@ func stripReferenceMarkersEnabled() bool {
 	return textclean.StripReferenceMarkersEnabled()
 }
 
+func (h *Handler) parserV2Mode() string {
+	if h == nil || h.Store == nil {
+		return ""
+	}
+	return h.Store.ParserV2Mode()
+}
+
 var (
 	claudeStreamPingInterval    = time.Duration(dsprotocol.KeepAliveTimeout) * time.Second
 	claudeStreamIdleTimeout     = time.Duration(dsprotocol.StreamIdleTimeout) * time.Second

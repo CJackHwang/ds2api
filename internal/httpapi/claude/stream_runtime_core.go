@@ -28,6 +28,7 @@ type claudeStreamRuntime struct {
 	searchEnabled         bool
 	bufferToolContent     bool
 	stripReferenceMarkers bool
+	parserV2Mode          string
 
 	messageID         string
 	thinking          strings.Builder
@@ -61,6 +62,7 @@ func newClaudeStreamRuntime(
 	thinkingEnabled bool,
 	searchEnabled bool,
 	stripReferenceMarkers bool,
+	parserV2Mode string,
 	toolNames []string,
 	toolsRaw any,
 	promptTokenText string,
@@ -76,6 +78,7 @@ func newClaudeStreamRuntime(
 		searchEnabled:         searchEnabled,
 		bufferToolContent:     len(toolNames) > 0,
 		stripReferenceMarkers: stripReferenceMarkers,
+		parserV2Mode:          parserV2Mode,
 		toolNames:             toolNames,
 		toolsRaw:              toolsRaw,
 		promptTokenText:       promptTokenText,

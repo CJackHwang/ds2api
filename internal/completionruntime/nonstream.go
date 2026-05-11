@@ -32,6 +32,7 @@ type Options struct {
 	RetryEnabled          bool
 	RetryMaxAttempts      int
 	CurrentInputFile      history.CurrentInputConfigReader
+	ParserV2Mode          string
 }
 
 type NonStreamResult struct {
@@ -260,6 +261,7 @@ func buildOptions(stdReq promptcompat.StandardRequest, prompt string, opts Optio
 		ToolNames:             stdReq.ToolNames,
 		ToolsRaw:              stdReq.ToolsRaw,
 		ToolChoice:            stdReq.ToolChoice,
+		ParserV2Mode:          opts.ParserV2Mode,
 	}
 }
 

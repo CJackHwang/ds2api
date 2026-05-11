@@ -40,6 +40,7 @@ func TestConsumeResponsesStreamAttemptMarksContextCancelledState(t *testing.T) {
 		false,
 		false,
 		true,
+		"",
 		nil,
 		nil,
 		false,

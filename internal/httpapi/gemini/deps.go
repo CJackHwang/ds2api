@@ -26,6 +26,7 @@ type ConfigReader interface {
 	CurrentInputFileEnabled() bool
 	CurrentInputFileMinChars() int
 	ContextEngineMode() string
+	ParserV2Mode() string
 }
 
 type OpenAIChatRunner interface {

@@ -159,3 +159,17 @@ node --test tests/node/toolcall-parity.test.js
 `internal/toolcall/toolcalls_parse.go` 中的私有 `parseCandidate` 结构体承载
 shadow diff 的新解析输出（`calls`、`sawToolCallSyntax`）。Shadow diff 发现
 差异时在 `internal/toolcall/shadow.go` 中以 `[parser_shadow_diff]` 键写入结构化日志。
+
+#### shadow diff 日志字段
+
+当 `mode=shadow` 且新旧结果存在差异时，`slog.Info("[parser_shadow_diff]", ...)` 写出以下字段：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `has_diff` | bool | 始终为 `true`（仅在有差异时写日志） |
+| `old_call_count` | int | 现有路径解析出的 tool call 数量 |
+| `new_call_count` | int | `buildParseCandidate` 新路径解析出的数量 |
+| `old_saw_syntax` | bool | 现有路径是否检测到 tool call 语法标记 |
+| `new_saw_syntax` | bool | 新路径是否检测到 tool call 语法标记 |
+
+无差异时不写日志（零噪音）。日志字段不暴露给客户端响应。

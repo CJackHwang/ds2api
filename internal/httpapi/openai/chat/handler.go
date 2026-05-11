@@ -74,6 +74,13 @@ func (h *Handler) toolcallEarlyEmitHighConfidence() bool {
 	return shared.ToolcallEarlyEmitHighConfidence(h.Store)
 }
 
+func (h *Handler) parserV2Mode() string {
+	if h == nil || h.Store == nil {
+		return ""
+	}
+	return h.Store.ParserV2Mode()
+}
+
 func writeOpenAIError(w http.ResponseWriter, status int, message string) {
 	shared.WriteOpenAIError(w, status, message)
 }

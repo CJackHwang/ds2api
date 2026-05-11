@@ -33,6 +33,7 @@ type responsesStreamRuntime struct {
 	thinkingEnabled       bool
 	searchEnabled         bool
 	stripReferenceMarkers bool
+	parserV2Mode          string
 
 	bufferToolContent    bool
 	emitEarlyToolDeltas  bool
@@ -76,6 +77,7 @@ func newResponsesStreamRuntime(
 	thinkingEnabled bool,
 	searchEnabled bool,
 	stripReferenceMarkers bool,
+	parserV2Mode string,
 	toolNames []string,
 	toolsRaw any,
 	bufferToolContent bool,
@@ -95,6 +97,7 @@ func newResponsesStreamRuntime(
 		thinkingEnabled:       thinkingEnabled,
 		searchEnabled:         searchEnabled,
 		stripReferenceMarkers: stripReferenceMarkers,
+		parserV2Mode:          parserV2Mode,
 		toolNames:             toolNames,
 		toolsRaw:              toolsRaw,
 		bufferToolContent:     bufferToolContent,
@@ -188,6 +191,7 @@ func (s *responsesStreamRuntime) finalize(finishReason string, deferEmptyOutput 
 		ToolNames:             s.toolNames,
 		ToolsRaw:              s.toolsRaw,
 		ToolChoice:            s.toolChoice,
+		ParserV2Mode:          s.parserV2Mode,
 	})
 	textParsed := turn.ParsedToolCalls
 	detected := turn.ToolCalls

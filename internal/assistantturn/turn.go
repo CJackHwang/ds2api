@@ -74,6 +74,7 @@ type BuildOptions struct {
 	ToolNames             []string
 	ToolsRaw              any
 	ToolChoice            promptcompat.ToolChoicePolicy
+	ParserV2Mode          string
 }
 
 type StreamSnapshot struct {
@@ -129,6 +130,7 @@ func BuildTurnFromCollected(result sse.CollectResult, opts BuildOptions) Turn {
 	if turn.Error != nil {
 		turn.StopReason = StopReasonError
 	}
+	toolcall.RunShadowDiff(result.Text, opts.ParserV2Mode, parsed)
 	return turn
 }
 
@@ -177,6 +179,7 @@ func BuildTurnFromStreamSnapshot(snapshot StreamSnapshot, opts BuildOptions) Tur
 	if turn.Error != nil && len(calls) == 0 {
 		turn.StopReason = StopReasonError
 	}
+	toolcall.RunShadowDiff(snapshot.RawText, opts.ParserV2Mode, parsed)
 	return turn
 }
 

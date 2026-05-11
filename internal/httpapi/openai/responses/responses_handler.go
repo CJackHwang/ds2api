@@ -162,6 +162,7 @@ func (h *Handler) handleResponsesNonStream(w http.ResponseWriter, resp *http.Res
 		ToolNames:     toolNames,
 		ToolsRaw:      toolsRaw,
 		ToolChoice:    toolChoice,
+		ParserV2Mode:  h.parserV2Mode(),
 	})
 	logResponsesToolPolicyRejection(traceID, toolChoice, turn.ParsedToolCalls, "text")
 	outcome := assistantturn.FinalizeTurn(turn, assistantturn.FinalizeOptions{})
@@ -208,6 +209,7 @@ func (h *Handler) handleResponsesStream(w http.ResponseWriter, r *http.Request, 
 		thinkingEnabled,
 		searchEnabled,
 		stripReferenceMarkers,
+		h.parserV2Mode(),
 		toolNames,
 		toolsRaw,
 		bufferToolContent,

@@ -31,6 +31,7 @@ type chatStreamRuntime struct {
 	thinkingEnabled       bool
 	searchEnabled         bool
 	stripReferenceMarkers bool
+	parserV2Mode          string
 
 	firstChunkSent       bool
 	onFirstByte          func()
@@ -84,6 +85,7 @@ func newChatStreamRuntime(
 	w http.ResponseWriter,
 	rc *http.ResponseController,
 	canFlush bool,
+	parserV2Mode string,
 	completionID string,
 	created int64,
 	model string,
@@ -98,6 +100,7 @@ func newChatStreamRuntime(
 	emitEarlyToolDeltas bool,
 ) *chatStreamRuntime {
 	return &chatStreamRuntime{
+		parserV2Mode:          parserV2Mode,
 		w:                     w,
 		rc:                    rc,
 		canFlush:              canFlush,
@@ -243,6 +246,7 @@ func (s *chatStreamRuntime) finalize(finishReason string, deferEmptyOutput bool)
 		ToolNames:             s.toolNames,
 		ToolsRaw:              s.toolsRaw,
 		ToolChoice:            s.toolChoice,
+		ParserV2Mode:          s.parserV2Mode,
 	})
 	s.finalThinking = turn.Thinking
 	s.finalText = turn.Text

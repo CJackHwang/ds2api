@@ -86,6 +86,7 @@ func (h *Handler) ChatCompletions(w http.ResponseWriter, r *http.Request) {
 		result, outErr := completionruntime.ExecuteNonStreamWithRetry(r.Context(), h.DS, a, stdReq, completionruntime.Options{
 			RetryEnabled:     true,
 			CurrentInputFile: h.Store,
+			ParserV2Mode:     h.parserV2Mode(),
 		})
 		sessionID = result.SessionID
 		if outErr != nil {
@@ -107,6 +108,7 @@ func (h *Handler) ChatCompletions(w http.ResponseWriter, r *http.Request) {
 
 	start, outErr := completionruntime.StartCompletion(r.Context(), h.DS, a, stdReq, completionruntime.Options{
 		CurrentInputFile: h.Store,
+		ParserV2Mode:     h.parserV2Mode(),
 	})
 	sessionID = start.SessionID
 	if outErr != nil {
@@ -174,6 +176,7 @@ func (h *Handler) handleNonStream(w http.ResponseWriter, resp *http.Response, co
 		ToolNames:     toolNames,
 		ToolsRaw:      toolsRaw,
 		ToolChoice:    promptcompat.DefaultToolChoicePolicy(),
+		ParserV2Mode:  h.parserV2Mode(),
 	})
 	outcome := assistantturn.FinalizeTurn(turn, assistantturn.FinalizeOptions{})
 	if outcome.ShouldFail {
@@ -225,6 +228,7 @@ func (h *Handler) handleStream(w http.ResponseWriter, r *http.Request, resp *htt
 		w,
 		rc,
 		canFlush,
+		h.parserV2Mode(),
 		completionID,
 		created,
 		model,

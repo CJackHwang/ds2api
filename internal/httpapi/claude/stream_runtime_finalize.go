@@ -130,6 +130,7 @@ func (s *claudeStreamRuntime) finalize(stopReason string, deferEmptyOutput bool)
 		StripReferenceMarkers: s.stripReferenceMarkers,
 		ToolNames:             s.toolNames,
 		ToolsRaw:              s.toolsRaw,
+		ParserV2Mode:          s.parserV2Mode,
 	})
 	finalText := turn.Text
 	outcome := assistantturn.FinalizeTurn(turn, assistantturn.FinalizeOptions{

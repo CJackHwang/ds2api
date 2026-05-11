@@ -41,7 +41,7 @@ func (h *Handler) handleStreamGenerateContent(w http.ResponseWriter, r *http.Req
 
 	rc := http.NewResponseController(w)
 	_, canFlush := w.(http.Flusher)
-	runtime := newGeminiStreamRuntime(w, rc, canFlush, model, finalPrompt, thinkingEnabled, searchEnabled, stripReferenceMarkersEnabled(), toolNames, toolsRaw, historySession)
+	runtime := newGeminiStreamRuntime(w, rc, canFlush, model, finalPrompt, thinkingEnabled, searchEnabled, stripReferenceMarkersEnabled(), h.parserV2Mode(), toolNames, toolsRaw, historySession)
 
 	initialType := "text"
 	if thinkingEnabled {
@@ -76,6 +76,7 @@ type geminiStreamRuntime struct {
 	searchEnabled         bool
 	bufferContent         bool
 	stripReferenceMarkers bool
+	parserV2Mode          string
 	toolNames             []string
 	toolsRaw              any
 
@@ -107,7 +108,7 @@ func (h *Handler) handleStreamGenerateContentWithRetry(w http.ResponseWriter, r 
 
 	rc := http.NewResponseController(w)
 	_, canFlush := w.(http.Flusher)
-	runtime := newGeminiStreamRuntime(w, rc, canFlush, model, finalPrompt, thinkingEnabled, searchEnabled, stripReferenceMarkersEnabled(), toolNames, toolsRaw, historySession)
+	runtime := newGeminiStreamRuntime(w, rc, canFlush, model, finalPrompt, thinkingEnabled, searchEnabled, stripReferenceMarkersEnabled(), h.parserV2Mode(), toolNames, toolsRaw, historySession)
 	runtime.onFirstByte = func() { observe.SetFirstByteAt(r.Context(), time.Now()) }
 
 	completionruntime.ExecuteStreamWithRetry(r.Context(), h.DS, a, resp, payload, pow, completionruntime.StreamRetryOptions{
@@ -171,6 +172,7 @@ func newGeminiStreamRuntime(
 	thinkingEnabled bool,
 	searchEnabled bool,
 	stripReferenceMarkers bool,
+	parserV2Mode string,
 	toolNames []string,
 	toolsRaw any,
 	history *responsehistory.Session,
@@ -185,6 +187,7 @@ func newGeminiStreamRuntime(
 		searchEnabled:         searchEnabled,
 		bufferContent:         len(toolNames) > 0,
 		stripReferenceMarkers: stripReferenceMarkers,
+		parserV2Mode:          parserV2Mode,
 		toolNames:             toolNames,
 		toolsRaw:              toolsRaw,
 		history:               history,
@@ -322,6 +325,7 @@ func (s *geminiStreamRuntime) finalize(deferEmptyOutput bool) bool {
 		StripReferenceMarkers: s.stripReferenceMarkers,
 		ToolNames:             s.toolNames,
 		ToolsRaw:              s.toolsRaw,
+		ParserV2Mode:          s.parserV2Mode,
 	})
 	outcome := assistantturn.FinalizeTurn(turn, assistantturn.FinalizeOptions{})
 	if outcome.ShouldFail {

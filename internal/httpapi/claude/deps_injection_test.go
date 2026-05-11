@@ -10,6 +10,7 @@ func (m mockClaudeConfig) ModelAliases() map[string]string { return m.aliases }
 func (mockClaudeConfig) CurrentInputFileEnabled() bool     { return true }
 func (mockClaudeConfig) CurrentInputFileMinChars() int     { return 0 }
 func (mockClaudeConfig) ContextEngineMode() string         { return "off" }
+func (mockClaudeConfig) ParserV2Mode() string              { return "off" }
 
 func TestNormalizeClaudeRequestUsesGlobalAliasMapping(t *testing.T) {
 	req := map[string]any{

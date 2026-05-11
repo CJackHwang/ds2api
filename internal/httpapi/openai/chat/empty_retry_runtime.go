@@ -133,7 +133,7 @@ func (h *Handler) prepareChatStreamRuntime(w http.ResponseWriter, resp *http.Res
 		initialType = "thinking"
 	}
 	streamRuntime := newChatStreamRuntime(
-		w, rc, canFlush, completionID, time.Now().Unix(), model, finalPrompt,
+		w, rc, canFlush, h.parserV2Mode(), completionID, time.Now().Unix(), model, finalPrompt,
 		thinkingEnabled, searchEnabled, stripReferenceMarkersEnabled(), toolNames, toolsRaw,
 		toolChoice,
 		len(toolNames) > 0, h.toolcallFeatureMatchEnabled() && h.toolcallEarlyEmitHighConfidence(),
