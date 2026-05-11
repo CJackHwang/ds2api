@@ -32,6 +32,11 @@ func Middleware(logger *slog.Logger) func(http.Handler) http.Handler {
 			firstByteAt := m.FirstByteAt
 			upstreamResponseAt := m.UpstreamResponseAt
 			routeField := m.Route
+			parserV2Mode := m.ParserV2Mode
+			toolCallCount := m.ToolCallCount
+			shadowDiffRan := m.ShadowDiffRanCount
+			shadowDiffHit := m.ShadowDiffHitCount
+			suppressedCharCount := m.SuppressedCharCount
 			m.mu.Unlock()
 
 			// Only emit for completion routes (model was populated).
@@ -72,6 +77,11 @@ func Middleware(logger *slog.Logger) func(http.Handler) http.Handler {
 				"retry_count", retryCount,
 				"account_switch_count", accountSwitchCount,
 				"total_ms", elapsed.Milliseconds(),
+				"parser_v2_mode", parserV2Mode,
+				"parser_tool_call_count", toolCallCount,
+				"parser_shadow_diff_ran", shadowDiffRan,
+				"parser_shadow_diff_hit", shadowDiffHit,
+				"parser_suppressed_char_count", suppressedCharCount,
 			)
 		})
 	}

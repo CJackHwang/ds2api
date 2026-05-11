@@ -37,6 +37,14 @@ func TestParserV2Mode_InvalidEnvFallsToOff(t *testing.T) {
 	}
 }
 
+func TestParserV2Mode_InvalidEnvOverridesConfigToOff(t *testing.T) {
+	t.Setenv("DS2API_PARSER_V2", "bogus")
+	s := &Store{cfg: Config{ParserV2: ParserV2Config{Mode: "shadow"}}}
+	if got := s.ParserV2Mode(); got != "off" {
+		t.Errorf("expected off for invalid env overriding config, got %q", got)
+	}
+}
+
 func TestParserV2Mode_ConfigFile(t *testing.T) {
 	t.Setenv("DS2API_PARSER_V2", "")
 	s := &Store{cfg: Config{ParserV2: ParserV2Config{Mode: "shadow"}}}

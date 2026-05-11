@@ -228,6 +228,7 @@ func (h *Handler) handleStream(w http.ResponseWriter, r *http.Request, resp *htt
 		w,
 		rc,
 		canFlush,
+		r.Context(),
 		h.parserV2Mode(),
 		completionID,
 		created,

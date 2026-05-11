@@ -38,7 +38,7 @@ func ProcessChunk(state *State, chunk string, toolNames []string) []Event {
 				if suffix != "" {
 					state.pending.WriteString(suffix)
 				}
-				_ = captured
+				state.suppressedCharCount += suppressedToolCaptureLen(captured, prefix, suffix)
 				state.pendingToolCalls = calls
 				continue
 			}
@@ -94,6 +94,7 @@ func Flush(state *State, toolNames []string) []Event {
 		state.pendingToolCalls = nil
 	}
 	if state.capturing {
+		captured := state.capture.String()
 		consumedPrefix, consumedCalls, consumedSuffix, ready := consumeToolCapture(state, toolNames)
 		if ready {
 			if consumedPrefix != "" {
@@ -101,6 +102,7 @@ func Flush(state *State, toolNames []string) []Event {
 				events = append(events, Event{Content: consumedPrefix})
 			}
 			if len(consumedCalls) > 0 {
+				state.suppressedCharCount += suppressedToolCaptureLen(captured, consumedPrefix, consumedSuffix)
 				events = append(events, Event{ToolCalls: consumedCalls})
 			}
 			if consumedSuffix != "" {
@@ -117,6 +119,7 @@ func Flush(state *State, toolNames []string) []Event {
 							state.noteText(prefix)
 							events = append(events, Event{Content: prefix})
 						}
+						state.suppressedCharCount += len(content)
 						events = append(events, Event{ToolCalls: calls})
 						if suffix != "" {
 							state.noteText(suffix)
@@ -189,6 +192,14 @@ func includeDuplicateLeadingLessThan(s string, idx int) int {
 		idx--
 	}
 	return idx
+}
+
+func suppressedToolCaptureLen(captured, prefix, suffix string) int {
+	n := len(captured) - len(prefix) - len(suffix)
+	if n < 0 {
+		return 0
+	}
+	return n
 }
 
 func consumeToolCapture(state *State, toolNames []string) (prefix string, calls []toolcall.ParsedToolCall, suffix string, ready bool) {

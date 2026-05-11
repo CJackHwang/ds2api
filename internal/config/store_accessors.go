@@ -186,6 +186,8 @@ func (s *Store) ContextEngineMode() string {
 			return raw
 		case "off":
 			return "off"
+		default:
+			return "off"
 		}
 	}
 	s.mu.RLock()
@@ -207,6 +209,8 @@ func (s *Store) ParserV2Mode() string {
 		case "shadow", "enforce":
 			return raw
 		case "off":
+			return "off"
+		default:
 			return "off"
 		}
 	}

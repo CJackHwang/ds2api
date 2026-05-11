@@ -1,6 +1,7 @@
 package claude
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strings"
@@ -29,6 +30,7 @@ type claudeStreamRuntime struct {
 	bufferToolContent     bool
 	stripReferenceMarkers bool
 	parserV2Mode          string
+	ctx                   context.Context
 
 	messageID         string
 	thinking          strings.Builder
@@ -57,6 +59,7 @@ func newClaudeStreamRuntime(
 	w http.ResponseWriter,
 	rc *http.ResponseController,
 	canFlush bool,
+	ctx context.Context,
 	model string,
 	messages []any,
 	thinkingEnabled bool,
@@ -72,6 +75,7 @@ func newClaudeStreamRuntime(
 		w:                     w,
 		rc:                    rc,
 		canFlush:              canFlush,
+		ctx:                   ctx,
 		model:                 model,
 		messages:              messages,
 		thinkingEnabled:       thinkingEnabled,

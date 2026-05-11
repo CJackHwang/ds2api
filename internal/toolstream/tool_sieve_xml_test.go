@@ -541,6 +541,40 @@ func TestProcessToolSieveXMLWithLeadingText(t *testing.T) {
 	}
 }
 
+func TestProcessToolSieveSuppressedCountExcludesVisibleSuffix(t *testing.T) {
+	var state State
+	toolXML := `<tool_calls><invoke name="read_file"><parameter name="path">README.MD</parameter></invoke></tool_calls>`
+	suffix := " visible tail"
+	events := ProcessChunk(&state, toolXML+suffix, []string{"read_file"})
+	events = append(events, Flush(&state, []string{"read_file"})...)
+
+	var textContent strings.Builder
+	toolCalls := 0
+	for _, evt := range events {
+		textContent.WriteString(evt.Content)
+		toolCalls += len(evt.ToolCalls)
+	}
+	if textContent.String() != suffix {
+		t.Fatalf("expected suffix to be visible, got %q", textContent.String())
+	}
+	if toolCalls != 1 {
+		t.Fatalf("expected one tool call, got %d events=%#v", toolCalls, events)
+	}
+	if state.SuppressedCharCount() != len(toolXML) {
+		t.Fatalf("suppressed count=%d want %d", state.SuppressedCharCount(), len(toolXML))
+	}
+}
+
+func TestSuppressedToolCaptureLenExcludesVisiblePrefixAndSuffix(t *testing.T) {
+	prefix := "visible prefix "
+	toolXML := `<tool_calls><invoke name="read_file"><parameter name="path">README.MD</parameter></invoke></tool_calls>`
+	suffix := " visible suffix"
+	got := suppressedToolCaptureLen(prefix+toolXML+suffix, prefix, suffix)
+	if got != len(toolXML) {
+		t.Fatalf("suppressed length=%d want %d", got, len(toolXML))
+	}
+}
+
 func TestProcessToolSievePassesThroughNonToolXMLBlock(t *testing.T) {
 	var state State
 	chunk := `<tool><title>示例 XML</title><body>plain text xml payload</body></tool>`

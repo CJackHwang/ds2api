@@ -22,6 +22,15 @@ type State struct {
 	toolArgsSent           int
 	toolArgsString         bool
 	toolArgsDone           bool
+	// suppressedCharCount accumulates bytes of tool-call XML that were
+	// captured and not forwarded to the client.
+	suppressedCharCount int
+}
+
+// SuppressedCharCount returns the total number of bytes of captured tool-call
+// XML that were withheld from the client during streaming.
+func (s *State) SuppressedCharCount() int {
+	return s.suppressedCharCount
 }
 
 type Event struct {

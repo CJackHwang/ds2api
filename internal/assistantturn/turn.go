@@ -1,10 +1,12 @@
 package assistantturn
 
 import (
+	"context"
 	"net/http"
 	"strings"
 
 	"ds2api/internal/httpapi/openai/shared"
+	"ds2api/internal/observe"
 	"ds2api/internal/promptcompat"
 	"ds2api/internal/sse"
 	"ds2api/internal/toolcall"
@@ -75,6 +77,8 @@ type BuildOptions struct {
 	ToolsRaw              any
 	ToolChoice            promptcompat.ToolChoicePolicy
 	ParserV2Mode          string
+	// Ctx is the request context used for observability. May be nil.
+	Ctx context.Context
 }
 
 type StreamSnapshot struct {
@@ -131,7 +135,15 @@ func BuildTurnFromCollected(result sse.CollectResult, opts BuildOptions) Turn {
 	if turn.Error != nil {
 		turn.StopReason = StopReasonError
 	}
-	toolcall.RunShadowDiff(opts.ParserV2Mode, parsedBeforeNorm)
+	rec := toolcall.RunShadowDiff(opts.ParserV2Mode, parsedBeforeNorm)
+	observe.SetParserV2Mode(opts.Ctx, opts.ParserV2Mode)
+	observe.SetToolCallCount(opts.Ctx, len(calls))
+	if rec.Ran {
+		observe.IncrShadowDiffRan(opts.Ctx)
+	}
+	if rec.HasDiff {
+		observe.IncrShadowDiffHit(opts.Ctx)
+	}
 	return turn
 }
 
@@ -181,7 +193,15 @@ func BuildTurnFromStreamSnapshot(snapshot StreamSnapshot, opts BuildOptions) Tur
 	if turn.Error != nil && len(calls) == 0 {
 		turn.StopReason = StopReasonError
 	}
-	toolcall.RunShadowDiff(opts.ParserV2Mode, parsedBeforeNorm)
+	rec := toolcall.RunShadowDiff(opts.ParserV2Mode, parsedBeforeNorm)
+	observe.SetParserV2Mode(opts.Ctx, opts.ParserV2Mode)
+	observe.SetToolCallCount(opts.Ctx, len(calls))
+	if rec.Ran {
+		observe.IncrShadowDiffRan(opts.Ctx)
+	}
+	if rec.HasDiff {
+		observe.IncrShadowDiffHit(opts.Ctx)
+	}
 	return turn
 }
 

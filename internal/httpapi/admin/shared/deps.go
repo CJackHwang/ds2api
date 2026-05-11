@@ -38,6 +38,7 @@ type ConfigStore interface {
 	ThinkingInjectionEnabled() bool
 	ThinkingInjectionPrompt() string
 	AutoDeleteSessions() bool
+	ParserV2Mode() string
 }
 
 type PoolController interface {

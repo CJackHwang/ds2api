@@ -37,6 +37,14 @@ func TestContextEngineMode_InvalidEnvFallsToOff(t *testing.T) {
 	}
 }
 
+func TestContextEngineMode_InvalidEnvOverridesConfigToOff(t *testing.T) {
+	t.Setenv("DS2API_CONTEXT_ENGINE", "bogus")
+	s := &Store{cfg: Config{ContextEngine: ContextEngineConfig{Mode: "shadow"}}}
+	if got := s.ContextEngineMode(); got != "off" {
+		t.Errorf("expected off for invalid env overriding config, got %q", got)
+	}
+}
+
 func TestContextEngineMode_ConfigFile(t *testing.T) {
 	t.Setenv("DS2API_CONTEXT_ENGINE", "")
 	s := &Store{cfg: Config{ContextEngine: ContextEngineConfig{Mode: "shadow"}}}

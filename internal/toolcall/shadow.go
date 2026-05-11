@@ -1,6 +1,7 @@
 package toolcall
 
 import (
+	"ds2api/internal/config"
 	"log/slog"
 	"reflect"
 )
@@ -45,7 +46,11 @@ func RunShadowDiff(mode string, existing ToolCallParseResult) ShadowDiffRecord {
 	}
 
 	if hasDiff {
-		slog.Info("[parser_shadow_diff]",
+		logger := config.Logger
+		if logger == nil {
+			logger = slog.Default()
+		}
+		logger.Info("[parser_shadow_diff]",
 			"has_diff", true,
 			"old_call_count", rec.OldCallCount,
 			"new_call_count", rec.NewCallCount,

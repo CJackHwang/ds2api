@@ -1,9 +1,11 @@
 package assistantturn
 
 import (
+	"context"
 	"net/http"
 	"testing"
 
+	"ds2api/internal/observe"
 	"ds2api/internal/promptcompat"
 	"ds2api/internal/sse"
 )
@@ -61,6 +63,24 @@ func TestBuildTurnFromCollectedToolCall(t *testing.T) {
 	}
 	if _, ok := turn.ToolCalls[0].Input["content"].(string); !ok {
 		t.Fatalf("expected content coerced to string, got %#v", turn.ToolCalls[0].Input["content"])
+	}
+}
+
+func TestBuildTurnFromCollectedSetsToolCallMetricWithoutAccumulating(t *testing.T) {
+	metrics := &observe.RequestMetrics{}
+	ctx := observe.WithMetrics(context.Background(), metrics)
+	result := sse.CollectResult{
+		Text: `<tool_calls><invoke name="Write"><parameter name="content">{"x":1}</parameter></invoke></tool_calls>`,
+	}
+	opts := BuildOptions{
+		Ctx:       ctx,
+		ToolNames: []string{"Write"},
+	}
+
+	BuildTurnFromCollected(result, opts)
+	BuildTurnFromCollected(result, opts)
+	if metrics.ToolCallCount != 1 {
+		t.Fatalf("expected final tool call count to be set once, got %d", metrics.ToolCallCount)
 	}
 }
 

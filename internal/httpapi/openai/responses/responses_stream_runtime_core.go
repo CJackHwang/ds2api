@@ -1,10 +1,13 @@
 package responses
 
 import (
-	"ds2api/internal/assistantturn"
-	"ds2api/internal/toolcall"
+	"context"
 	"net/http"
 	"strings"
+
+	"ds2api/internal/assistantturn"
+	"ds2api/internal/observe"
+	"ds2api/internal/toolcall"
 
 	"ds2api/internal/config"
 	openaifmt "ds2api/internal/format/openai"
@@ -62,6 +65,7 @@ type responsesStreamRuntime struct {
 	finalErrorMessage string
 	finalErrorCode    string
 
+	ctx             context.Context
 	onFirstByte     func()
 	persistResponse func(obj map[string]any)
 	history         *responsehistory.Session
@@ -71,6 +75,7 @@ func newResponsesStreamRuntime(
 	w http.ResponseWriter,
 	rc *http.ResponseController,
 	canFlush bool,
+	ctx context.Context,
 	responseID string,
 	model string,
 	finalPrompt string,
@@ -91,6 +96,7 @@ func newResponsesStreamRuntime(
 		w:                     w,
 		rc:                    rc,
 		canFlush:              canFlush,
+		ctx:                   ctx,
 		responseID:            responseID,
 		model:                 model,
 		finalPrompt:           finalPrompt,
@@ -192,7 +198,9 @@ func (s *responsesStreamRuntime) finalize(finishReason string, deferEmptyOutput 
 		ToolsRaw:              s.toolsRaw,
 		ToolChoice:            s.toolChoice,
 		ParserV2Mode:          s.parserV2Mode,
+		Ctx:                   s.ctx,
 	})
+	observe.AddSuppressedCharCount(s.ctx, s.sieve.SuppressedCharCount())
 	textParsed := turn.ParsedToolCalls
 	detected := turn.ToolCalls
 	s.logToolPolicyRejections(textParsed)

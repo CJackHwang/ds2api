@@ -40,6 +40,7 @@ func TestConsumeChatStreamAttemptMarksContextCancelledState(t *testing.T) {
 		rec,
 		http.NewResponseController(rec),
 		true,
+		ctx,
 		"",
 		"cid-cancelled",
 		time.Now().Unix(),

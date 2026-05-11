@@ -68,5 +68,13 @@
   },
   "auto_delete": {
     "mode": "none"
+  },
+  "parser_v2": {
+    "_comment": "Tool Parser v2 feature flag: off (default, safe) | shadow (log diff) | enforce (use new parser)",
+    "mode": "off"
+  },
+  "context_engine": {
+    "_comment": "Context Engine feature flag: off (default, safe) | shadow (log plan) | enforce (use new engine)",
+    "mode": "off"
   }
 }

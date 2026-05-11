@@ -33,6 +33,17 @@ gofmt -w <files>                     # 格式化单个文件
 go test -v -run TestParseToolCalls ./internal/toolcall
 go test -v ./internal/format/...
 go test -v ./internal/httpapi/openai/...
+go test -count=1 -v ./...               # 绕过缓存强制重新运行
+```
+
+### 常用环境变量
+```bash
+PORT=5001                  # 服务端口
+LOG_LEVEL=INFO             # 日志级别 (DEBUG/INFO/WARN/ERROR)
+DS2API_CONFIG_PATH=config.json  # 配置文件路径
+DS2API_ADMIN_KEY=          # Admin 密码
+DS2API_DEV_PACKET_CAPTURE=true    # 开发抓包开关（定位思考流/工具调用问题）
+DS2API_DEV_PACKET_CAPTURE_LIMIT=20
 ```
 
 ### WebUI 构建
@@ -76,13 +87,25 @@ Format (OpenAI/Claude 输出格式化) → Client
 - `internal/server` - 路由树和中间件
 - `internal/httpapi/` - HTTP 协议适配层
 - `internal/promptcompat` - API 请求到 DeepSeek 上下文的兼容内核
+- `internal/contextengine` - Context Engine 编译层（ContextSegment/ContextPlan/shadow 模式对比）
 - `internal/completionruntime` - Go 主路径共享的 completion 执行
 - `internal/assistantturn` - 上游输出归一化为统一语义
 - `internal/stream` + `internal/sse` - 流式解析与增量处理
 - `internal/toolcall` + `internal/toolstream` - DSML/XML 工具调用解析与防泄漏
 - `internal/deepseek/client` - DeepSeek 上游调用
 - `internal/account` - 托管账号池、并发槽位、等待队列
+- `internal/config` - 配置加载、校验与热更新
+- `internal/observe` - 请求级结构化日志与可观测性
+- `internal/devcapture` - 开发抓包与调试采集
 - `api/` - Vercel Serverless 入口（Go/Node）
+
+### Context Engine（PromptCompat 下层编译引擎）
+
+`internal/contextengine` 将 API 请求编译为结构化的 ContextPlan（含 ContextSegment），支持 shadow 模式（新老引擎并行对比输出）。feature flag 由 `internal/config` 管理。PromptCompat 组装 prompt 时依赖 Context Engine 的输出。
+
+### 配置热更新
+
+`runtime` 字段（`account_max_inflight`、`account_max_queue`、`token_refresh_interval_hours` 等）可通过 Admin Settings API `/admin/settings` 热更新，无需重启服务。
 
 ### 协议适配边界原则
 

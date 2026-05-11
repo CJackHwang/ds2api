@@ -2,6 +2,7 @@ package settings
 
 import (
 	"net/http"
+	"os"
 	"strings"
 
 	authn "ds2api/internal/auth"
@@ -42,5 +43,9 @@ func (h *Handler) getSettings(w http.ResponseWriter, _ *http.Request) {
 		"model_aliases":     snap.ModelAliases,
 		"env_backed":        h.Store.IsEnvBacked(),
 		"needs_vercel_sync": needsSync,
+		"parser_v2": map[string]any{
+			"mode":         h.Store.ParserV2Mode(),
+			"env_override": os.Getenv("DS2API_PARSER_V2") != "",
+		},
 	})
 }

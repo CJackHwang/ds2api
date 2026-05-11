@@ -43,6 +43,20 @@ type RequestMetrics struct {
 	UpstreamResponseAt time.Time
 	// FirstByteAt is when the first byte was written to the client.
 	FirstByteAt time.Time
+
+	// Parser observability fields (Tool Parser M2).
+
+	// ParserV2Mode is the parser.v2 feature flag value for this request.
+	ParserV2Mode string
+	// ToolCallCount is the total number of tool calls detected in the final turn.
+	ToolCallCount int
+	// ShadowDiffRanCount is the number of times RunShadowDiff actually executed.
+	ShadowDiffRanCount int
+	// ShadowDiffHitCount is the number of shadow diffs that found a difference.
+	ShadowDiffHitCount int
+	// SuppressedCharCount is the total bytes held by the tool sieve and not
+	// forwarded to the client (used as a proxy for suppressed token count).
+	SuppressedCharCount int
 }
 
 // WithMetrics returns a new context carrying the given metrics.
@@ -152,4 +166,64 @@ func redactAccountID(id string) string {
 		return "***"
 	}
 	return id[:4] + "***"
+}
+
+// SetParserV2Mode records the parser.v2 feature flag mode for this request.
+func SetParserV2Mode(ctx context.Context, mode string) {
+	if ctx == nil {
+		return
+	}
+	if m := FromContext(ctx); m != nil {
+		m.mu.Lock()
+		m.ParserV2Mode = mode
+		m.mu.Unlock()
+	}
+}
+
+// SetToolCallCount records the final tool call count for this request.
+func SetToolCallCount(ctx context.Context, n int) {
+	if ctx == nil {
+		return
+	}
+	if m := FromContext(ctx); m != nil {
+		m.mu.Lock()
+		m.ToolCallCount = n
+		m.mu.Unlock()
+	}
+}
+
+// IncrShadowDiffRan increments the counter of shadow diff executions.
+func IncrShadowDiffRan(ctx context.Context) {
+	if ctx == nil {
+		return
+	}
+	if m := FromContext(ctx); m != nil {
+		m.mu.Lock()
+		m.ShadowDiffRanCount++
+		m.mu.Unlock()
+	}
+}
+
+// IncrShadowDiffHit increments the counter of shadow diffs that found a diff.
+func IncrShadowDiffHit(ctx context.Context) {
+	if ctx == nil {
+		return
+	}
+	if m := FromContext(ctx); m != nil {
+		m.mu.Lock()
+		m.ShadowDiffHitCount++
+		m.mu.Unlock()
+	}
+}
+
+// AddSuppressedCharCount adds n bytes to the sieve-suppressed character counter.
+func AddSuppressedCharCount(ctx context.Context, n int) {
+	if ctx == nil {
+		return
+	}
+	if m := FromContext(ctx); m != nil {
+		m.mu.Lock()
+		m.SuppressedCharCount += n
+		m.mu.Unlock()
+	}
 }

@@ -115,7 +115,7 @@ func ExecuteNonStreamStartedWithRetry(ctx context.Context, ds DeepSeekCaller, a 
 	accumulatedRawThinking := ""
 	accumulatedToolDetectionThinking := ""
 	for {
-		turn, outErr := collectAttempt(currentResp, stdReq, usagePrompt, opts)
+		turn, outErr := collectAttempt(ctx, currentResp, stdReq, usagePrompt, opts)
 		if outErr != nil {
 			if canRetryOnAlternateAccount(ctx, a, outErr, opts.RetryEnabled, &accountSwitchAttempted) {
 				switched, switchErr := startStandardCompletionOnAlternateAccount(ctx, ds, a, stdReq, maxAttempts)
@@ -152,7 +152,7 @@ func ExecuteNonStreamStartedWithRetry(ctx context.Context, ds DeepSeekCaller, a 
 			ContentFilter:         turn.ContentFilter,
 			CitationLinks:         turn.CitationLinks,
 			ResponseMessageID:     turn.ResponseMessageID,
-		}, buildOptions(stdReq, usagePrompt, opts))
+		}, buildOptions(ctx, stdReq, usagePrompt, opts))
 
 		retryMax := opts.RetryMaxAttempts
 		if retryMax <= 0 {
@@ -233,7 +233,7 @@ func startStandardCompletionOnAlternateAccount(ctx context.Context, ds DeepSeekC
 	return StartResult{SessionID: sessionID, Payload: payload, Pow: pow, Response: resp, Request: stdReq}, nil
 }
 
-func collectAttempt(resp *http.Response, stdReq promptcompat.StandardRequest, usagePrompt string, opts Options) (assistantturn.Turn, *assistantturn.OutputError) {
+func collectAttempt(ctx context.Context, resp *http.Response, stdReq promptcompat.StandardRequest, usagePrompt string, opts Options) (assistantturn.Turn, *assistantturn.OutputError) {
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
 			config.Logger.Warn("[completion_runtime] response body close failed", "surface", stdReq.Surface, "error", err)
@@ -248,10 +248,10 @@ func collectAttempt(resp *http.Response, stdReq promptcompat.StandardRequest, us
 		return assistantturn.Turn{}, &assistantturn.OutputError{Status: resp.StatusCode, Message: message, Code: "error"}
 	}
 	result := sse.CollectStream(resp, stdReq.Thinking, false)
-	return assistantturn.BuildTurnFromCollected(result, buildOptions(stdReq, usagePrompt, opts)), nil
+	return assistantturn.BuildTurnFromCollected(result, buildOptions(ctx, stdReq, usagePrompt, opts)), nil
 }
 
-func buildOptions(stdReq promptcompat.StandardRequest, prompt string, opts Options) assistantturn.BuildOptions {
+func buildOptions(ctx context.Context, stdReq promptcompat.StandardRequest, prompt string, opts Options) assistantturn.BuildOptions {
 	return assistantturn.BuildOptions{
 		Model:                 stdReq.ResponseModel,
 		Prompt:                prompt,
@@ -262,6 +262,7 @@ func buildOptions(stdReq promptcompat.StandardRequest, prompt string, opts Optio
 		ToolsRaw:              stdReq.ToolsRaw,
 		ToolChoice:            stdReq.ToolChoice,
 		ParserV2Mode:          opts.ParserV2Mode,
+		Ctx:                   ctx,
 	}
 }
 

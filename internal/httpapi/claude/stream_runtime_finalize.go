@@ -1,16 +1,17 @@
 package claude
 
 import (
-	"ds2api/internal/assistantturn"
-	"ds2api/internal/responsehistory"
-	"ds2api/internal/sse"
-	"ds2api/internal/toolcall"
-	"ds2api/internal/toolstream"
 	"encoding/json"
 	"fmt"
 	"time"
 
+	"ds2api/internal/assistantturn"
+	"ds2api/internal/observe"
+	"ds2api/internal/responsehistory"
+	"ds2api/internal/sse"
 	streamengine "ds2api/internal/stream"
+	"ds2api/internal/toolcall"
+	"ds2api/internal/toolstream"
 )
 
 func (s *claudeStreamRuntime) closeThinkingBlock() {
@@ -131,7 +132,9 @@ func (s *claudeStreamRuntime) finalize(stopReason string, deferEmptyOutput bool)
 		ToolNames:             s.toolNames,
 		ToolsRaw:              s.toolsRaw,
 		ParserV2Mode:          s.parserV2Mode,
+		Ctx:                   s.ctx,
 	})
+	observe.AddSuppressedCharCount(s.ctx, s.sieve.SuppressedCharCount())
 	finalText := turn.Text
 	outcome := assistantturn.FinalizeTurn(turn, assistantturn.FinalizeOptions{
 		AlreadyEmittedToolCalls: s.toolCallsDetected,

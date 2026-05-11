@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -8,6 +9,7 @@ import (
 	"ds2api/internal/assistantturn"
 	openaifmt "ds2api/internal/format/openai"
 	"ds2api/internal/httpapi/openai/shared"
+	"ds2api/internal/observe"
 	"ds2api/internal/promptcompat"
 	"ds2api/internal/sse"
 	streamengine "ds2api/internal/stream"
@@ -18,6 +20,7 @@ type chatStreamRuntime struct {
 	w        http.ResponseWriter
 	rc       *http.ResponseController
 	canFlush bool
+	ctx      context.Context
 
 	completionID  string
 	created       int64
@@ -85,6 +88,7 @@ func newChatStreamRuntime(
 	w http.ResponseWriter,
 	rc *http.ResponseController,
 	canFlush bool,
+	ctx context.Context,
 	parserV2Mode string,
 	completionID string,
 	created int64,
@@ -104,6 +108,7 @@ func newChatStreamRuntime(
 		w:                     w,
 		rc:                    rc,
 		canFlush:              canFlush,
+		ctx:                   ctx,
 		completionID:          completionID,
 		created:               created,
 		model:                 model,
@@ -247,6 +252,7 @@ func (s *chatStreamRuntime) finalize(finishReason string, deferEmptyOutput bool)
 		ToolsRaw:              s.toolsRaw,
 		ToolChoice:            s.toolChoice,
 		ParserV2Mode:          s.parserV2Mode,
+		Ctx:                   s.ctx,
 	})
 	s.finalThinking = turn.Thinking
 	s.finalText = turn.Text
@@ -279,6 +285,7 @@ func (s *chatStreamRuntime) finalize(finishReason string, deferEmptyOutput bool)
 		}
 		batch.flush()
 	}
+	observe.AddSuppressedCharCount(s.ctx, s.toolSieve.SuppressedCharCount())
 
 	outcome := assistantturn.FinalizeTurn(turn, assistantturn.FinalizeOptions{
 		AlreadyEmittedToolCalls: s.toolCallsEmitted || s.toolCallsDoneEmitted,

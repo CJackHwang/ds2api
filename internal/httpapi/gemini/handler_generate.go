@@ -103,6 +103,7 @@ func (h *Handler) handleGeminiDirect(w http.ResponseWriter, r *http.Request, str
 	result, outErr := completionruntime.ExecuteNonStreamWithRetry(r.Context(), h.DS, a, stdReq, completionruntime.Options{
 		RetryEnabled:     true,
 		CurrentInputFile: h.Store,
+		ParserV2Mode:     h.parserV2Mode(),
 	})
 	if outErr != nil {
 		if historySession != nil {
