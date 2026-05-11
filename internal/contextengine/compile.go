@@ -166,16 +166,14 @@ func buildSegments(messages []map[string]any) []ContextSegment {
 				segs = append(segs, makeSegment(SegUser, "request", content))
 			}
 		case "assistant":
-			// Extract reasoning block from content (inline labeled block from promptcompat)
-			// and from the raw reasoning_content field (unnormalized messages / fixtures).
+			// Always extract the inline reasoning block so the labeled text is
+			// stripped from visible content (avoids double-counting when both
+			// the field and the inline block are present).
+			inlineReasoning, visibleContent := extractReasoningBlock(content)
+			// Prefer the explicit reasoning_content field; fall back to inline block.
 			rawReasoning := strings.TrimSpace(asString(msg["reasoning_content"]))
-			visibleContent := content
 			if rawReasoning == "" {
-				rawReasoning, visibleContent = extractReasoningBlock(content)
-			} else {
-				// Strip any inline reasoning block from visible content to avoid
-				// double-counting when both the field and inline block are present.
-				_, visibleContent = extractReasoningBlock(content)
+				rawReasoning = inlineReasoning
 			}
 			// Emit SegReasoningSummary if reasoning is present.
 			if rawReasoning != "" {
