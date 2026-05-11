@@ -433,7 +433,11 @@
         "defaultPasswordWarning": "当前使用默认密码 admin，请尽快在此修改。",
         "vercelSyncHint": "当前配置已更新。Vercel 部署请到 Vercel 同步页面手动同步并重部署。",
         "autoFetchPaused": "自动加载已暂停：连续失败 {count} 次（{error}）",
-        "retryLoad": "立即重试"
+        "retryLoad": "立即重试",
+        "featureFlagsTitle": "功能标志",
+        "parserV2ModeLabel": "工具解析器 v2 模式",
+        "parserV2ModeDesc": "只读。通过 config.json parser.v2.mode 或 DS2API_PARSER_V2 环境变量修改。",
+        "envOverride": "环境变量覆盖"
     },
     "login": {
         "welcome": "欢迎回来",

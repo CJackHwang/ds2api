@@ -433,7 +433,11 @@
         "defaultPasswordWarning": "You are using the default admin password \"admin\". Please change it.",
         "vercelSyncHint": "Configuration changed. For Vercel deployments, sync manually in Vercel Sync and redeploy.",
         "autoFetchPaused": "Auto loading paused after {count} failures: {error}",
-        "retryLoad": "Retry now"
+        "retryLoad": "Retry now",
+        "featureFlagsTitle": "Feature Flags",
+        "parserV2ModeLabel": "Tool parser v2 mode",
+        "parserV2ModeDesc": "Read-only. Change via config.json parser.v2.mode or DS2API_PARSER_V2 env var.",
+        "envOverride": "env override"
     },
     "login": {
         "welcome": "Welcome back",
