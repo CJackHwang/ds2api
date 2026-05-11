@@ -25,6 +25,7 @@ func MaybeShadow(mode string, messages []map[string]any, logger *slog.Logger) {
 		logger.Warn("[context_engine_shadow] compile error", "error", err)
 		return
 	}
+	GlobalPlanBuffer().Push(plan)
 	warnings := strings.Join(plan.Warnings, "; ")
 	if warnings == "" {
 		warnings = "none"
