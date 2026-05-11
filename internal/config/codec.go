@@ -29,7 +29,7 @@ func (c Config) MarshalJSON() ([]byte, error) {
 	if len(c.ModelAliases) > 0 {
 		m["model_aliases"] = c.ModelAliases
 	}
-	if strings.TrimSpace(c.Admin.PasswordHash) != "" || c.Admin.JWTExpireHours > 0 || c.Admin.JWTValidAfterUnix > 0 {
+	if strings.TrimSpace(c.Admin.PasswordHash) != "" || c.Admin.JWTExpireHours > 0 || c.Admin.JWTValidAfterUnix > 0 || c.Admin.AllowDefaultAdminKey != nil {
 		m["admin"] = c.Admin
 	}
 	if c.Runtime.AccountMaxInflight > 0 || c.Runtime.AccountMaxQueue > 0 || c.Runtime.GlobalMaxInflight > 0 || c.Runtime.TokenRefreshIntervalHours > 0 {
@@ -53,6 +53,9 @@ func (c Config) MarshalJSON() ([]byte, error) {
 	}
 	if len(c.CORS.AllowOrigins) > 0 {
 		m["cors"] = c.CORS
+	}
+	if c.Auth.AllowGeminiQueryKey != nil {
+		m["auth"] = c.Auth
 	}
 	if strings.TrimSpace(c.ContextEngine.Mode) != "" {
 		m["context_engine"] = c.ContextEngine
@@ -141,6 +144,10 @@ func (c *Config) UnmarshalJSON(b []byte) error {
 			if err := json.Unmarshal(v, &c.CORS); err != nil {
 				return fmt.Errorf("invalid field %q: %w", k, err)
 			}
+		case "auth":
+			if err := json.Unmarshal(v, &c.Auth); err != nil {
+				return fmt.Errorf("invalid field %q: %w", k, err)
+			}
 		case "context_engine":
 			if err := json.Unmarshal(v, &c.ContextEngine); err != nil {
 				return fmt.Errorf("invalid field %q: %w", k, err)
@@ -179,11 +186,16 @@ func (c Config) Clone() Config {
 		Accounts:     slices.Clone(c.Accounts),
 		Proxies:      slices.Clone(c.Proxies),
 		ModelAliases: cloneStringMap(c.ModelAliases),
-		Admin:        c.Admin,
-		Runtime:      c.Runtime,
-		Responses:    c.Responses,
-		Embeddings:   c.Embeddings,
-		AutoDelete:   c.AutoDelete,
+		Admin: AdminConfig{
+			PasswordHash:         c.Admin.PasswordHash,
+			JWTExpireHours:       c.Admin.JWTExpireHours,
+			JWTValidAfterUnix:    c.Admin.JWTValidAfterUnix,
+			AllowDefaultAdminKey: cloneBoolPtr(c.Admin.AllowDefaultAdminKey),
+		},
+		Runtime:    c.Runtime,
+		Responses:  c.Responses,
+		Embeddings: c.Embeddings,
+		AutoDelete: c.AutoDelete,
 		CurrentInputFile: CurrentInputFileConfig{
 			Enabled:  cloneBoolPtr(c.CurrentInputFile.Enabled),
 			MinChars: c.CurrentInputFile.MinChars,
@@ -194,6 +206,7 @@ func (c Config) Clone() Config {
 		},
 		Vercel:           c.Vercel,
 		CORS:             CORSConfig{AllowOrigins: slices.Clone(c.CORS.AllowOrigins)},
+		Auth:             AuthConfig{AllowGeminiQueryKey: cloneBoolPtr(c.Auth.AllowGeminiQueryKey)},
 		ContextEngine:    c.ContextEngine,
 		ParserV2:         c.ParserV2,
 		VercelSyncHash:   c.VercelSyncHash,

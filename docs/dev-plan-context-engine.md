@@ -144,6 +144,7 @@ DoD：
   - `enforce`：用 ContextPlan 渲染 prompt（M3 才允许验证开启）。
 - 设计观测通道：复用 `internal/devcapture` 或新增 `internal/contextengine/observe.go`，写入 plan 摘要（不含原文，避免敏感泄漏）。
 - Admin Debug 接口（只读）：`/admin/context-plan/{request_id}` 返回最近一次 shadow plan 的摘要，供调试（默认关闭，仅 admin 鉴权后可见）。
+  - **当前状态**：由分支 `feat/m2-context-debug-api` 落地（plan 摘要内存环形缓冲 + `GET /admin/context-plan` / `GET /admin/context-plan/{request_id}`）。
 
 DoD：
 

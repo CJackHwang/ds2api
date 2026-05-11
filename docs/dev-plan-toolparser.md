@@ -73,6 +73,7 @@ DoD：
 
 - 依据 M0 fixtures 修复确认的真假阳问题（一个 fixture 一个最小 PR，便于 review）。
 - 抽象 “解析候选 + 置信信号” 内部 API（不暴露给调用方），保留旧返回值不变；为 M2 shadow diff 做准备。
+  - **当前状态**：`parseCandidate` 已落地完整置信信号（`parsePath` / `ambiguous` / `nameWhitelistHit`）；`availableNames` 已从公开 API 透传至 `buildParseCandidate`；`RunShadowDiff` diff 日志已包含这三个字段。阈值（enforce 模式触发条件）下沉到 M3 由 shadow diff 真实流量反推，本期不固定。分支：`feat/m2-toolparser-confidence`（已合并）。
 - Go / Node 解析路径新增 parity driver：以同一 fixture 同时驱动 `internal/toolstream` 与 `internal/js/helpers/stream-tool-sieve`，diff 输出。
 
 DoD：
@@ -96,9 +97,11 @@ DoD：
   - 旧 parser 仍然提供对外结果；
   - 新 parser（含置信度）并行运行，diff 写入观测通道。
 - 置信度模型基于 M0 fixtures 的混淆矩阵反推阈值；不预先固定数值。
+  - **当前状态**：信号层（`parsePath` / `ambiguityFlags` / `nameWhitelistHit`）由分支 `feat/m2-toolparser-confidence-signals` 落地；阈值（enforce 模式触发条件）下沉到 M3 由 shadow diff 真实流量反推，本期不固定。
 - 新增可观测性指标（命名先与 governance 计划的埋点盘点对齐）：
   - `parser_state`、`parser_suppressed_token_count`、`parser_tool_call_count`、`parser_shadow_diff_count`。
 - WebUI Admin 设置页（`webui/src/features/settings/`）增加 flag 状态只读展示。
+  - **当前状态**：后端 `GET /admin/settings` 已返回 `parser_v2.mode`；前端 `ParserFlagsSection` 由分支 `feat/m2-toolparser-webui` 落地。
 
 DoD：
 

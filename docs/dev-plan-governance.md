@@ -64,9 +64,13 @@ DoD：
 任务：
 
 - Admin key fail-closed：缺失或默认值时拒绝启动并打印明确错误（不静默使用默认值）。
+  - **已落地**（分支 `feat/m2-governance-fail-closed`）：`internal/server/router.go:NewApp` 在 `UsingDefaultAdminKey` 且 `!store.AllowDefaultAdminKey()` 时直接返回错误，阻止服务启动；通过 `DS2API_ALLOW_DEFAULT_ADMIN_KEY=true` 或 `config.admin.allow_default_admin_key: true` 可本地 / CI opt-in；`internal/config/AdminConfig.AllowDefaultAdminKey *bool` 新增字段，与 `AllowGeminiQueryKey` 相同的 env→config→default(false) 解析链；`docs/DEPLOY.md` 同步更新。
 - 日志脱敏：补 token / email / mobile / 文件内容的字段级脱敏；新增结构化日志字段时统一过过滤函数。
+  - **当前状态**：`internal/util/redact.go` 已覆盖 `api_key / x-api-key / apikey`；token / email / mobile / 文件内容由分支 `feat/m1-governance-log-redaction-expand` 落地。
 - query key：新增配置开关，默认仍兼容；文档与发布说明里加 “建议关闭” 提示。
+  - **已落地**（分支 `feat/m1-governance-querykey-toggle`）：`config.auth.allow_gemini_query_key` (`*bool`，默认 `true` 保持兼容) + `DS2API_ALLOW_GEMINI_QUERY_KEY` 环境变量；`(*auth.Resolver).extractCallerToken` 按 store flag 决定是否接受 `?key=` / `?api_key=` fallback；`docs/DEPLOY.md` 已加关停示例。
 - CORS：明确 allowlist 配置入口；文档补充示例。
+  - **当前状态**：服务端 allowlist 已在 `internal/server/router.go:setCORSHeaders` 实现；`docs/DEPLOY.md` 示例由分支 `docs/governance-cors-deploy-examples` 落地。
 
 DoD：
 
@@ -156,7 +160,7 @@ DoD：
 | **JWT 签名密钥** | `internal/auth/admin.go:jwtSecret` L47-57 | 无 `DS2API_JWT_SECRET` 时回退到 admin key / password hash 作为 HMAC 密钥；两个角色共用同一密钥 | M2：建议独立 `DS2API_JWT_SECRET` 环境变量，文档标注必填 |
 | **Query key 路径** | `internal/auth/request.go:extractGoogleKeyFromRequest` L245-250 | Gemini 兼容路径：`?key=` / `?api_key=` 查询参数作为凭证 fallback；明确文档化为 AI Studio 兼容功能 | 保持：Header 优先，query key 为 fallback；**DEPLOY.md 警告** query key 会出现在 HTTP 访问日志 |
 | **CORS 策略** | `internal/server/router.go:setCORSHeaders` L199-215 | 无 `Origin` 时返回 `Access-Control-Allow-Origin: *`；有 `Origin` 时逐字 echo（任意来源均通过）；内部头 `x-ds2-internal-token` 已正确屏蔽 | M0-C 文档化；长期考虑可配置 allowlist，非当前优先 |
-| **日志脱敏** | `internal/config/logger.go`；全库 slog 调用仅 2 处（`admin.go`, `ollama/handler_routes.go`） | 无结构化脱敏 handler；`devcapture.Entry.RequestBody` / `ResponseBody` 存储完整请求响应体（含 API key / 文件内容）；`LOG_LEVEL=DEBUG` 时无额外风险（非 DEBUG 无 body 日志） | M1-C：`internal/util/redact.go` 增加 `RedactToken` / `RedactEmail`，接入 devcapture 存储路径 |
+| **日志脱敏** | `internal/config/logger.go`；全库 slog 调用仅 2 处（`admin.go`, `ollama/handler_routes.go`） | 无结构化脱敏 handler；`devcapture.Entry.RequestBody` / `ResponseBody` 存储完整请求响应体（含 API key / 文件内容）；`LOG_LEVEL=DEBUG` 时无额外风险（非 DEBUG 无 body 日志） | **已落地**（分支 `feat/m1-governance-log-redaction-expand`）：`internal/util/redact.go` 新增 `RedactToken`（含 Authorization Bearer + token-family JSON 字段）、`RedactEmail`、`RedactMobile`；`RedactSensitiveFields` 聚合调用，devcapture 的 RequestBody / ResponseBody 经此入口 |
 
 ## 附录 B：埋点与日志清单（M0 已填）
 

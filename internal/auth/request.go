@@ -55,7 +55,7 @@ func NewResolver(store *config.Store, pool *account.Pool, login LoginFunc) *Reso
 }
 
 func (r *Resolver) Determine(req *http.Request) (*RequestAuth, error) {
-	callerKey := extractCallerToken(req)
+	callerKey := r.extractCallerToken(req)
 	if callerKey == "" {
 		return nil, ErrUnauthorized
 	}
@@ -122,7 +122,7 @@ func (r *Resolver) acquireManagedRequestAuth(ctx context.Context, callerID, targ
 // DetermineCaller resolves caller identity without acquiring any pooled account.
 // Use this for local-cache lookup routes that only need tenant isolation.
 func (r *Resolver) DetermineCaller(req *http.Request) (*RequestAuth, error) {
-	callerKey := extractCallerToken(req)
+	callerKey := r.extractCallerToken(req)
 	if callerKey == "" {
 		return nil, ErrUnauthorized
 	}
@@ -227,7 +227,17 @@ func (r *Resolver) Release(a *RequestAuth) {
 	r.Pool.Release(a.AccountID)
 }
 
-func extractCallerToken(req *http.Request) string {
+// extractCallerToken on the resolver consults the configured policy to decide
+// whether to honour the Gemini-compatible query-key fallback.
+func (r *Resolver) extractCallerToken(req *http.Request) string {
+	allowQueryKey := true
+	if r != nil && r.Store != nil {
+		allowQueryKey = r.Store.AllowGeminiQueryKey()
+	}
+	return extractCallerTokenCore(req, allowQueryKey)
+}
+
+func extractCallerTokenCore(req *http.Request, allowQueryKey bool) string {
 	authHeader := strings.TrimSpace(req.Header.Get("Authorization"))
 	if strings.HasPrefix(strings.ToLower(authHeader), "bearer ") {
 		token := strings.TrimSpace(authHeader[7:])
@@ -242,8 +252,11 @@ func extractCallerToken(req *http.Request) string {
 	if key := strings.TrimSpace(req.Header.Get("x-goog-api-key")); key != "" {
 		return key
 	}
+	if !allowQueryKey {
+		return ""
+	}
 	// Gemini AI Studio compatibility: allow query key fallback only when no
-	// header-based credential is present.
+	// header-based credential is present AND the policy permits it.
 	if key := strings.TrimSpace(req.URL.Query().Get("key")); key != "" {
 		return key
 	}

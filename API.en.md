@@ -173,6 +173,8 @@ Gemini-compatible clients can also send `x-goog-api-key`, `?key=`, or `?api_key=
 | DELETE | `/admin/chat-history/{id}` | Admin | Delete one server-side conversation entry |
 | PUT | `/admin/chat-history/settings` | Admin | Update conversation history retention limit |
 | GET | `/admin/version` | Admin | Check current version and latest Release |
+| GET | `/admin/context-plans` | Admin | Read context-engine plan-summary ring buffer (last 50, in-memory only) |
+| DELETE | `/admin/context-plans` | Admin | Clear context-engine plan-summary ring buffer |
 
 OpenAI `/v1/*` paths are canonical. For clients configured with the bare DS2API service URL, the same OpenAI handlers are also exposed through root shortcuts: `/models`, `/models/{id}`, `/chat/completions`, `/responses`, `/responses/{response_id}`, `/embeddings`, `/files`, and `/files/{file_id}`.
 
@@ -772,6 +774,7 @@ Reads runtime settings and status, including:
 - `thinking_injection` (`enabled` defaults to `true`, `prompt`, and `default_prompt`)
 - `model_aliases`
 - `env_backed`, `needs_vercel_sync`
+- `parser_v2` (`mode`: `off` / `shadow` / `enforce`; `env_override`: whether an env var is active; read-only, ignored on PUT)
 - `toolcall` policy is fixed to `feature_match + high` and is no longer returned or editable via settings
 
 ### `PUT /admin/settings`
@@ -1225,6 +1228,30 @@ Clears packet-capture entries:
 
 ```json
 {"success":true,"detail":"capture logs cleared"}
+```
+
+### `GET /admin/context-plans`
+
+Reads the context-engine plan-summary ring buffer populated during shadow mode. Holds at most the 50 most recent entries; cleared on restart.
+
+Response fields:
+
+- `count` — current entry count
+- `capacity` — buffer capacity (default 50)
+- `items` — list of summaries, newest first. Each entry contains:
+  - `plan_id`, `captured_at` (Unix timestamp)
+  - `segments_included` / `segments_trimmed`
+  - `token_budget_used` / `token_budget_limit` / `token_budget_overflow`
+  - `warnings` (if any)
+
+This endpoint is only meaningful when the context engine runs in shadow mode; the buffer is empty in all other modes.
+
+### `DELETE /admin/context-plans`
+
+Clears the context-engine plan-summary buffer:
+
+```json
+{"success":true,"detail":"context plan buffer cleared"}
 ```
 
 ---

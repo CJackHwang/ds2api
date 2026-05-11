@@ -26,7 +26,7 @@ func RunShadowDiff(mode string, existing ToolCallParseResult) ShadowDiffRecord {
 		return ShadowDiffRecord{}
 	}
 
-	cand := buildParseCandidate(existing.SourceText)
+	cand := buildParseCandidate(existing.SourceText, existing.AvailableNames)
 
 	oldCalls := existing.Calls
 	newCalls := cand.calls
@@ -56,6 +56,9 @@ func RunShadowDiff(mode string, existing ToolCallParseResult) ShadowDiffRecord {
 			"new_call_count", rec.NewCallCount,
 			"old_saw_syntax", rec.OldSawSyntax,
 			"new_saw_syntax", rec.NewSawSyntax,
+			"new_parse_path", cand.parsePath,
+			"new_ambiguous", cand.ambiguous,
+			"new_whitelist_hit", cand.nameWhitelistHit,
 		)
 	}
 

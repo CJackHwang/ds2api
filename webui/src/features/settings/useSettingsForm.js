@@ -19,6 +19,7 @@ const DEFAULT_FORM = {
     current_input_file: { enabled: true, min_chars: 0 },
     thinking_injection: { enabled: true, prompt: '', default_prompt: '' },
     model_aliases_text: '{}',
+    parser_v2: { mode: 'off', env_override: false },
 }
 
 function parseJSONMap(raw, fieldName, t) {
@@ -78,6 +79,10 @@ function fromServerForm(data) {
             default_prompt: data.thinking_injection?.default_prompt || '',
         },
         model_aliases_text: JSON.stringify(data.model_aliases || {}, null, 2),
+        parser_v2: {
+            mode: String(data.parser_v2?.mode || 'off'),
+            env_override: Boolean(data.parser_v2?.env_override),
+        },
     }
 }
 

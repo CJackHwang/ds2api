@@ -595,12 +595,32 @@ sudo systemctl stop ds2api
 
 ### Admin 鉴权配置
 
-**DS2API 默认使用不安全的 admin key `"admin"`**，如未配置会在每次鉴权时打印 `ERROR` 级日志。生产环境必须通过以下任一方式配置：
+**DS2API 采用 fail-closed 策略**：若未配置任何 admin 凭证，服务启动时会直接报错退出（而非静默使用默认值 `"admin"`）。生产环境必须通过以下任一方式配置：
 
 - **推荐**：在 `config.json` 的 `admin.password_hash` 填入哈希值（通过 WebUI Admin 页面生成）
 - 或设置环境变量 `DS2API_ADMIN_KEY=<强密钥>`
 
-未配置时，服务**可正常启动**但每次 admin 请求都会打印安全警告。建议在自动化部署中监控此类 `ERROR` 日志以快速发现配置缺失。
+#### 本地 / CI 环境允许无凭证启动
+
+开发或 CI 场景下若暂不配置凭证，需显式 opt-in：
+
+- **环境变量**（推荐）：
+  ```bash
+  DS2API_ALLOW_DEFAULT_ADMIN_KEY=true
+  # 支持的真值：1 / true / yes / on
+  # 支持的假值：0 / false / no / off（不填则 fail-closed）
+  ```
+
+- **配置文件**（`config.json` / `DS2API_CONFIG_JSON`）：
+  ```json
+  {
+    "admin": { "allow_default_admin_key": true }
+  }
+  ```
+
+启用后服务可正常启动，但每次启动会打印 `ERROR` 级安全警告。**生产环境请勿启用此选项**，应直接配置强凭证。
+
+> 环境变量优先级高于配置文件；两者均未设置时默认 `false`（fail-closed）。
 
 #### 密码哈希算法（bcrypt 默认 / sha256 透明迁移）
 
@@ -613,6 +633,73 @@ sudo systemctl stop ds2api
 > **建议**：若 `DS2API_JWT_SECRET` 未独立设置，JWT 派生 secret 会回退到 password hash；为避免迁移瞬间作废所有 token，可显式配置 `DS2API_JWT_SECRET=<独立强随机字符串>`。
 >
 > **Query key 警告**：Gemini 兼容路径支持 `?key=` / `?api_key=` 作为 fallback 凭证。该参数会出现在反向代理 / Vercel / 网关的 HTTP 访问日志中，**不建议生产环境使用**；优先通过 `Authorization: Bearer <key>` 头传递凭证。
+>
+> **如何关停 query key fallback**：自 M1 起，可通过以下任一方式显式禁用，禁用后请求只能通过 `Authorization: Bearer …` / `x-api-key` / `x-goog-api-key` 等 header 携带凭证，否则一律按 401 拒绝。
+>
+> - 环境变量（推荐用于容器 / Vercel）：
+>
+>   ```bash
+>   DS2API_ALLOW_GEMINI_QUERY_KEY=false
+>   # 支持的真值：1 / true / yes / on
+>   # 支持的假值：0 / false / no / off（任何其它值会被忽略并回落到 config / 默认值）
+>   ```
+>
+> - 配置文件（`config.json` / `DS2API_CONFIG_JSON`）：
+>
+>   ```json
+>   {
+>     "auth": { "allow_gemini_query_key": false }
+>   }
+>   ```
+>
+> 环境变量优先级高于配置文件；未设置且无配置时默认 `true`，保持 AI Studio 兼容。
+
+---
+
+## CORS 跨域配置
+
+DS2API 的 CORS 中间件（`internal/server/router.go:corsMiddleware`）默认对所有来源开放，便于本地开发与第三方客户端调试。**生产部署强烈建议显式配置 allowlist**，仅放行受信前端来源。
+
+### 行为概览
+
+- 请求**无 `Origin` 头**（如 curl、服务端到服务端调用）：响应 `Access-Control-Allow-Origin: *`，不受 allowlist 影响。
+- 请求**带 `Origin` 头**：
+  - **未配置 allowlist**：原样回显 Origin（兼容模式）。
+  - **配置了 allowlist**：仅当 Origin 命中列表时回显；否则**不下发** `Access-Control-Allow-Origin`，浏览器会按同源策略阻断。
+- 内部头 `x-ds2-internal-token` 始终被 CORS 屏蔽，不会出现在 `Access-Control-Allow-Headers` 中。
+- 响应始终带 `Vary: Origin`，避免缓存把"被阻断的响应"投递给受信 Origin。
+
+### 配置入口
+
+**配置文件**（`config.json` / `DS2API_CONFIG_JSON`）：
+
+```json
+{
+  "cors": {
+    "allow_origins": [
+      "https://app.example.com",
+      "https://admin.example.com"
+    ]
+  }
+}
+```
+
+- 字段 `cors.allow_origins` 是字符串数组。
+- 匹配采用 **小写完整字符串相等**（中间件先将请求 Origin 做 `strings.ToLower(strings.TrimSpace(...))`）。
+- 不支持通配符 / 子域模糊匹配；如需放行 `https://*.example.com`，请逐条枚举或在前置反代里集中收敛。
+
+环境变量整体覆盖：通过 `DS2API_CONFIG_JSON` 一次性传入完整 JSON 即可，无独立 `DS2API_CORS_*` 变量。
+
+### 生产部署建议
+
+- **务必配置 allowlist**：未配置时任何带 Origin 的请求都会被回显，等同于 `Access-Control-Allow-Origin: *` 的副本，**这不是生产安全的默认值**。
+- 同时为 Admin / 用户前端 / 第三方 client 三类来源列出独立条目，便于审计与下线。
+- 与上游反代（Nginx / Caddy / Cloudflare）的 CORS 设置叠加时，建议**只在 DS2API 这一层下发 CORS 头**，避免双重写入互相覆盖。
+
+### 验证
+
+- 命中：`curl -H 'Origin: https://app.example.com' -i https://<your-host>/v1/chat/completions -X OPTIONS` 应收到 `Access-Control-Allow-Origin: https://app.example.com`。
+- 未命中：`curl -H 'Origin: https://evil.example.com' -i https://<your-host>/v1/chat/completions -X OPTIONS` 应**不带** `Access-Control-Allow-Origin`，仅有 `Vary: Origin`。
 
 ---
 
