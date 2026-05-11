@@ -147,11 +147,6 @@ func filterToolCallsDetailed(parsed []ParsedToolCall) ([]ParsedToolCall, []strin
 	return out, nil
 }
 
-func looksLikeToolCallSyntax(text string) bool {
-	hasDSML, hasCanonical := ContainsToolCallWrapperSyntaxOutsideIgnored(text)
-	return hasDSML || hasCanonical
-}
-
 func stripFencedCodeBlocks(text string) string {
 	if text == "" {
 		return ""

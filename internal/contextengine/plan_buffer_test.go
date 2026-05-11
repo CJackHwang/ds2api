@@ -116,6 +116,15 @@ func TestPlanBuffer_NilSafe(t *testing.T) {
 	buf.Clear()
 }
 
+func TestPlanBuffer_NilWarningsPreserved(t *testing.T) {
+	buf := NewPlanBuffer(5)
+	buf.Push(makePlan("plan_no_warn", 1, 0, 5, false, nil))
+	snap := buf.Snapshot()
+	if snap[0].Warnings != nil {
+		t.Errorf("nil warnings should be preserved, got %v", snap[0].Warnings)
+	}
+}
+
 func TestNewPlanBuffer_ClampCap(t *testing.T) {
 	b0 := NewPlanBuffer(0)
 	if b0.Cap() != defaultPlanBufferCap {

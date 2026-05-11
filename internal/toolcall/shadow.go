@@ -58,7 +58,6 @@ func RunShadowDiff(mode string, existing ToolCallParseResult) ShadowDiffRecord {
 			"new_saw_syntax", rec.NewSawSyntax,
 			"new_parse_path", cand.parsePath,
 			"new_ambiguous", cand.ambiguous,
-			"new_whitelist_hit", cand.nameWhitelistHit,
 		)
 	}
 

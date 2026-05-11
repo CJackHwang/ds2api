@@ -62,10 +62,6 @@ func (b *PlanBuffer) Push(plan ContextPlan) {
 	if b == nil {
 		return
 	}
-	warnings := plan.Warnings
-	if warnings == nil {
-		warnings = []string{}
-	}
 	summary := PlanSummary{
 		PlanID:              plan.PlanID,
 		CapturedAt:          time.Now().Unix(),
@@ -74,7 +70,7 @@ func (b *PlanBuffer) Push(plan ContextPlan) {
 		TokenBudgetUsed:     plan.TokenBudget.Used,
 		TokenBudgetLimit:    plan.TokenBudget.Budget,
 		TokenBudgetOverflow: plan.TokenBudget.Overflow,
-		Warnings:            warnings,
+		Warnings:            plan.Warnings,
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()

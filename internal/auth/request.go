@@ -227,19 +227,6 @@ func (r *Resolver) Release(a *RequestAuth) {
 	r.Pool.Release(a.AccountID)
 }
 
-// extractCallerToken is the package-level helper retained for unit tests that
-// exercise header parsing in isolation. It preserves the historical default
-// behaviour of accepting Gemini-style `?key=` / `?api_key=` query parameters
-// as a fallback credential.
-//
-// Production resolution goes through (*Resolver).extractCallerToken, which
-// consults config.auth.allow_gemini_query_key (and the
-// DS2API_ALLOW_GEMINI_QUERY_KEY env var) to decide whether the query-key
-// fallback is honoured.
-func extractCallerToken(req *http.Request) string {
-	return extractCallerTokenCore(req, true)
-}
-
 // extractCallerToken on the resolver consults the configured policy to decide
 // whether to honour the Gemini-compatible query-key fallback.
 func (r *Resolver) extractCallerToken(req *http.Request) string {
