@@ -16,16 +16,16 @@ type ShadowDiffRecord struct {
 	NewSawSyntax bool
 }
 
-// RunShadowDiff runs buildParseCandidate on rawText and compares it against
-// existing. It is a no-op when mode != "shadow". Diffs are written to
-// structured logs under the key [parser_shadow_diff]; they are never exposed
-// to callers.
-func RunShadowDiff(rawText, mode string, existing ToolCallParseResult) ShadowDiffRecord {
+// RunShadowDiff runs buildParseCandidate on the same source text that produced
+// existing (existing.SourceText) and compares the results. It is a no-op when
+// mode != "shadow". Diffs are written to structured logs under the key
+// [parser_shadow_diff]; they are never exposed to callers.
+func RunShadowDiff(mode string, existing ToolCallParseResult) ShadowDiffRecord {
 	if mode != "shadow" {
 		return ShadowDiffRecord{}
 	}
 
-	cand := buildParseCandidate(rawText)
+	cand := buildParseCandidate(existing.SourceText)
 
 	oldCalls := existing.Calls
 	newCalls := cand.calls
