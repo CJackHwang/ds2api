@@ -19,6 +19,10 @@ type ToolCallParseResult struct {
 	// the thinking block. RunShadowDiff uses this to ensure both sides
 	// compare against the same input.
 	SourceText string
+	// AvailableNames is the tool-name list passed to the parser. Stored here
+	// so RunShadowDiff can replay buildParseCandidate with the same input
+	// and obtain a valid nameWhitelistHit confidence signal.
+	AvailableNames []string
 }
 
 func ParseToolCalls(text string, availableToolNames []string) []ParsedToolCall {
@@ -78,6 +82,7 @@ func (c parseCandidate) toResult() ToolCallParseResult {
 func parseToolCallsDetailedXMLOnly(text string, availableNames []string) ToolCallParseResult {
 	r := buildParseCandidate(text, availableNames).toResult()
 	r.SourceText = text
+	r.AvailableNames = availableNames
 	return r
 }
 

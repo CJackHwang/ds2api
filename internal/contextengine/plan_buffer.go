@@ -13,22 +13,25 @@ const (
 // PlanSummary is a lightweight, JSON-serialisable record stored in PlanBuffer.
 // It intentionally omits segment content to keep memory usage bounded.
 type PlanSummary struct {
-	PlanID            string           `json:"plan_id"`
-	CapturedAt        int64            `json:"captured_at"`
-	SegmentsIncluded  int              `json:"segments_included"`
-	SegmentsTrimmed   int              `json:"segments_trimmed"`
-	TokenBudgetUsed   int              `json:"token_budget_used"`
-	TokenBudgetLimit  int              `json:"token_budget_limit"`
-	TokenBudgetOverflow bool           `json:"token_budget_overflow"`
-	Warnings          []string         `json:"warnings,omitempty"`
+	PlanID              string   `json:"plan_id"`
+	CapturedAt          int64    `json:"captured_at"`
+	SegmentsIncluded    int      `json:"segments_included"`
+	SegmentsTrimmed     int      `json:"segments_trimmed"`
+	TokenBudgetUsed     int      `json:"token_budget_used"`
+	TokenBudgetLimit    int      `json:"token_budget_limit"`
+	TokenBudgetOverflow bool     `json:"token_budget_overflow"`
+	Warnings            []string `json:"warnings,omitempty"`
 }
 
-// PlanBuffer is a thread-safe fixed-capacity LIFO ring buffer of PlanSummary
-// entries. When full, the oldest entry is silently dropped.
+// PlanBuffer is a thread-safe fixed-capacity ring buffer of PlanSummary
+// entries. Push is O(1). When full, the oldest entry is silently overwritten.
+// Snapshot and Len hold a read lock and do not block concurrent reads.
 type PlanBuffer struct {
-	mu    sync.Mutex
-	cap   int
-	items []PlanSummary
+	mu     sync.RWMutex
+	bufcap int // fixed capacity; immutable after construction
+	buf    []PlanSummary
+	head   int // index of the next-write slot (wraps around)
+	count  int // number of valid entries (0 ≤ count ≤ bufcap)
 }
 
 var (
@@ -53,11 +56,11 @@ func NewPlanBuffer(cap int) *PlanBuffer {
 	if cap > maxPlanBufferCap {
 		cap = maxPlanBufferCap
 	}
-	return &PlanBuffer{cap: cap, items: make([]PlanSummary, 0, cap)}
+	return &PlanBuffer{bufcap: cap, buf: make([]PlanSummary, cap)}
 }
 
-// Push inserts a new entry at the front (newest first). If the buffer is at
-// capacity, the oldest entry (last element) is dropped.
+// Push inserts a new entry. O(1): writes directly into the ring slot and
+// advances head. When the buffer is full the oldest entry is overwritten.
 func (b *PlanBuffer) Push(plan ContextPlan) {
 	if b == nil {
 		return
@@ -74,9 +77,10 @@ func (b *PlanBuffer) Push(plan ContextPlan) {
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	b.items = append([]PlanSummary{summary}, b.items...)
-	if len(b.items) > b.cap {
-		b.items = b.items[:b.cap]
+	b.buf[b.head] = summary
+	b.head = (b.head + 1) % b.bufcap
+	if b.count < b.bufcap {
+		b.count++
 	}
 }
 
@@ -85,10 +89,17 @@ func (b *PlanBuffer) Snapshot() []PlanSummary {
 	if b == nil {
 		return nil
 	}
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	out := make([]PlanSummary, len(b.items))
-	copy(out, b.items)
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	if b.count == 0 {
+		return []PlanSummary{}
+	}
+	out := make([]PlanSummary, b.count)
+	for i := 0; i < b.count; i++ {
+		// head points to the next-write slot, so (head-1) is the newest entry.
+		idx := ((b.head-1-i)%b.bufcap + b.bufcap) % b.bufcap
+		out[i] = b.buf[idx]
+	}
 	return out
 }
 
@@ -97,9 +108,9 @@ func (b *PlanBuffer) Len() int {
 	if b == nil {
 		return 0
 	}
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	return len(b.items)
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	return b.count
 }
 
 // Cap returns the configured capacity.
@@ -107,7 +118,7 @@ func (b *PlanBuffer) Cap() int {
 	if b == nil {
 		return 0
 	}
-	return b.cap
+	return b.bufcap // immutable after construction; no lock needed
 }
 
 // Clear removes all stored entries.
@@ -117,5 +128,6 @@ func (b *PlanBuffer) Clear() {
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	b.items = b.items[:0]
+	b.head = 0
+	b.count = 0
 }

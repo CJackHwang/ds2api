@@ -173,6 +173,8 @@ Gemini 兼容客户端还可以使用 `x-goog-api-key`、`?key=` 或 `?api_key=`
 | DELETE | `/admin/chat-history/{id}` | Admin | 删除单条服务器端对话记录 |
 | PUT | `/admin/chat-history/settings` | Admin | 更新对话记录保留条数 |
 | GET | `/admin/version` | Admin | 查询当前版本与最新 Release |
+| GET | `/admin/context-plans` | Admin | 查看上下文引擎计划摘要环形缓冲（最近 50 条，仅内存） |
+| DELETE | `/admin/context-plans` | Admin | 清空上下文引擎计划摘要缓冲 |
 
 OpenAI `/v1/*` 仍是规范路径。对于只配置 DS2API 根地址的客户端，同一套 OpenAI handler 也通过根路径快捷路由暴露：`/models`、`/models/{id}`、`/chat/completions`、`/responses`、`/responses/{response_id}`、`/embeddings`、`/files`、`/files/{file_id}`。
 
@@ -778,6 +780,7 @@ data: {"type":"message_stop"}
 - `thinking_injection`（`enabled` 默认返回 `true`、`prompt`、`default_prompt`）
 - `model_aliases`
 - `env_backed`、`needs_vercel_sync`
+- `parser_v2`（`mode`：`off` / `shadow` / `enforce`；`env_override`：是否被环境变量覆盖；只读，不接受 PUT 写入）
 - `toolcall` 策略已固定为 `feature_match + high`，不再通过 settings 返回或修改
 
 ### `PUT /admin/settings`
@@ -1233,6 +1236,30 @@ data: {"type":"message_stop"}
 
 ```json
 {"success":true,"detail":"capture logs cleared"}
+```
+
+### `GET /admin/context-plans`
+
+读取上下文引擎（Context Engine）在 shadow 模式下生成的计划摘要环形缓冲，最多保留最近 50 条，重启后清空。
+
+返回字段：
+
+- `count` — 当前缓冲条数
+- `capacity` — 缓冲容量（默认 50）
+- `items` — 摘要列表（最新在前），每条包含：
+  - `plan_id`、`captured_at`（Unix 时间戳）
+  - `segments_included` / `segments_trimmed`
+  - `token_budget_used` / `token_budget_limit` / `token_budget_overflow`
+  - `warnings`（若有）
+
+此接口仅在 `parser.context_engine.mode = shadow` 时有意义；其他模式下缓冲始终为空。
+
+### `DELETE /admin/context-plans`
+
+清空上下文引擎计划摘要缓冲，返回：
+
+```json
+{"success":true,"detail":"context plan buffer cleared"}
 ```
 
 ---

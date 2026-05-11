@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"runtime"
+	"slices"
 	"strings"
 	"time"
 
@@ -225,7 +226,7 @@ func setCORSHeaders(w http.ResponseWriter, r *http.Request, allowList []string) 
 		// Allowlist configured: always vary by Origin so caches don't serve a
 		// blocked-origin response to a trusted origin.
 		addVaryHeaderToken(w.Header(), "Origin")
-		if containsString(allowList, origin) {
+		if slices.Contains(allowList, origin) {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 		}
 		// Non-matching origin: no ACAO header → browser will block.
@@ -342,15 +343,6 @@ func addVaryHeaderToken(h http.Header, token string) {
 		merged = append(merged, token)
 	}
 	h.Set("Vary", strings.Join(merged, ", "))
-}
-
-func containsString(slice []string, s string) bool {
-	for _, v := range slice {
-		if v == s {
-			return true
-		}
-	}
-	return false
 }
 
 func WriteUnhandledError(w http.ResponseWriter, err error) {

@@ -5,8 +5,8 @@
 // Each Redact* helper targets a specific class of sensitive information:
 //   - RedactAPIKey:  api_key / x-api-key / apikey JSON fields.
 //   - RedactToken:   Authorization "Bearer …" plus token-family JSON fields
-//                    (token / access_token / refresh_token / id_token /
-//                    auth_token / bearer_token / session_token).
+//     (token / access_token / refresh_token / id_token /
+//     auth_token / bearer_token / session_token).
 //   - RedactEmail:   email / e_mail / mail / email_address JSON fields.
 //   - RedactMobile:  mobile / phone / tel / phone_number JSON fields.
 //
@@ -42,7 +42,7 @@ var (
 	// anywhere a JSON string can carry an Authorization header (including
 	// devcapture-recorded request headers). Group 1 keeps the literal
 	// "Bearer " (case-preserved) so the scheme stays visible.
-	reBearer = regexp.MustCompile(`(?i)(Bearer\s+)[A-Za-z0-9._\-+/=]+`)
+	reBearer = regexp.MustCompile(`(?i)(Bearer\s+)[A-Za-z0-9._~\-+/=]+`)
 
 	// Email-family JSON field values.
 	reEmailField = fieldValueRedactor(`email|e[_-]mail|mail|email[_-]address`)

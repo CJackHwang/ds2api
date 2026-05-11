@@ -119,6 +119,11 @@ func TestRedactToken(t *testing.T) {
 			want: `{"id-token":"<redacted>"}`,
 		},
 		{
+			name: "bearer token with tilde (RFC 6750 token68 charset)",
+			in:   `{"Authorization":"Bearer abc~def"}`,
+			want: `{"Authorization":"Bearer <redacted>"}`,
+		},
+		{
 			name: "non-bearer scheme left alone (only Bearer is redacted)",
 			in:   `{"Authorization":"Basic dXNlcjpwYXNz"}`,
 			want: `{"Authorization":"Basic dXNlcjpwYXNz"}`,
