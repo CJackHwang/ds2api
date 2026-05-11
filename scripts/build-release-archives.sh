@@ -58,7 +58,7 @@ select_targets() {
     done
     echo "" >&2
     echo "输入序号（空格分隔，如 4 5）：" >&2
-    read -r choices
+    read -r choices </dev/tty
     for num in $choices; do
       local target="${DS2API_RELEASE_TARGETS[$((num-1))]:-}"
       if [[ -n "$target" ]]; then
