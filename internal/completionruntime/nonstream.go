@@ -124,6 +124,7 @@ func ExecuteNonStreamStartedWithRetry(ctx context.Context, ds DeepSeekCaller, a 
 				if switched.Response != nil {
 					config.Logger.Info("[completion_runtime_account_switch_retry] retrying after 429", "surface", stdReq.Surface, "stream", false, "account", a.AccountID)
 					observe.IncrAccountSwitch(ctx)
+					observe.SetAccount(ctx, a.AccountID)
 					sessionID = switched.SessionID
 					payload = switched.Payload
 					pow = switched.Pow
@@ -165,6 +166,7 @@ func ExecuteNonStreamStartedWithRetry(ctx context.Context, ds DeepSeekCaller, a 
 				if switched.Response != nil {
 					config.Logger.Info("[completion_runtime_account_switch_retry] retrying after 429", "surface", stdReq.Surface, "stream", false, "account", a.AccountID)
 					observe.IncrAccountSwitch(ctx)
+					observe.SetAccount(ctx, a.AccountID)
 					sessionID = switched.SessionID
 					payload = switched.Payload
 					pow = switched.Pow

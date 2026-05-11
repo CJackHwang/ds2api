@@ -46,7 +46,13 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 		} else {
 			// Persist the new hash before minting the JWT so the token is
 			// signed under the post-migration secret.
+			// Re-check inside Update: a concurrent login may have already
+			// written a bcrypt hash, in which case we must not overwrite it
+			// (each bcrypt call produces a different salt).
 			if err := h.Store.Update(func(c *config.Config) error {
+				if strings.HasPrefix(strings.TrimSpace(c.Admin.PasswordHash), "bcrypt:") {
+					return nil // already upgraded by a concurrent request
+				}
 				c.Admin.PasswordHash = upgradedHash
 				return nil
 			}); err != nil {

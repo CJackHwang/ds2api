@@ -51,6 +51,9 @@ func (c Config) MarshalJSON() ([]byte, error) {
 	if strings.TrimSpace(c.Vercel.Token) != "" || strings.TrimSpace(c.Vercel.ProjectID) != "" || strings.TrimSpace(c.Vercel.TeamID) != "" {
 		m["vercel"] = NormalizeVercelConfig(c.Vercel)
 	}
+	if len(c.CORS.AllowOrigins) > 0 {
+		m["cors"] = c.CORS
+	}
 	if strings.TrimSpace(c.ContextEngine.Mode) != "" {
 		m["context_engine"] = c.ContextEngine
 	}
@@ -131,6 +134,10 @@ func (c *Config) UnmarshalJSON(b []byte) error {
 			if err := json.Unmarshal(v, &c.ThinkingInjection); err != nil {
 				return fmt.Errorf("invalid field %q: %w", k, err)
 			}
+		case "cors":
+			if err := json.Unmarshal(v, &c.CORS); err != nil {
+				return fmt.Errorf("invalid field %q: %w", k, err)
+			}
 		case "context_engine":
 			if err := json.Unmarshal(v, &c.ContextEngine); err != nil {
 				return fmt.Errorf("invalid field %q: %w", k, err)
@@ -179,6 +186,7 @@ func (c Config) Clone() Config {
 			Prompt:  c.ThinkingInjection.Prompt,
 		},
 		Vercel:           c.Vercel,
+		CORS:             CORSConfig{AllowOrigins: slices.Clone(c.CORS.AllowOrigins)},
 		ContextEngine:    c.ContextEngine,
 		VercelSyncHash:   c.VercelSyncHash,
 		VercelSyncTime:   c.VercelSyncTime,
