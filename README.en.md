@@ -311,6 +311,8 @@ The server actually binds to `0.0.0.0:5001`, so devices on the same LAN can usua
 
 > **WebUI auto-build**: On first local startup, if the WebUI static directory is missing, DS2API auto-runs `npm ci --prefix webui` (only when dependencies are missing) and `npm run build --prefix webui -- --outDir static/admin --emptyOutDir` (requires Node.js; `DS2API_STATIC_ADMIN_DIR` can override the static directory). You can also build manually: `./scripts/build-webui.sh`
 
+> **WebUI dev server**: If you want to start the frontend dev server separately (repo root: `npm run dev --prefix webui`; in webui/: `npm run dev` or `pnpm run dev`), the Vite proxy target is controlled by `VITE_API_BASE_URL` in `webui/.env`.
+
 ## Configuration
 
 `README` keeps only the onboarding path. Use [config.example.json](config.example.json) as the field template, and see the [deployment guide](docs/DEPLOY.en.md#0-prerequisites) plus [API configuration notes](API.en.md#configuration-best-practice) for full details.
@@ -418,7 +420,14 @@ Quick commands:
 ./scripts/lint.sh
 ./tests/scripts/check-refactor-line-gate.sh
 ./tests/scripts/run-unit-all.sh
+# From repo root
 npm run build --prefix webui
+# Or in webui/
+npm run build
+# Or
+pnpm run build
+
+
 
 # Live end-to-end tests (real accounts, full request/response logs)
 ./tests/scripts/run-live.sh

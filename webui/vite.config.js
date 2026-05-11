@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -6,7 +6,11 @@ import { fileURLToPath } from 'node:url'
 const webuiDir = dirname(fileURLToPath(import.meta.url))
 const repoRoot = resolve(webuiDir, '..')
 
-export default defineConfig(({ mode }) => ({
+export default defineConfig(({ mode }) => {
+    const env = loadEnv(mode, webuiDir, '')
+    const backendUrl = env.VITE_API_BASE_URL || 'http://localhost:5001'
+
+    return ({
     plugins: [
         react(),
     ],
@@ -18,7 +22,7 @@ export default defineConfig(({ mode }) => ({
         proxy: {
             // 代理 /admin 下的 API 请求到后端
             '/admin': {
-                target: 'http://localhost:5001',
+                target: backendUrl,
                 changeOrigin: true,
                 // 只代理 API 请求，页面请求返回 false 让 Vite 处理
                 bypass(req, res, proxyOptions) {
@@ -34,7 +38,7 @@ export default defineConfig(({ mode }) => ({
                 },
             },
             '/v1': {
-                target: 'http://localhost:5001',
+                target: backendUrl,
                 changeOrigin: true,
             },
         },
@@ -45,4 +49,5 @@ export default defineConfig(({ mode }) => ({
     },
     // Use / for dev, /admin/ for production build
     base: mode === 'production' ? '/admin/' : '/',
-}))
+    })
+})

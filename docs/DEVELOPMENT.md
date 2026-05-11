@@ -13,10 +13,20 @@
 go run ./cmd/ds2api
 
 # WebUI 开发服务器
+# 从仓库根目录
 npm run dev --prefix webui
+# 或在 webui 目录下
+npm run dev
+# 或
+pnpm run dev
 
 # WebUI 生产构建
+# 从仓库根目录
 npm run build --prefix webui
+# 或在 webui 目录下
+npm run build
+# 或
+pnpm run build
 ```
 
 PR 前固定门禁：
@@ -25,7 +35,12 @@ PR 前固定门禁：
 ./scripts/lint.sh
 ./tests/scripts/check-refactor-line-gate.sh
 ./tests/scripts/run-unit-all.sh
+# 从仓库根目录
 npm run build --prefix webui
+# 或在 webui 目录下
+npm run build
+# 或
+pnpm run build
 ```
 
 修改 Go 文件后先运行：
@@ -95,7 +110,10 @@ go test ./internal/<package> -count=1
 前端改动：
 
 ```bash
+# 从仓库根目录
 npm run build --prefix webui
+# 或在 webui 目录下
+npm run build 或 pnpm run build
 ```
 
 高风险协议或流式改动：

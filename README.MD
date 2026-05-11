@@ -323,6 +323,8 @@ go run ./cmd/ds2api
 
 > **WebUI 自动构建**：本地首次启动时，若 WebUI 静态目录不存在，会自动尝试执行 `npm ci --prefix webui`（仅在缺少依赖时）和 `npm run build --prefix webui -- --outDir static/admin --emptyOutDir`（需要本机有 Node.js 和 npm；静态目录可用 `DS2API_STATIC_ADMIN_DIR` 覆盖）。你也可以手动构建：`./scripts/build-webui.sh`
 
+> **WebUI 开发服务器**：如需单独启动前端开发服务器（根目录: `npm run dev --prefix webui`；webui/ 目录: `npm run dev` 或 `pnpm run dev`），Vite 代理后端地址由 `webui/.env` 中的 `VITE_API_BASE_URL` 控制。
+
 ## 配置说明
 
 `README` 只保留快速入口，完整字段请以 [config.example.json](config.example.json) 为模板，并参考 [部署指南](docs/DEPLOY.md#0-前置要求) 与 [API 配置最佳实践](API.md#配置最佳实践)。
@@ -434,7 +436,12 @@ go run ./cmd/ds2api
 ./scripts/lint.sh
 ./tests/scripts/check-refactor-line-gate.sh
 ./tests/scripts/run-unit-all.sh
+# 从仓库根目录
 npm run build --prefix webui
+# 或在 webui 目录下
+npm run build
+# 或
+pnpm run build
 
 # 端到端全链路测试（真实账号，生成完整请求/响应日志）
 ./tests/scripts/run-live.sh

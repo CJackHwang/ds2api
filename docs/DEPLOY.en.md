@@ -454,6 +454,9 @@ Or step by step:
 cd webui
 npm ci
 npm run build
+# or pnpm
+pnpm install
+pnpm run build
 # Output goes to static/admin/
 ```
 

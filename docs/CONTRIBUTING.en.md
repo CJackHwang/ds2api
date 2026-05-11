@@ -36,10 +36,16 @@ go run ./cmd/ds2api
 cd webui
 
 # 2. Install dependencies
+# npm
 npm ci
+# or pnpm
+pnpm install
 
 # 3. Start dev server (hot reload)
+# npm (already in webui/)
 npm run dev
+# or pnpm
+pnpm run dev
 # Default: http://localhost:5173, auto-proxies API to backend
 # host: 0.0.0.0 is not configured, so LAN access is not enabled by default
 ```
@@ -91,7 +97,10 @@ Manually build WebUI to `static/admin/`:
 ./scripts/lint.sh
 ./tests/scripts/check-refactor-line-gate.sh
 ./tests/scripts/run-unit-all.sh
+# From repo root
 npm run build --prefix webui
+# Or in webui/
+npm run build or pnpm run build
 
 # End-to-end live tests (real accounts; recommended for releases or high-risk changes)
 ./tests/scripts/run-live.sh

@@ -36,10 +36,16 @@ go run ./cmd/ds2api
 cd webui
 
 # 2. 安装依赖
+# npm
 npm ci
+# 或 pnpm
+pnpm install
 
 # 3. 启动开发服务器（热更新）
+# npm（已在 webui/ 目录下）
 npm run dev
+# 或 pnpm
+pnpm run dev
 # 默认监听 http://localhost:5173，自动代理 API 到后端
 # 当前未配置 host: 0.0.0.0，因此默认不对局域网开放
 ```
@@ -91,7 +97,10 @@ I/O 类清理调用（如 `Close`、`Flush`、`Sync`）的错误不要直接忽�
 ./scripts/lint.sh
 ./tests/scripts/check-refactor-line-gate.sh
 ./tests/scripts/run-unit-all.sh
+# 从仓库根目录
 npm run build --prefix webui
+# 或在 webui 目录下
+npm run build 或 pnpm run build
 
 # 端到端全链路测试（真实账号，发布或高风险改动时建议执行）
 ./tests/scripts/run-live.sh
