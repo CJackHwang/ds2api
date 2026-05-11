@@ -39,6 +39,8 @@ internal/webui/assets/admin/
 # Go compiled binaries
 ds2api
 ds2api-tests
+ds2api_*
+!ds2api_*.go
 
 # Environment
 .env.local
