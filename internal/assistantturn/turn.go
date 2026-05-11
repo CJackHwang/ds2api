@@ -99,6 +99,7 @@ func BuildTurnFromCollected(result sse.CollectResult, opts BuildOptions) Turn {
 	}
 
 	parsed := shared.DetectAssistantToolCalls(result.Text, text, result.Thinking, result.ToolDetectionThinking, opts.ToolNames)
+	parsedBeforeNorm := parsed
 	calls := toolcall.NormalizeParsedToolCallsForSchemas(parsed.Calls, opts.ToolsRaw)
 	parsed.Calls = calls
 
@@ -130,7 +131,7 @@ func BuildTurnFromCollected(result sse.CollectResult, opts BuildOptions) Turn {
 	if turn.Error != nil {
 		turn.StopReason = StopReasonError
 	}
-	toolcall.RunShadowDiff(result.Text, opts.ParserV2Mode, parsed)
+	toolcall.RunShadowDiff(opts.ParserV2Mode, parsedBeforeNorm)
 	return turn
 }
 
@@ -142,6 +143,7 @@ func BuildTurnFromStreamSnapshot(snapshot StreamSnapshot, opts BuildOptions) Tur
 	}
 
 	parsed := shared.DetectAssistantToolCalls(snapshot.RawText, text, snapshot.RawThinking, snapshot.DetectionThinking, opts.ToolNames)
+	parsedBeforeNorm := parsed
 	calls := parsed.Calls
 	if len(calls) == 0 && len(snapshot.AdditionalToolCalls) > 0 {
 		calls = snapshot.AdditionalToolCalls
@@ -179,7 +181,7 @@ func BuildTurnFromStreamSnapshot(snapshot StreamSnapshot, opts BuildOptions) Tur
 	if turn.Error != nil && len(calls) == 0 {
 		turn.StopReason = StopReasonError
 	}
-	toolcall.RunShadowDiff(snapshot.RawText, opts.ParserV2Mode, parsed)
+	toolcall.RunShadowDiff(opts.ParserV2Mode, parsedBeforeNorm)
 	return turn
 }
 

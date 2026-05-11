@@ -4,7 +4,7 @@ import "testing"
 
 func TestRunShadowDiff_ModeOff_DoesNotRun(t *testing.T) {
 	existing := ToolCallParseResult{Calls: []ParsedToolCall{{Name: "foo", Input: map[string]any{}}}}
-	rec := RunShadowDiff("anything", "off", existing)
+	rec := RunShadowDiff("off", existing)
 	if rec.Ran {
 		t.Error("expected shadow diff not to run when mode=off")
 	}
@@ -15,7 +15,7 @@ func TestRunShadowDiff_ModeOff_DoesNotRun(t *testing.T) {
 
 func TestRunShadowDiff_ModeEnforce_DoesNotRun(t *testing.T) {
 	existing := ToolCallParseResult{}
-	rec := RunShadowDiff("anything", "enforce", existing)
+	rec := RunShadowDiff("enforce", existing)
 	if rec.Ran {
 		t.Error("expected shadow diff not to run when mode=enforce")
 	}
@@ -24,7 +24,7 @@ func TestRunShadowDiff_ModeEnforce_DoesNotRun(t *testing.T) {
 func TestRunShadowDiff_NoDiff_ConsistentResult(t *testing.T) {
 	text := `<tool_calls><invoke name="search"><parameter name="q">hello</parameter></invoke></tool_calls>`
 	existing := ParseStandaloneToolCallsDetailed(text, nil)
-	rec := RunShadowDiff(text, "shadow", existing)
+	rec := RunShadowDiff("shadow", existing)
 	if !rec.Ran {
 		t.Error("expected shadow diff to run in shadow mode")
 	}
@@ -37,8 +37,8 @@ func TestRunShadowDiff_NoDiff_ConsistentResult(t *testing.T) {
 }
 
 func TestRunShadowDiff_NoDiff_EmptyText(t *testing.T) {
-	existing := ToolCallParseResult{}
-	rec := RunShadowDiff("", "shadow", existing)
+	existing := ToolCallParseResult{SourceText: ""}
+	rec := RunShadowDiff("shadow", existing)
 	if !rec.Ran {
 		t.Error("expected shadow diff to run")
 	}
@@ -49,11 +49,14 @@ func TestRunShadowDiff_NoDiff_EmptyText(t *testing.T) {
 
 func TestRunShadowDiff_HasDiff_CallCountMismatch(t *testing.T) {
 	text := `<tool_calls><invoke name="search"><parameter name="q">hello</parameter></invoke></tool_calls>`
+	// existing claims 0 calls but SourceText contains a tool call — simulates
+	// a future parser divergence where old parser missed the call.
 	existing := ToolCallParseResult{
 		Calls:             []ParsedToolCall{},
 		SawToolCallSyntax: false,
+		SourceText:        text,
 	}
-	rec := RunShadowDiff(text, "shadow", existing)
+	rec := RunShadowDiff("shadow", existing)
 	if !rec.Ran {
 		t.Error("expected shadow diff to run")
 	}
@@ -73,12 +76,48 @@ func TestRunShadowDiff_HasDiff_SyntaxMismatch(t *testing.T) {
 	existing := ToolCallParseResult{
 		Calls:             []ParsedToolCall{{Name: "search", Input: map[string]any{"q": "test"}}},
 		SawToolCallSyntax: false,
+		SourceText:        text,
 	}
-	rec := RunShadowDiff(text, "shadow", existing)
+	rec := RunShadowDiff("shadow", existing)
 	if !rec.Ran {
 		t.Error("expected shadow diff to run")
 	}
 	if !rec.HasDiff {
 		t.Errorf("expected diff when SawToolCallSyntax mismatches, record=%+v", rec)
+	}
+}
+
+// TestRunShadowDiff_UsesSourceText_NotRawText verifies Bug #1 fix:
+// RunShadowDiff uses existing.SourceText, so tool calls found in the thinking
+// block (different source than rawText) do not produce false diffs.
+func TestRunShadowDiff_UsesSourceText_NotRawText(t *testing.T) {
+	thinkingText := `<tool_calls><invoke name="search"><parameter name="q">hello</parameter></invoke></tool_calls>`
+	// existing was parsed from thinkingText, not from rawText
+	existing := ParseStandaloneToolCallsDetailed(thinkingText, nil)
+	if existing.SourceText != thinkingText {
+		t.Fatalf("expected SourceText to be set by ParseStandaloneToolCallsDetailed, got %q", existing.SourceText)
+	}
+	// Running shadow diff: candidate re-runs on existing.SourceText (thinkingText),
+	// so result should match — no false diff.
+	rec := RunShadowDiff("shadow", existing)
+	if !rec.Ran {
+		t.Error("expected shadow diff to run")
+	}
+	if rec.HasDiff {
+		t.Errorf("expected no diff when SourceText is used correctly, got record=%+v", rec)
+	}
+}
+
+// TestRunShadowDiff_NoDiff_PreNormalization verifies Bug #2 fix:
+// shadow diff should compare pre-normalization results. If existing.Calls
+// contains raw values (before schema normalization), shadow diff should
+// find no diff since buildParseCandidate also returns raw values.
+func TestRunShadowDiff_NoDiff_PreNormalization(t *testing.T) {
+	text := `<tool_calls><invoke name="write"><parameter name="content">hello</parameter></invoke></tool_calls>`
+	// pre-normalization result (as returned by DetectAssistantToolCalls)
+	existing := ParseStandaloneToolCallsDetailed(text, nil)
+	rec := RunShadowDiff("shadow", existing)
+	if rec.HasDiff {
+		t.Errorf("expected no diff for pre-normalization comparison, got record=%+v", rec)
 	}
 }

@@ -14,6 +14,11 @@ type ToolCallParseResult struct {
 	SawToolCallSyntax bool
 	RejectedByPolicy  bool
 	RejectedToolNames []string
+	// SourceText is the raw text actually parsed to produce this result.
+	// It may differ from the primary rawText when the parser fell back to
+	// the thinking block. RunShadowDiff uses this to ensure both sides
+	// compare against the same input.
+	SourceText string
 }
 
 func ParseToolCalls(text string, availableToolNames []string) []ParsedToolCall {
@@ -68,7 +73,9 @@ func (c parseCandidate) toResult() ToolCallParseResult {
 }
 
 func parseToolCallsDetailedXMLOnly(text string) ToolCallParseResult {
-	return buildParseCandidate(text).toResult()
+	r := buildParseCandidate(text).toResult()
+	r.SourceText = text
+	return r
 }
 
 func buildParseCandidate(text string) parseCandidate {
