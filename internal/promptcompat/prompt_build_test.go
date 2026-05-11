@@ -3,6 +3,8 @@ package promptcompat
 import (
 	"strings"
 	"testing"
+
+	"ds2api/internal/contextengine"
 )
 
 func TestBuildOpenAIFinalPrompt_HandlerPathIncludesToolRoundtripSemantics(t *testing.T) {
@@ -189,6 +191,8 @@ func TestBuildOpenAIFinalPromptWithThinkingKeepsPromptUnchanged(t *testing.T) {
 // TestBuildOpenAIPromptShadowMode verifies the full normalisation →
 // context-engine shadow path does not panic and returns a valid prompt.
 func TestBuildOpenAIPromptShadowMode(t *testing.T) {
+	contextengine.GlobalPlanBuffer().Clear()
+
 	messages := []any{
 		map[string]any{"role": "system", "content": "You are a coding assistant."},
 		map[string]any{"role": "user", "content": "Read my file"},
@@ -225,6 +229,19 @@ func TestBuildOpenAIPromptShadowMode(t *testing.T) {
 	}
 	if !strings.Contains(prompt, "package main") {
 		t.Errorf("tool result must survive normalization into prompt, got: %q", prompt[:min(200, len(prompt))])
+	}
+
+	plans := contextengine.GlobalPlanBuffer().Snapshot()
+	if len(plans) == 0 {
+		t.Fatal("expected context engine shadow plan to be captured")
+	}
+	if plans[0].SegmentsTrimmed != 0 {
+		t.Fatalf("valid tool loop should not trim tool segments in shadow plan, got summary: %#v", plans[0])
+	}
+	for _, warning := range plans[0].Warnings {
+		if strings.Contains(warning, "orphan_tool_result") {
+			t.Fatalf("valid tool loop must not warn orphan_tool_result, got warnings: %v", plans[0].Warnings)
+		}
 	}
 }
 

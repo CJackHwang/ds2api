@@ -279,7 +279,7 @@ tests/compat/fixtures/context/
 | Fuzz seed corpus 无 panic（`FuzzParseToolCalls` seed 阶段） | `go test -run FuzzParse` | ✅ |
 | Benchmark 基线已记录（无性能悬崖） | `BenchmarkParseToolCallsDSML ≈ 230 µs` | ✅ |
 | E2E 跨主题集成测试通过（Chat/Responses/Gemini） | `TestBuildOpenAIPromptShadowMode` 等 4 个 E2E 测试 | ✅ |
-| Stage 6 smoke checklist 填写并通过脚本检查 | `./tests/scripts/check-stage6-manual-smoke.sh` | ✅ (automated-CI) |
+| Stage 6 smoke checklist 填写并通过脚本检查 | `./tests/scripts/check-stage6-manual-smoke.sh` | ⏳ 待 live smoke |
 | **实际流量 shadow 收集 ≥ 24h，无 5xx 新增** | staging 日志审查 | ⏳ 待 staging 部署 |
 
 **晋级操作**：设置 `DS2API_CONTEXT_ENGINE=shadow`（或 config `context_engine.mode: shadow`）部署 staging。

@@ -44,6 +44,10 @@ if [[ "$status_upper" != "PASS" ]]; then
   echo "invalid smoke file: Status must be PASS (got: ${status_value:-<empty>})"
   failed=1
 fi
+if grep -Eq '^[[:space:]]*-[[:space:]]*\[[[:space:]]\]' "$SMOKE_FILE"; then
+  echo "invalid smoke file: unchecked checklist items remain"
+  failed=1
+fi
 
 if (( failed != 0 )); then
   exit 1

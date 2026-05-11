@@ -24,10 +24,14 @@ func NormalizeOpenAIMessagesForPrompt(raw []any, traceID string) []map[string]an
 			if content == "" {
 				continue
 			}
-			out = append(out, map[string]any{
+			normalized := map[string]any{
 				"role":    "assistant",
 				"content": content,
-			})
+			}
+			if prompt.FormatToolCallsForPrompt(msg["tool_calls"]) != "" {
+				normalized["tool_calls"] = msg["tool_calls"]
+			}
+			out = append(out, normalized)
 		case "tool", "function":
 			content := buildToolContentForPrompt(msg)
 			out = append(out, map[string]any{

@@ -42,11 +42,12 @@ func extractReasoningBlock(content string) (reasoning, remaining string) {
 // summarizeReasoning compresses a reasoning string if it exceeds
 // reasoningSummaryThreshold. Short strings are returned unchanged.
 func summarizeReasoning(text string) string {
-	if len(text) <= reasoningSummaryThreshold {
+	runes := []rune(text)
+	if len(runes) <= reasoningSummaryThreshold {
 		return text
 	}
-	omitted := len(text) - reasoningTailChars
-	tail := text[len(text)-reasoningTailChars:]
+	omitted := len(runes) - reasoningTailChars
+	tail := string(runes[len(runes)-reasoningTailChars:])
 	return fmt.Sprintf("[%d chars omitted]\n%s", omitted, tail)
 }
 
@@ -179,9 +180,10 @@ func buildSegments(messages []map[string]any) []ContextSegment {
 			if rawReasoning != "" {
 				summary := summarizeReasoning(rawReasoning)
 				rseg := makeSegment(SegReasoningSummary, "request", summary)
-				if len(rawReasoning) > reasoningSummaryThreshold {
+				rawReasoningLen := len([]rune(rawReasoning))
+				if rawReasoningLen > reasoningSummaryThreshold {
 					rseg.Metadata = map[string]any{
-						"original_reasoning_len": len(rawReasoning),
+						"original_reasoning_len": rawReasoningLen,
 						"summarized":             true,
 					}
 				}

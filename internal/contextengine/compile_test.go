@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 // contextFixture mirrors tests/compat/fixtures/context/*.json
@@ -451,6 +452,46 @@ func TestCompileReasoningSummaryLong(t *testing.T) {
 	}
 	if !hasAssistant {
 		t.Error("SegAssistant with visible content must remain after reasoning extraction")
+	}
+}
+
+func TestCompileReasoningSummaryLongUnicode(t *testing.T) {
+	longReasoning := strings.Repeat("推理🙂", 400)
+
+	messages := []map[string]any{
+		{"role": "user", "content": "solve this"},
+		{
+			"role":              "assistant",
+			"content":           "final answer",
+			"reasoning_content": longReasoning,
+		},
+	}
+	plan, err := Compile(CompileInput{Messages: messages})
+	if err != nil {
+		t.Fatalf("Compile error: %v", err)
+	}
+
+	var rseg *ContextSegment
+	for i := range plan.SegmentsIncluded {
+		if plan.SegmentsIncluded[i].Type == SegReasoningSummary {
+			rseg = &plan.SegmentsIncluded[i]
+			break
+		}
+	}
+	if rseg == nil {
+		t.Fatal("expected SegReasoningSummary for long unicode reasoning")
+	}
+	if !utf8.ValidString(rseg.Content) {
+		t.Fatalf("unicode reasoning summary must remain valid UTF-8, got: %q", rseg.Content)
+	}
+	runes := []rune(longReasoning)
+	expectedTail := string(runes[len(runes)-reasoningTailChars:])
+	if !strings.HasSuffix(rseg.Content, expectedTail) {
+		t.Fatalf("unicode reasoning summary should preserve the last 500 runes, got: %q", rseg.Content)
+	}
+	origLen, _ := rseg.Metadata["original_reasoning_len"].(int)
+	if origLen != len([]rune(longReasoning)) {
+		t.Fatalf("original_reasoning_len = %d, want %d runes", origLen, len([]rune(longReasoning)))
 	}
 }
 

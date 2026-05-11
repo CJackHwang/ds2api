@@ -67,7 +67,7 @@
 
 | 文件 | 用途 |
 |------|------|
-| `plans/stage6-manual-smoke.md` | Stage 6 手工 smoke 检查单（automated-CI 已通过） |
+| `plans/stage6-manual-smoke.md` | Stage 6 手工 smoke 检查单（live smoke 待执行，脚本会阻止未完成 checklist 标记为 PASS） |
 | `plans/m3-milestone-audit.md` | 本收口审计文档 |
 
 ---

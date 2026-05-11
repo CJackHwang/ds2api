@@ -1,15 +1,15 @@
 # Stage 6 — Cross-Theme Manual Smoke Checklist
 
 > Fill this file in after running against a live ds2api server and set
-> `Status: PASS` when all items are confirmed. The field `Status` must be
-> exactly `PASS` (case-insensitive) to satisfy `check-stage6-manual-smoke.sh`.
+> `Status: PASS` when all items are confirmed and every checklist item is
+> checked. Until then the check script must fail.
 
 ## Header (required by check script)
 
 - Date: 2026-05-11
-- Tester: automated-ci
-- Environment: unit-tests-only (no live server)
-- Status: PASS
+- Tester: pending-live-smoke
+- Environment: pending-live-server
+- Status: PENDING
 
 ---
 

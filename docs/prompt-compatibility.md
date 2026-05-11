@@ -212,7 +212,7 @@ assistant 的 reasoning 会变成一个显式标签块：
 
 ### 7.2 历史 tool_calls 保留方式
 
-assistant 历史 `tool_calls` 不会保留成 OpenAI 原生 JSON，而会转成 prompt 可见的 DSML 外壳：
+assistant 历史 `tool_calls` 会转成 prompt 可见的 DSML 外壳：
 
 ```xml
 <｜DSML｜tool_calls>
@@ -222,6 +222,8 @@ assistant 历史 `tool_calls` 不会保留成 OpenAI 原生 JSON，而会转成 
 </｜DSML｜tool_calls>
 ```
 
+同时，归一化后的 message 会保留结构化 `tool_calls` 字段供 Context Engine shadow 编译 tool-pair 不变量使用；最终 prompt 仍只渲染 `content` 中的 DSML 文本，不会把 OpenAI 原生 JSON 作为隐藏 transport 发送给上游。
+
 如果客户端历史里没有结构化 `tool_calls` 字段、却把一个可独立解析的 assistant 工具块放进了普通 `content`，兼容层会在写入后续 prompt 前先按工具调用解析它，再重渲染为规范 DSML 历史外壳。这样可以避免一次 malformed 工具块未被结构化保存后，作为普通 assistant 文本回灌，继续污染后续模型的 few-shot 工具格式。
 
 解析层同时兼容旧式纯 XML 形态：`<tool_calls>` / `<invoke>` / `<parameter>`。两者都会先归一到现有 XML 解析语义；其他旧格式都会作为普通文本保留，不会作为可执行调用语法。
@@ -230,7 +232,8 @@ assistant 历史 `tool_calls` 不会保留成 OpenAI 原生 JSON，而会转成 
 这件事很重要，因为它决定了：
 
 - 历史工具调用在 prompt 中是“可见文本历史”
-- 不是“隐藏结构化元数据”
+- prompt-visible 语义不是“隐藏结构化元数据”
+- 归一化阶段可携带 `tool_calls` 元数据给内部 Context Engine shadow 使用，但该字段不改变最终 prompt 渲染
 
 实现位置：
 [internal/prompt/tool_calls.go](../internal/prompt/tool_calls.go)
@@ -446,6 +449,8 @@ promptcompat.NormalizeOpenAIMessagesForPrompt()
 
 `MaybeShadow` 在 `BuildOpenAIPrompt`（`internal/promptcompat/prompt_build.go`）中调用，位于消息归一化之后、tool prompt 注入之前。`shadow` 模式下，函数调用 `Compile` 产出 `ContextPlan` 并以 `[context_engine_shadow]` 结构化日志输出摘要，**不修改最终 prompt**。
 
+为避免正常工具回合在 shadow plan 中被误判为 `orphan_tool_result`，归一化后的 assistant message 会保留结构化 `tool_calls` 字段供 `Compile` 生成 `SegToolCall`；`prompt.MessagesPrepareWithThinking` 仍只读取 `content` 渲染最终 prompt。
+
 ### Feature Flag
 
 | 控制方式 | 值 | 优先级 |
@@ -504,8 +509,8 @@ level=INFO msg="[context_engine_shadow]"
 
 - 来源 1：`msg["reasoning_content"]` 字段（fixture / 未归一化消息）。
 - 来源 2：`[reasoning_content]\n{text}\n[/reasoning_content]` 内联块（`promptcompat` 归一化后的格式）。
-- 策略：原文 ≤ 1000 字符 → 保留全文；> 1000 字符 → `"[N chars omitted]\n{末 500 字符}"`。
-- `SegReasoningSummary.Metadata["summarized"] = true` / `"original_reasoning_len" = N` 在被截断时写入。
+- 策略：原文 ≤ 1000 Unicode 字符 → 保留全文；> 1000 Unicode 字符 → `"[N chars omitted]\n{末 500 字符}"`。
+- `SegReasoningSummary.Metadata["summarized"] = true` / `"original_reasoning_len" = N` 在被截断时写入，`N` 按 Unicode 字符计数。
 - 可见文本内容另出 `SegAssistant`；两者均参与 token budget 计算与裁剪。
 
 ### M1/M2 功能（保留）
