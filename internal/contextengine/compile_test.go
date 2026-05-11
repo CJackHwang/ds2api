@@ -373,6 +373,124 @@ func TestCompileBudgetTrimmingPreservesToolPair(t *testing.T) {
 	}
 }
 
+func TestCompileReasoningSummaryShort(t *testing.T) {
+	messages := []map[string]any{
+		{"role": "user", "content": "hello"},
+		{
+			"role":              "assistant",
+			"content":           "visible answer",
+			"reasoning_content": "short reasoning",
+		},
+	}
+	plan, err := Compile(CompileInput{Messages: messages})
+	if err != nil {
+		t.Fatalf("Compile error: %v", err)
+	}
+
+	hasSummary := false
+	for _, seg := range plan.SegmentsIncluded {
+		if seg.Type == SegReasoningSummary {
+			hasSummary = true
+			if !strings.Contains(seg.Content, "short reasoning") {
+				t.Errorf("short reasoning should be kept verbatim, got: %q", seg.Content)
+			}
+			if v, _ := seg.Metadata["summarized"].(bool); v {
+				t.Error("short reasoning should NOT be marked summarized")
+			}
+		}
+	}
+	if !hasSummary {
+		t.Error("expected SegReasoningSummary for assistant with reasoning_content")
+	}
+}
+
+func TestCompileReasoningSummaryLong(t *testing.T) {
+	longReasoning := strings.Repeat("thinking... ", 200) // > 1000 chars → exceeds threshold
+
+	messages := []map[string]any{
+		{"role": "user", "content": "solve this"},
+		{
+			"role":              "assistant",
+			"content":           "final answer",
+			"reasoning_content": longReasoning,
+		},
+	}
+	plan, err := Compile(CompileInput{Messages: messages})
+	if err != nil {
+		t.Fatalf("Compile error: %v", err)
+	}
+
+	var rseg *ContextSegment
+	for i := range plan.SegmentsIncluded {
+		if plan.SegmentsIncluded[i].Type == SegReasoningSummary {
+			rseg = &plan.SegmentsIncluded[i]
+			break
+		}
+	}
+	if rseg == nil {
+		t.Fatal("expected SegReasoningSummary for long reasoning")
+	}
+	if !strings.Contains(rseg.Content, "chars omitted") {
+		t.Errorf("long reasoning summary should contain 'chars omitted', got: %q", rseg.Content[:min(100, len(rseg.Content))])
+	}
+	if v, _ := rseg.Metadata["summarized"].(bool); !v {
+		t.Error("long reasoning should be marked summarized=true in Metadata")
+	}
+	origLen, _ := rseg.Metadata["original_reasoning_len"].(int)
+	trimmedLen := len(strings.TrimSpace(longReasoning))
+	if origLen != trimmedLen {
+		t.Errorf("original_reasoning_len = %d, want %d (trimmed)", origLen, trimmedLen)
+	}
+	// Visible content should still be present as SegAssistant.
+	hasAssistant := false
+	for _, seg := range plan.SegmentsIncluded {
+		if seg.Type == SegAssistant && strings.Contains(seg.Content, "final answer") {
+			hasAssistant = true
+			break
+		}
+	}
+	if !hasAssistant {
+		t.Error("SegAssistant with visible content must remain after reasoning extraction")
+	}
+}
+
+func TestCompileReasoningSummaryFromInlineBlock(t *testing.T) {
+	// Simulate promptcompat-normalized message: reasoning inlined in content.
+	inlineContent := "[reasoning_content]\nmy internal reasoning\n[/reasoning_content]\n\nvisible response text"
+	messages := []map[string]any{
+		{"role": "user", "content": "question"},
+		{"role": "assistant", "content": inlineContent},
+	}
+	plan, err := Compile(CompileInput{Messages: messages})
+	if err != nil {
+		t.Fatalf("Compile error: %v", err)
+	}
+
+	hasSummary := false
+	for _, seg := range plan.SegmentsIncluded {
+		if seg.Type == SegReasoningSummary {
+			hasSummary = true
+			if !strings.Contains(seg.Content, "my internal reasoning") {
+				t.Errorf("inline block reasoning not extracted, got: %q", seg.Content)
+			}
+		}
+	}
+	if !hasSummary {
+		t.Error("expected SegReasoningSummary extracted from inline [reasoning_content] block")
+	}
+
+	hasVisibleAssistant := false
+	for _, seg := range plan.SegmentsIncluded {
+		if seg.Type == SegAssistant && strings.Contains(seg.Content, "visible response text") {
+			hasVisibleAssistant = true
+			break
+		}
+	}
+	if !hasVisibleAssistant {
+		t.Error("SegAssistant must contain visible content after reasoning block is stripped")
+	}
+}
+
 func TestDigestDeterministic(t *testing.T) {
 	d1 := SHA256Digest("hello world")
 	d2 := SHA256Digest("hello world")

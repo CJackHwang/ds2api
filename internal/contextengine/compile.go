@@ -10,6 +10,46 @@ import (
 	"github.com/google/uuid"
 )
 
+const (
+	// reasoningTailChars is the number of tail characters to preserve when
+	// summarising a large reasoning block.
+	reasoningTailChars = 500
+	// reasoningSummaryThreshold: reasoning blocks shorter than this are kept
+	// verbatim; longer blocks are replaced with "[N chars omitted]\n<tail>".
+	reasoningSummaryThreshold = reasoningTailChars * 2
+)
+
+// extractReasoningBlock parses the promptcompat-formatted labeled block
+// "[reasoning_content]\n{text}\n[/reasoning_content]" out of content.
+// Returns the raw reasoning text and the remaining visible content.
+func extractReasoningBlock(content string) (reasoning, remaining string) {
+	const openTag = "[reasoning_content]\n"
+	const closeTag = "\n[/reasoning_content]"
+	start := strings.Index(content, openTag)
+	if start == -1 {
+		return "", content
+	}
+	afterOpen := content[start+len(openTag):]
+	end := strings.Index(afterOpen, closeTag)
+	if end == -1 {
+		return "", content
+	}
+	reasoning = afterOpen[:end]
+	remaining = strings.TrimSpace(content[:start] + strings.TrimPrefix(afterOpen[end+len(closeTag):], "\n\n"))
+	return reasoning, remaining
+}
+
+// summarizeReasoning compresses a reasoning string if it exceeds
+// reasoningSummaryThreshold. Short strings are returned unchanged.
+func summarizeReasoning(text string) string {
+	if len(text) <= reasoningSummaryThreshold {
+		return text
+	}
+	omitted := len(text) - reasoningTailChars
+	tail := text[len(text)-reasoningTailChars:]
+	return fmt.Sprintf("[%d chars omitted]\n%s", omitted, tail)
+}
+
 // CompileInput is the input to Compile.
 type CompileInput struct {
 	// Messages is a slice of normalised OpenAI-style message maps
@@ -126,9 +166,28 @@ func buildSegments(messages []map[string]any) []ContextSegment {
 				segs = append(segs, makeSegment(SegUser, "request", content))
 			}
 		case "assistant":
-			// Emit the text content segment first (may be empty).
-			if content != "" {
-				segs = append(segs, makeSegment(SegAssistant, "request", content))
+			// Extract reasoning block from content (inline labeled block from promptcompat)
+			// and from the raw reasoning_content field (unnormalized messages / fixtures).
+			rawReasoning := strings.TrimSpace(asString(msg["reasoning_content"]))
+			visibleContent := content
+			if rawReasoning == "" {
+				rawReasoning, visibleContent = extractReasoningBlock(content)
+			}
+			// Emit SegReasoningSummary if reasoning is present.
+			if rawReasoning != "" {
+				summary := summarizeReasoning(rawReasoning)
+				rseg := makeSegment(SegReasoningSummary, "request", summary)
+				if len(rawReasoning) > reasoningSummaryThreshold {
+					rseg.Metadata = map[string]any{
+						"original_reasoning_len": len(rawReasoning),
+						"summarized":             true,
+					}
+				}
+				segs = append(segs, rseg)
+			}
+			// Emit the visible text content segment (may be empty after reasoning extraction).
+			if visibleContent != "" {
+				segs = append(segs, makeSegment(SegAssistant, "request", visibleContent))
 			}
 			// If the assistant message carries tool_calls, emit a SegToolCall
 			// and store the call count in Metadata for pair validation.
