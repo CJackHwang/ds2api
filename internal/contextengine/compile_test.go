@@ -491,6 +491,105 @@ func TestCompileReasoningSummaryFromInlineBlock(t *testing.T) {
 	}
 }
 
+func TestCompilePartiallyParseableToolCallsCountMismatch(t *testing.T) {
+	// 3 tool_calls: 2 parseable (have "function" key), 1 missing "function".
+	// Only 2 tool results arrive. Before the fix, marshalToolCallsWithCount
+	// returned len(parts)=2 so validateToolPairs saw callCount=2 == resultCount=2
+	// and emitted no warning. After the fix it returns len(x)=3, so the
+	// mismatch (expected 3, got 2) is correctly flagged.
+	messages := []map[string]any{
+		{"role": "user", "content": "do something"},
+		{
+			"role":    "assistant",
+			"content": "calling tools",
+			"tool_calls": []any{
+				map[string]any{
+					"id": "call_1", "type": "function",
+					"function": map[string]any{"name": "Read", "arguments": `{}`},
+				},
+				map[string]any{
+					"id": "call_2", "type": "function",
+					"function": map[string]any{"name": "Write", "arguments": `{}`},
+				},
+				map[string]any{
+					"id":   "call_3_malformed",
+					"type": "function",
+					// deliberately missing "function" key
+				},
+			},
+		},
+		{"role": "tool", "tool_call_id": "call_1", "name": "Read", "content": "result 1"},
+		{"role": "tool", "tool_call_id": "call_2", "name": "Write", "content": "result 2"},
+	}
+
+	plan, err := Compile(CompileInput{Messages: messages})
+	if err != nil {
+		t.Fatalf("Compile error: %v", err)
+	}
+
+	// Partial results must not be trimmed.
+	if len(plan.SegmentsTrimmed) != 0 {
+		t.Errorf("expected no trimmed segments for partial-result scenario, got %d", len(plan.SegmentsTrimmed))
+	}
+
+	// A count-mismatch warning must be emitted (3 calls declared, 2 results).
+	found := false
+	for _, w := range plan.Warnings {
+		if strings.Contains(w, "tool_call count mismatch") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected a 'tool_call count mismatch' warning when some items lack parseable 'function' key; got: %v", plan.Warnings)
+	}
+}
+
+func TestCompileReasoningSummaryDualSource(t *testing.T) {
+	// Message carries both a reasoning_content field AND an inline block inside
+	// content. The field should be used as the reasoning source; the inline
+	// block must be stripped from visible content so it does not appear twice.
+	inlineContent := "[reasoning_content]\ninline reasoning\n[/reasoning_content]\n\nvisible text"
+	messages := []map[string]any{
+		{"role": "user", "content": "question"},
+		{
+			"role":              "assistant",
+			"content":           inlineContent,
+			"reasoning_content": "field reasoning",
+		},
+	}
+
+	plan, err := Compile(CompileInput{Messages: messages})
+	if err != nil {
+		t.Fatalf("Compile error: %v", err)
+	}
+
+	var reasoningContent string
+	for _, seg := range plan.SegmentsIncluded {
+		if seg.Type == SegReasoningSummary {
+			reasoningContent = seg.Content
+		}
+	}
+	if !strings.Contains(reasoningContent, "field reasoning") {
+		t.Errorf("reasoning_content field must take priority, got: %q", reasoningContent)
+	}
+	if strings.Contains(reasoningContent, "inline reasoning") {
+		t.Errorf("inline block must not appear in reasoning summary when field is present, got: %q", reasoningContent)
+	}
+
+	// The inline block must be stripped from SegAssistant visible content.
+	for _, seg := range plan.SegmentsIncluded {
+		if seg.Type == SegAssistant {
+			if strings.Contains(seg.Content, "[reasoning_content]") {
+				t.Errorf("inline reasoning block must be stripped from visible SegAssistant content, got: %q", seg.Content)
+			}
+			if !strings.Contains(seg.Content, "visible text") {
+				t.Errorf("visible text must be present in SegAssistant content, got: %q", seg.Content)
+			}
+		}
+	}
+}
+
 func TestDigestDeterministic(t *testing.T) {
 	d1 := SHA256Digest("hello world")
 	d2 := SHA256Digest("hello world")

@@ -71,7 +71,7 @@ type CompileInput struct {
 //     SegToolResult is trimmed as "orphan_tool_call"; a SegToolResult with no
 //     preceding SegToolCall in the same exchange is trimmed as
 //     "orphan_tool_result"; a call-count mismatch emits a soft Warning.
-//   - Token budget is computed (Used) but priority trimming is in M3 Stage 2.
+//   - Token budget is computed (Used) and priority trimming is applied (M3 Stage 2).
 func Compile(input CompileInput) (ContextPlan, error) {
 	planID := "plan_" + strings.ReplaceAll(uuid.NewString(), "-", "")
 
@@ -172,6 +172,10 @@ func buildSegments(messages []map[string]any) []ContextSegment {
 			visibleContent := content
 			if rawReasoning == "" {
 				rawReasoning, visibleContent = extractReasoningBlock(content)
+			} else {
+				// Strip any inline reasoning block from visible content to avoid
+				// double-counting when both the field and inline block are present.
+				_, visibleContent = extractReasoningBlock(content)
 			}
 			// Emit SegReasoningSummary if reasoning is present.
 			if rawReasoning != "" {
@@ -504,7 +508,7 @@ func marshalToolCallsWithCount(v any) (string, int) {
 			// orphan detection is not silently bypassed.
 			return "<unparseable_tool_calls>", len(x)
 		}
-		return strings.Join(parts, "; "), len(parts)
+		return strings.Join(parts, "; "), len(x)
 	default:
 		return "", 0
 	}
