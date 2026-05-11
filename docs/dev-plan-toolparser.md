@@ -73,7 +73,7 @@ DoD：
 
 - 依据 M0 fixtures 修复确认的真假阳问题（一个 fixture 一个最小 PR，便于 review）。
 - 抽象 “解析候选 + 置信信号” 内部 API（不暴露给调用方），保留旧返回值不变；为 M2 shadow diff 做准备。
-  - **当前状态**：`internal/toolcall/toolcalls_parse.go:parseCandidate` 仅有 `sawToolCallSyntax` 占位字段；完整置信信号（`parsePath` / `ambiguityFlags` / `nameWhitelistHit`）由分支 `feat/m2-toolparser-confidence-signals` 落地。
+  - **当前状态**：`parseCandidate` 已落地完整置信信号（`parsePath` / `ambiguous` / `nameWhitelistHit`）；`availableNames` 已从公开 API 透传至 `buildParseCandidate`；`RunShadowDiff` diff 日志已包含这三个字段。阈值（enforce 模式触发条件）下沉到 M3 由 shadow diff 真实流量反推，本期不固定。分支：`feat/m2-toolparser-confidence`（已合并）。
 - Go / Node 解析路径新增 parity driver：以同一 fixture 同时驱动 `internal/toolstream` 与 `internal/js/helpers/stream-tool-sieve`，diff 输出。
 
 DoD：
