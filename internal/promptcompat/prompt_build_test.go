@@ -183,3 +183,153 @@ func TestBuildOpenAIFinalPromptWithThinkingKeepsPromptUnchanged(t *testing.T) {
 		t.Fatalf("expected thinking flag not to prepend continuation contract, thinking=%q plain=%q", finalPromptThinking, finalPromptPlain)
 	}
 }
+
+// --- Stage 6: Cross-theme E2E pipeline tests ---
+
+// TestBuildOpenAIPromptShadowMode verifies the full normalisation →
+// context-engine shadow path does not panic and returns a valid prompt.
+func TestBuildOpenAIPromptShadowMode(t *testing.T) {
+	messages := []any{
+		map[string]any{"role": "system", "content": "You are a coding assistant."},
+		map[string]any{"role": "user", "content": "Read my file"},
+		map[string]any{
+			"role": "assistant",
+			"tool_calls": []any{
+				map[string]any{
+					"id": "call_1", "type": "function",
+					"function": map[string]any{
+						"name":      "Read",
+						"arguments": `{"file_path":"/tmp/hello.go"}`,
+					},
+				},
+			},
+		},
+		map[string]any{"role": "tool", "tool_call_id": "call_1", "name": "Read", "content": "package main"},
+		map[string]any{"role": "user", "content": "What does it do?"},
+	}
+	tools := []any{
+		map[string]any{
+			"type": "function",
+			"function": map[string]any{
+				"name":        "Read",
+				"description": "Read a file",
+				"parameters":  map[string]any{"type": "object"},
+			},
+		},
+	}
+
+	// shadow mode: context engine compiles in parallel without affecting prompt.
+	prompt, toolNames := BuildOpenAIPrompt(messages, tools, "", DefaultToolChoicePolicy(), false, "shadow")
+	if len(toolNames) != 1 || toolNames[0] != "Read" {
+		t.Errorf("unexpected toolNames: %v", toolNames)
+	}
+	if !strings.Contains(prompt, "package main") {
+		t.Errorf("tool result must survive normalization into prompt, got: %q", prompt[:min(200, len(prompt))])
+	}
+}
+
+// TestBuildOpenAIPromptReasoningPlusToolPairChain verifies that an assistant
+// message with both reasoning_content and tool_calls is normalised and reaches
+// the prompt intact in shadow mode.
+func TestBuildOpenAIPromptReasoningPlusToolPairChain(t *testing.T) {
+	messages := []any{
+		map[string]any{"role": "user", "content": "solve it"},
+		map[string]any{
+			"role":              "assistant",
+			"reasoning_content": "I should search first.",
+			"tool_calls": []any{
+				map[string]any{
+					"id": "call_r1", "type": "function",
+					"function": map[string]any{
+						"name":      "search",
+						"arguments": `{"q":"golang context"}`,
+					},
+				},
+			},
+		},
+		map[string]any{"role": "tool", "tool_call_id": "call_r1", "name": "search", "content": "Go context docs"},
+		map[string]any{"role": "user", "content": "ok thanks"},
+	}
+
+	p, _ := BuildOpenAIPrompt(messages, nil, "", DefaultToolChoicePolicy(), false, "shadow")
+	// reasoning block must appear in the prompt (normalised by promptcompat).
+	if !strings.Contains(p, "I should search first.") {
+		t.Errorf("reasoning_content must appear in prompt, got snippet: %q", p[:min(200, len(p))])
+	}
+	// tool result must appear.
+	if !strings.Contains(p, "Go context docs") {
+		t.Errorf("tool result must survive into prompt, got snippet: %q", p[:min(200, len(p))])
+	}
+}
+
+// TestBuildOpenAIPromptForAdapterGeminiPath verifies the Gemini adapter path
+// (BuildOpenAIPromptForAdapter) produces the same output as the direct path
+// for a standard multi-turn conversation.
+func TestBuildOpenAIPromptForAdapterGeminiPath(t *testing.T) {
+	messages := []any{
+		map[string]any{"role": "system", "content": "Be brief."},
+		map[string]any{"role": "user", "content": "hello"},
+		map[string]any{"role": "assistant", "content": "hi there"},
+		map[string]any{"role": "user", "content": "how are you?"},
+	}
+
+	direct, _ := BuildOpenAIPrompt(messages, nil, "", DefaultToolChoicePolicy(), false, "off")
+	adapter, _ := BuildOpenAIPromptForAdapter(messages, nil, "", false, "off")
+	if direct != adapter {
+		t.Errorf("Gemini adapter path must produce same prompt as direct path\ndirect:  %q\nadapter: %q", direct, adapter)
+	}
+}
+
+// TestResponsesAPIToPromptPipeline verifies that a Responses API input
+// (normalised via NormalizeResponsesInputAsMessages) feeds correctly into
+// BuildOpenAIPrompt and produces a valid prompt.
+func TestResponsesAPIToPromptPipeline(t *testing.T) {
+	// Simulated Responses API input: assistant reasoning message followed by
+	// a function_call and function_result.
+	responsesInput := []any{
+		map[string]any{
+			"type": "message",
+			"role": "assistant",
+			"content": []any{
+				map[string]any{"type": "reasoning", "text": "I need to look this up."},
+			},
+		},
+		map[string]any{
+			"type":      "function_call",
+			"call_id":   "fc_1",
+			"name":      "search",
+			"arguments": `{"query":"golang docs"}`,
+		},
+		map[string]any{
+			"type":    "function_call_output",
+			"call_id": "fc_1",
+			"output":  "Go documentation results",
+		},
+		map[string]any{
+			"type":    "message",
+			"role":    "user",
+			"content": []any{map[string]any{"type": "input_text", "text": "summarise"}},
+		},
+	}
+
+	normalised := NormalizeResponsesInputAsMessages(responsesInput)
+	if len(normalised) == 0 {
+		t.Fatal("NormalizeResponsesInputAsMessages returned empty for valid Responses API input")
+	}
+
+	// Wrap as []any for BuildOpenAIPrompt.
+	msgs := make([]any, len(normalised))
+	copy(msgs, normalised)
+
+	p, _ := BuildOpenAIPrompt(msgs, nil, "", DefaultToolChoicePolicy(), false, "off")
+	if !strings.Contains(p, "summarise") {
+		t.Errorf("current user message must survive Responses→OpenAI pipeline, got: %q", p[:min(200, len(p))])
+	}
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
