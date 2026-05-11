@@ -54,6 +54,9 @@ func (c Config) MarshalJSON() ([]byte, error) {
 	if len(c.CORS.AllowOrigins) > 0 {
 		m["cors"] = c.CORS
 	}
+	if c.Auth.AllowGeminiQueryKey != nil {
+		m["auth"] = c.Auth
+	}
 	if strings.TrimSpace(c.ContextEngine.Mode) != "" {
 		m["context_engine"] = c.ContextEngine
 	}
@@ -141,6 +144,10 @@ func (c *Config) UnmarshalJSON(b []byte) error {
 			if err := json.Unmarshal(v, &c.CORS); err != nil {
 				return fmt.Errorf("invalid field %q: %w", k, err)
 			}
+		case "auth":
+			if err := json.Unmarshal(v, &c.Auth); err != nil {
+				return fmt.Errorf("invalid field %q: %w", k, err)
+			}
 		case "context_engine":
 			if err := json.Unmarshal(v, &c.ContextEngine); err != nil {
 				return fmt.Errorf("invalid field %q: %w", k, err)
@@ -194,6 +201,7 @@ func (c Config) Clone() Config {
 		},
 		Vercel:           c.Vercel,
 		CORS:             CORSConfig{AllowOrigins: slices.Clone(c.CORS.AllowOrigins)},
+		Auth:             AuthConfig{AllowGeminiQueryKey: cloneBoolPtr(c.Auth.AllowGeminiQueryKey)},
 		ContextEngine:    c.ContextEngine,
 		ParserV2:         c.ParserV2,
 		VercelSyncHash:   c.VercelSyncHash,

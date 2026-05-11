@@ -613,6 +613,26 @@ sudo systemctl stop ds2api
 > **建议**：若 `DS2API_JWT_SECRET` 未独立设置，JWT 派生 secret 会回退到 password hash；为避免迁移瞬间作废所有 token，可显式配置 `DS2API_JWT_SECRET=<独立强随机字符串>`。
 >
 > **Query key 警告**：Gemini 兼容路径支持 `?key=` / `?api_key=` 作为 fallback 凭证。该参数会出现在反向代理 / Vercel / 网关的 HTTP 访问日志中，**不建议生产环境使用**；优先通过 `Authorization: Bearer <key>` 头传递凭证。
+>
+> **如何关停 query key fallback**：自 M1 起，可通过以下任一方式显式禁用，禁用后请求只能通过 `Authorization: Bearer …` / `x-api-key` / `x-goog-api-key` 等 header 携带凭证，否则一律按 401 拒绝。
+>
+> - 环境变量（推荐用于容器 / Vercel）：
+>
+>   ```bash
+>   DS2API_ALLOW_GEMINI_QUERY_KEY=false
+>   # 支持的真值：1 / true / yes / on
+>   # 支持的假值：0 / false / no / off（任何其它值会被忽略并回落到 config / 默认值）
+>   ```
+>
+> - 配置文件（`config.json` / `DS2API_CONFIG_JSON`）：
+>
+>   ```json
+>   {
+>     "auth": { "allow_gemini_query_key": false }
+>   }
+>   ```
+>
+> 环境变量优先级高于配置文件；未设置且无配置时默认 `true`，保持 AI Studio 兼容。
 
 ---
 

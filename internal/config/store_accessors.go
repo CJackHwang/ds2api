@@ -223,6 +223,37 @@ func (s *Store) ParserV2Mode() string {
 	return "off"
 }
 
+// AllowGeminiQueryKey reports whether the Gemini-compatible
+// `?key=` / `?api_key=` query parameters are accepted as caller credential
+// fallbacks when no header-based credential is present.
+//
+// Resolution order (first match wins):
+//  1. DS2API_ALLOW_GEMINI_QUERY_KEY environment variable.
+//     Truthy values:  "1" / "true" / "yes" / "on"  → true.
+//     Falsy values:   "0" / "false" / "no" / "off" → false.
+//     Any other non-empty value is ignored.
+//  2. config.auth.allow_gemini_query_key (explicit *bool).
+//  3. Default: true (preserves legacy AI Studio compatibility).
+func (s *Store) AllowGeminiQueryKey() bool {
+	if raw := strings.ToLower(strings.TrimSpace(os.Getenv("DS2API_ALLOW_GEMINI_QUERY_KEY"))); raw != "" {
+		switch raw {
+		case "1", "true", "yes", "on":
+			return true
+		case "0", "false", "no", "off":
+			return false
+		}
+	}
+	if s == nil {
+		return true
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.cfg.Auth.AllowGeminiQueryKey != nil {
+		return *s.cfg.Auth.AllowGeminiQueryKey
+	}
+	return true
+}
+
 func (s *Store) CORSAllowOrigins() []string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
