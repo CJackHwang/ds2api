@@ -22,6 +22,7 @@ const (
 type CurrentInputConfigReader interface {
 	CurrentInputFileEnabled() bool
 	CurrentInputFileMinChars() int
+	ContextEngineMode() string
 }
 
 type CurrentInputUploader interface {
@@ -80,7 +81,7 @@ func (s Service) ApplyCurrentInputFile(ctx context.Context, a *auth.RequestAuth,
 	stdReq.HistoryText = fileText
 	stdReq.CurrentInputFileApplied = true
 	stdReq.RefFileIDs = prependUniqueRefFileID(stdReq.RefFileIDs, fileID)
-	stdReq.FinalPrompt, stdReq.ToolNames = promptcompat.BuildOpenAIPrompt(messages, stdReq.ToolsRaw, "", stdReq.ToolChoice, stdReq.Thinking, "off")
+	stdReq.FinalPrompt, stdReq.ToolNames = promptcompat.BuildOpenAIPrompt(messages, stdReq.ToolsRaw, "", stdReq.ToolChoice, stdReq.Thinking, s.Store.ContextEngineMode())
 	// Token accounting must reflect the actual downstream context:
 	// the uploaded DS2API_HISTORY.txt file content + the continuation live prompt.
 	stdReq.PromptTokenText = fileText + "\n" + stdReq.FinalPrompt

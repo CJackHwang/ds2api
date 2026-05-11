@@ -23,6 +23,7 @@ func BuildOpenAIPrompt(messagesRaw []any, toolsRaw any, traceID string, toolPoli
 // BuildOpenAIPromptForAdapter exposes the OpenAI-compatible prompt building flow so
 // other protocol adapters (for example Gemini) can reuse the same tool/history
 // normalization logic and remain behavior-compatible with chat/completions.
-func BuildOpenAIPromptForAdapter(messagesRaw []any, toolsRaw any, traceID string, thinkingEnabled bool) (string, []string) {
-	return buildOpenAIFinalPrompt(messagesRaw, toolsRaw, traceID, thinkingEnabled)
+// mode is the context engine feature flag value ("off" / "shadow" / "enforce").
+func BuildOpenAIPromptForAdapter(messagesRaw []any, toolsRaw any, traceID string, thinkingEnabled bool, mode string) (string, []string) {
+	return BuildOpenAIPrompt(messagesRaw, toolsRaw, traceID, DefaultToolChoicePolicy(), thinkingEnabled, mode)
 }

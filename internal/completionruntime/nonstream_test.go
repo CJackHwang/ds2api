@@ -26,6 +26,7 @@ type currentInputRuntimeConfig struct{}
 
 func (currentInputRuntimeConfig) CurrentInputFileEnabled() bool { return true }
 func (currentInputRuntimeConfig) CurrentInputFileMinChars() int { return 0 }
+func (currentInputRuntimeConfig) ContextEngineMode() string     { return "off" }
 
 func (f *fakeDeepSeekCaller) CreateSession(_ context.Context, a *auth.RequestAuth, _ int) (string, error) {
 	if f.sessionByAccount && a != nil && a.AccountID != "" {
