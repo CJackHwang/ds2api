@@ -326,10 +326,3 @@ func TestResponsesAPIToPromptPipeline(t *testing.T) {
 		t.Errorf("current user message must survive Responses→OpenAI pipeline, got: %q", p[:min(200, len(p))])
 	}
 }
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}

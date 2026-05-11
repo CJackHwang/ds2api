@@ -76,11 +76,11 @@ func RunShadowDiff(mode string, existing ToolCallParseResult) ShadowDiffRecord {
 		NewWhitelistHit: cand.nameWhitelistHit,
 	}
 
-	logger := config.Logger
-	if logger == nil {
-		logger = slog.Default()
-	}
 	if hasDiff {
+		logger := config.Logger
+		if logger == nil {
+			logger = slog.Default()
+		}
 		logger.Info("[parser_shadow_diff]",
 			"has_diff", true,
 			"old_call_count", rec.OldCallCount,
@@ -98,18 +98,23 @@ func RunShadowDiff(mode string, existing ToolCallParseResult) ShadowDiffRecord {
 }
 
 // ClassifyConfidence maps the confidence signals in a ShadowDiffRecord to a
-// ParseConfidence level. Call only when Ran == true.
+// ParseConfidence level. Safe to call on the zero-value record (Ran == false),
+// which returns ConfidenceLow.
 //
 // Rules (evaluated in order; first match wins):
 //
-//  1. No tool-call syntax seen → Low (no call, nothing to be confident about).
-//  2. Ambiguous (both DSML and canonical wrappers) → Low.
-//  3. ParsePath is normalize_failed or xml_parse_failed → Low.
-//  4. xml_direct + whitelist hit → High.
-//  5. xml_direct without whitelist hit → Medium (parsed but names unknown).
-//  6. xml_cdata_recover → Medium (needed recovery heuristic).
-//  7. Fallthrough → Medium.
+//  1. Ran == false (zero-value record) → Low.
+//  2. No tool-call syntax seen → Low (no call, nothing to be confident about).
+//  3. Ambiguous (both DSML and canonical wrappers) → Low.
+//  4. ParsePath is empty, stripped_empty, normalize_failed, or xml_parse_failed → Low.
+//  5. xml_direct + whitelist hit → High.
+//  6. xml_direct without whitelist hit → Medium (parsed but names unknown).
+//  7. xml_cdata_recover → Medium (needed recovery heuristic).
+//  8. Fallthrough → Medium.
 func ClassifyConfidence(r ShadowDiffRecord) ParseConfidence {
+	if !r.Ran {
+		return ConfidenceLow
+	}
 	if !r.NewSawSyntax {
 		return ConfidenceLow
 	}
@@ -117,7 +122,7 @@ func ClassifyConfidence(r ShadowDiffRecord) ParseConfidence {
 		return ConfidenceLow
 	}
 	switch r.NewParsePath {
-	case parsePathNormalizeFailed, parsePathXMLFailed:
+	case parsePathEmpty, parsePathStrippedEmpty, parsePathNormalizeFailed, parsePathXMLFailed:
 		return ConfidenceLow
 	case parsePathXMLDirect:
 		if r.NewWhitelistHit {

@@ -1,7 +1,6 @@
 package toolcall
 
 import (
-	"strings"
 	"testing"
 )
 
@@ -245,17 +244,18 @@ func TestRunShadowDiff_ConfidenceSignalsPropagated(t *testing.T) {
 }
 
 func TestRunShadowDiff_ConfidenceMedium_CDATARecoverPath(t *testing.T) {
-	// Loose CDATA triggers the CDATA recovery path → ConfidenceMedium.
+	// Loose CDATA (unclosed section) triggers the CDATA recovery path → ConfidenceMedium.
 	text := `<tool_calls><invoke name="Write"><parameter name="content"><![CDATA[hello</parameter></invoke></tool_calls>`
 	existing := ParseStandaloneToolCallsDetailed(text, []string{"Write"})
 	rec := RunShadowDiff("shadow", existing)
 	if !rec.Ran {
 		t.Fatal("expected shadow diff to run")
 	}
-	// Path must be either xml_direct or xml_cdata_recover; confidence must
-	// not be Low.
-	if c := ClassifyConfidence(rec); c == ConfidenceLow {
-		t.Errorf("loose CDATA with valid result should be at least Medium, got %s (path=%s)", c, rec.NewParsePath)
+	if rec.NewParsePath != parsePathXMLCDATARecover {
+		t.Errorf("expected NewParsePath=%q for unclosed CDATA, got %q", parsePathXMLCDATARecover, rec.NewParsePath)
+	}
+	if c := ClassifyConfidence(rec); c != ConfidenceMedium {
+		t.Errorf("expected ConfidenceMedium for xml_cdata_recover path, got %s", c)
 	}
 }
 
@@ -274,5 +274,4 @@ func TestConfidenceString(t *testing.T) {
 			t.Errorf("ParseConfidence(%d).String() = %q, want %q", tc.c, got, tc.want)
 		}
 	}
-	_ = strings.Contains // keep import
 }
