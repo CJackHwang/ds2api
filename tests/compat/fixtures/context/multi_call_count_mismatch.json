@@ -1,0 +1,41 @@
+{
+  "description": "Assistant invokes two tools in one turn, but history only has one tool result (the second result was dropped). Context Engine must emit a soft warning but retain the partial results (not trim them).",
+  "messages": [
+    {
+      "role": "user",
+      "content": "同时读取两个文件"
+    },
+    {
+      "role": "assistant",
+      "content": "好的，我同时读取两个文件。",
+      "tool_calls": [
+        {
+          "id": "call_a",
+          "type": "function",
+          "function": {
+            "name": "Read",
+            "arguments": "{\"file_path\": \"/src/a.go\", \"limit\": 20, \"offset\": 0}"
+          }
+        },
+        {
+          "id": "call_b",
+          "type": "function",
+          "function": {
+            "name": "Read",
+            "arguments": "{\"file_path\": \"/src/b.go\", \"limit\": 20, \"offset\": 0}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "call_a",
+      "name": "Read",
+      "content": "// a.go content"
+    }
+  ],
+  "history_text": "",
+  "file_refs": [],
+  "expected_issues": [],
+  "expected_warnings_contain": ["tool_call count mismatch"]
+}

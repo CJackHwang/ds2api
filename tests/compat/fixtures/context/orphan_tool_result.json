@@ -1,0 +1,24 @@
+{
+  "description": "History contains a tool result with no preceding tool_call (e.g. history was truncated and the assistant turn was dropped). Context Engine must detect this orphan_tool_result invariant violation.",
+  "messages": [
+    {
+      "role": "user",
+      "content": "继续上面的任务"
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "call_missing",
+      "name": "Read",
+      "content": "// game.js lines 990-1050\nfunction _drawNext() {\n  // ...placeholder content...\n}\n"
+    },
+    {
+      "role": "assistant",
+      "content": "根据读取结果，问题在 _drawNext 函数。"
+    }
+  ],
+  "history_text": "",
+  "file_refs": [],
+  "expected_issues": [
+    "orphan_tool_result"
+  ]
+}

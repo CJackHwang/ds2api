@@ -10,13 +10,14 @@ import (
 
 // contextFixture mirrors tests/compat/fixtures/context/*.json
 type contextFixture struct {
-	Description     string           `json:"description"`
-	Messages        []map[string]any `json:"messages"`
-	HistoryText     string           `json:"history_text"`
-	FullHistoryLen  int              `json:"full_history_len"`
-	FileRefs        []string         `json:"file_refs"`
-	ExpectedIssues  []string         `json:"expected_issues"`
-	TokenBudgetHint int              `json:"token_budget_hint"`
+	Description             string           `json:"description"`
+	Messages                []map[string]any `json:"messages"`
+	HistoryText             string           `json:"history_text"`
+	FullHistoryLen          int              `json:"full_history_len"`
+	FileRefs                []string         `json:"file_refs"`
+	ExpectedIssues          []string         `json:"expected_issues"`
+	ExpectedWarningsContain []string         `json:"expected_warnings_contain"`
+	TokenBudgetHint         int              `json:"token_budget_hint"`
 }
 
 func loadFixture(t *testing.T, name string) contextFixture {
@@ -134,6 +135,98 @@ func TestCompileOrphanToolCall(t *testing.T) {
 		if _, found := trimmedIDs[seg.ID]; found {
 			t.Errorf("trimmed segment %s (type %s) should not be in SegmentsIncluded", seg.ID, seg.Type)
 		}
+	}
+}
+
+func TestCompileOrphanToolResult(t *testing.T) {
+	fix := loadFixture(t, "orphan_tool_result.json")
+
+	plan, err := Compile(CompileInput{Messages: fix.Messages})
+	if err != nil {
+		t.Fatalf("Compile error: %v", err)
+	}
+
+	if len(plan.Warnings) == 0 {
+		t.Error("expected at least one warning for orphan_tool_result fixture")
+	}
+
+	found := false
+	for _, ts := range plan.SegmentsTrimmed {
+		if ts.Reason == "orphan_tool_result" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("expected a TrimmedSegment with reason 'orphan_tool_result'")
+	}
+
+	for _, seg := range plan.SegmentsIncluded {
+		if seg.Type == SegToolResult {
+			t.Errorf("orphaned SegToolResult should not be in SegmentsIncluded, found id=%s", seg.ID)
+		}
+	}
+}
+
+func TestCompileMultiOrphanTools(t *testing.T) {
+	fix := loadFixture(t, "multi_orphan_tools.json")
+
+	plan, err := Compile(CompileInput{Messages: fix.Messages})
+	if err != nil {
+		t.Fatalf("Compile error: %v", err)
+	}
+
+	reasons := make(map[string]bool)
+	for _, ts := range plan.SegmentsTrimmed {
+		reasons[ts.Reason] = true
+	}
+	for _, issue := range fix.ExpectedIssues {
+		if !reasons[issue] {
+			t.Errorf("expected trimmed reason %q not found; got reasons: %v", issue, reasons)
+		}
+	}
+
+	for _, seg := range plan.SegmentsIncluded {
+		if seg.Type == SegToolCall || seg.Type == SegToolResult {
+			t.Errorf("orphaned tool segment should not be in SegmentsIncluded: id=%s type=%s", seg.ID, seg.Type)
+		}
+	}
+}
+
+func TestCompileMultiCallCountMismatch(t *testing.T) {
+	fix := loadFixture(t, "multi_call_count_mismatch.json")
+
+	plan, err := Compile(CompileInput{Messages: fix.Messages})
+	if err != nil {
+		t.Fatalf("Compile error: %v", err)
+	}
+
+	if len(plan.SegmentsTrimmed) != 0 {
+		t.Errorf("expected no trimmed segments for partial-result fixture (partial results retained), got %d", len(plan.SegmentsTrimmed))
+	}
+
+	for _, wantSubstr := range fix.ExpectedWarningsContain {
+		found := false
+		for _, w := range plan.Warnings {
+			if strings.Contains(w, wantSubstr) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("expected warning containing %q not found in: %v", wantSubstr, plan.Warnings)
+		}
+	}
+
+	types := make(map[SegmentType]int)
+	for _, seg := range plan.SegmentsIncluded {
+		types[seg.Type]++
+	}
+	if types[SegToolCall] == 0 {
+		t.Error("expected SegToolCall to be retained for partial-result scenario")
+	}
+	if types[SegToolResult] == 0 {
+		t.Error("expected SegToolResult to be retained for partial-result scenario")
 	}
 }
 

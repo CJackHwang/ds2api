@@ -24,13 +24,14 @@ type CompileInput struct {
 
 // Compile maps a normalised message sequence to a ContextPlan.
 //
-// M1 behaviour:
+// M3 behaviour:
 //   - Every message becomes one or two ContextSegments (assistant with
 //     tool_calls yields both SegAssistant + SegToolCall).
-//   - Orphan tool_call detection: an assistant segment whose tool_calls have
-//     no matching subsequent tool-result segment is added to SegmentsTrimmed
-//     with reason "orphan_tool_call", and a Warning is emitted.
-//   - Token budget is computed (Used) but no trimming is performed yet (M3).
+//   - Group-based pair validation: a SegToolCall with no following
+//     SegToolResult is trimmed as "orphan_tool_call"; a SegToolResult with no
+//     preceding SegToolCall in the same exchange is trimmed as
+//     "orphan_tool_result"; a call-count mismatch emits a soft Warning.
+//   - Token budget is computed (Used) but priority trimming is in M3 Stage 2.
 func Compile(input CompileInput) (ContextPlan, error) {
 	planID := "plan_" + strings.ReplaceAll(uuid.NewString(), "-", "")
 
@@ -41,33 +42,29 @@ func Compile(input CompileInput) (ContextPlan, error) {
 	// First pass: build segments.
 	segs := buildSegments(input.Messages)
 
-	// Second pass: orphan detection.
-	// An assistant segment that carries tool_calls is orphaned if the very
-	// next segment is NOT a tool_result (or there is no next segment at all).
-	for i, seg := range segs {
-		if seg.Type != SegToolCall {
-			continue
-		}
-		// A tool_call is paired when the immediately-following segment is a tool_result.
-		next := i + 1
-		paired := next < len(segs) && segs[next].Type == SegToolResult
-		if !paired {
-			trimmed = append(trimmed, TrimmedSegment{
-				ID:     seg.ID,
-				Type:   seg.Type,
-				Reason: "orphan_tool_call",
-			})
-			warnings = append(warnings, fmt.Sprintf("segment %s: orphan tool_call — no matching tool_result follows", seg.ID))
-			if i > 0 && segs[i-1].Type == SegAssistant {
-				warnings = append(warnings, fmt.Sprintf("segment %s: companion SegAssistant retained for orphaned SegToolCall %s", segs[i-1].ID, seg.ID))
-			}
-		}
-	}
+	// Second pass: group-based tool pair validation.
+	orphanCallIdxs, orphanResultIdxs, pairWarnings := validateToolPairs(segs)
+	warnings = append(warnings, pairWarnings...)
 
-	// Build orphan ID set for exclusion.
-	orphanIDs := make(map[string]struct{}, len(trimmed))
-	for _, t := range trimmed {
-		orphanIDs[t.ID] = struct{}{}
+	// Build trimmed list and orphan ID set.
+	orphanIDs := make(map[string]struct{}, len(orphanCallIdxs)+len(orphanResultIdxs))
+	for _, idx := range orphanCallIdxs {
+		seg := segs[idx]
+		trimmed = append(trimmed, TrimmedSegment{
+			ID:     seg.ID,
+			Type:   seg.Type,
+			Reason: "orphan_tool_call",
+		})
+		orphanIDs[seg.ID] = struct{}{}
+	}
+	for _, idx := range orphanResultIdxs {
+		seg := segs[idx]
+		trimmed = append(trimmed, TrimmedSegment{
+			ID:     seg.ID,
+			Type:   seg.Type,
+			Reason: "orphan_tool_result",
+		})
+		orphanIDs[seg.ID] = struct{}{}
 	}
 
 	// Third pass: include non-orphan segments, accumulate token cost.
@@ -120,11 +117,16 @@ func buildSegments(messages []map[string]any) []ContextSegment {
 			if content != "" {
 				segs = append(segs, makeSegment(SegAssistant, "request", content))
 			}
-			// If the assistant message carries tool_calls, emit a SegToolCall.
+			// If the assistant message carries tool_calls, emit a SegToolCall
+			// and store the call count in Metadata for pair validation.
 			if toolCalls := msg["tool_calls"]; toolCalls != nil {
-				tcContent := marshalToolCalls(toolCalls)
+				tcContent, callCount := marshalToolCallsWithCount(toolCalls)
 				if tcContent != "" {
-					segs = append(segs, makeSegment(SegToolCall, "tool", tcContent))
+					seg := makeSegment(SegToolCall, "tool", tcContent)
+					if callCount > 0 {
+						seg.Metadata = map[string]any{"call_count": callCount}
+					}
+					segs = append(segs, seg)
 				}
 			}
 		case "tool", "function":
@@ -134,6 +136,87 @@ func buildSegments(messages []map[string]any) []ContextSegment {
 		}
 	}
 	return segs
+}
+
+// validateToolPairs performs group-based tool pair validation on a segment
+// slice. It returns the indices of orphaned SegToolCall and SegToolResult
+// segments, plus any soft warnings (e.g. call-count mismatch).
+//
+// Pairing rules:
+//   - A SegToolCall segment is paired with all immediately-following
+//     SegToolResult segments. A call with zero results is orphaned.
+//   - A SegToolResult that appears outside any call-initiated exchange
+//     (i.e. no preceding SegToolCall in the same run) is orphaned.
+//   - When the number of SegToolResult segments in a group differs from the
+//     stored call_count (> 1), a soft warning is emitted but nothing is
+//     trimmed (partial results are still useful to the model).
+func validateToolPairs(segs []ContextSegment) (orphanCalls, orphanResults []int, warnings []string) {
+	type group struct {
+		callIdx    int
+		callCount  int
+		resultIdxs []int
+	}
+
+	groups := make([]group, 0)
+
+	i := 0
+	for i < len(segs) {
+		switch segs[i].Type {
+		case SegToolCall:
+			g := group{callIdx: i, callCount: segCallCount(segs[i])}
+			i++
+			for i < len(segs) && segs[i].Type == SegToolResult {
+				g.resultIdxs = append(g.resultIdxs, i)
+				i++
+			}
+			groups = append(groups, g)
+		case SegToolResult:
+			// SegToolResult with no preceding SegToolCall in this exchange.
+			orphanResults = append(orphanResults, i)
+			i++
+		default:
+			i++
+		}
+	}
+
+	for _, g := range groups {
+		callSeg := segs[g.callIdx]
+		if len(g.resultIdxs) == 0 {
+			orphanCalls = append(orphanCalls, g.callIdx)
+			warnings = append(warnings, fmt.Sprintf(
+				"segment %s: orphan tool_call — no matching tool_result follows",
+				callSeg.ID,
+			))
+		} else if g.callCount > 1 && len(g.resultIdxs) != g.callCount {
+			warnings = append(warnings, fmt.Sprintf(
+				"segment %s: tool_call count mismatch — expected %d result(s), got %d",
+				callSeg.ID, g.callCount, len(g.resultIdxs),
+			))
+		}
+	}
+
+	for _, idx := range orphanResults {
+		warnings = append(warnings, fmt.Sprintf(
+			"segment %s: orphan tool_result — no preceding tool_call in this exchange",
+			segs[idx].ID,
+		))
+	}
+
+	return orphanCalls, orphanResults, warnings
+}
+
+// segCallCount returns the expected number of tool_call results from the
+// Metadata stored by buildSegments, defaulting to 1.
+func segCallCount(seg ContextSegment) int {
+	if seg.Metadata == nil {
+		return 1
+	}
+	if v, ok := seg.Metadata["call_count"]; ok {
+		if n, ok := v.(int); ok && n > 0 {
+			return n
+		}
+	}
+	return 1
 }
 
 func makeSegment(segType SegmentType, source, content string) ContextSegment {
@@ -193,13 +276,16 @@ func marshalArguments(v any) string {
 	return string(b)
 }
 
-func marshalToolCalls(v any) string {
+// marshalToolCallsWithCount serialises tool_calls to a summary string and
+// returns the number of individual calls found. Call count is used by
+// validateToolPairs to detect result-count mismatches.
+func marshalToolCallsWithCount(v any) (string, int) {
 	switch x := v.(type) {
 	case string:
-		return x
+		return x, 1
 	case []any:
 		if len(x) == 0 {
-			return ""
+			return "", 0
 		}
 		parts := make([]string, 0, len(x))
 		for _, item := range x {
@@ -215,10 +301,10 @@ func marshalToolCalls(v any) string {
 			// Items present but none have a parseable "function" key.
 			// Return a sentinel so the SegToolCall is still emitted and
 			// orphan detection is not silently bypassed.
-			return "<unparseable_tool_calls>"
+			return "<unparseable_tool_calls>", len(x)
 		}
-		return strings.Join(parts, "; ")
+		return strings.Join(parts, "; "), len(parts)
 	default:
-		return ""
+		return "", 0
 	}
 }

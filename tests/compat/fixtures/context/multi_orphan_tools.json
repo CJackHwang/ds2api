@@ -1,0 +1,39 @@
+{
+  "description": "Adversarial: history has both an orphaned tool_call (no result) and an orphaned tool_result (no call). Tests that the group-based validator catches both simultaneously.",
+  "messages": [
+    {
+      "role": "user",
+      "content": "分析一下代码"
+    },
+    {
+      "role": "assistant",
+      "content": "我先读取文件。",
+      "tool_calls": [
+        {
+          "id": "call_orphan_call",
+          "type": "function",
+          "function": {
+            "name": "Read",
+            "arguments": "{\"file_path\": \"/src/main.go\", \"limit\": 30, \"offset\": 0}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "assistant",
+      "content": "再看看测试。"
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "call_missing_parent",
+      "name": "Read",
+      "content": "// test content"
+    }
+  ],
+  "history_text": "",
+  "file_refs": [],
+  "expected_issues": [
+    "orphan_tool_call",
+    "orphan_tool_result"
+  ]
+}
