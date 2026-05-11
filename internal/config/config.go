@@ -23,6 +23,7 @@ type Config struct {
 	Vercel            VercelConfig            `json:"vercel,omitempty"`
 	CORS              CORSConfig              `json:"cors,omitempty"`
 	ContextEngine     ContextEngineConfig     `json:"context_engine,omitempty"`
+	ParserV2          ParserV2Config          `json:"parser_v2,omitempty"`
 	VercelSyncHash    string                  `json:"_vercel_sync_hash,omitempty"`
 	VercelSyncTime    int64                   `json:"_vercel_sync_time,omitempty"`
 	AdditionalFields  map[string]any          `json:"-"`
@@ -193,6 +194,12 @@ type CORSConfig struct {
 // ContextEngineConfig controls the context compilation feature flag.
 // Mode must be one of "off" (default) | "shadow" | "enforce".
 type ContextEngineConfig struct {
+	Mode string `json:"mode,omitempty"`
+}
+
+// ParserV2Config controls the tool-call parser v2 feature flag.
+// Mode must be one of "off" (default) | "shadow" | "enforce".
+type ParserV2Config struct {
 	Mode string `json:"mode,omitempty"`
 }
 

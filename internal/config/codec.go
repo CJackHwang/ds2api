@@ -57,6 +57,9 @@ func (c Config) MarshalJSON() ([]byte, error) {
 	if strings.TrimSpace(c.ContextEngine.Mode) != "" {
 		m["context_engine"] = c.ContextEngine
 	}
+	if strings.TrimSpace(c.ParserV2.Mode) != "" {
+		m["parser_v2"] = c.ParserV2
+	}
 	if c.VercelSyncHash != "" {
 		m["_vercel_sync_hash"] = c.VercelSyncHash
 	}
@@ -142,6 +145,10 @@ func (c *Config) UnmarshalJSON(b []byte) error {
 			if err := json.Unmarshal(v, &c.ContextEngine); err != nil {
 				return fmt.Errorf("invalid field %q: %w", k, err)
 			}
+		case "parser_v2":
+			if err := json.Unmarshal(v, &c.ParserV2); err != nil {
+				return fmt.Errorf("invalid field %q: %w", k, err)
+			}
 		case "vercel":
 			if err := json.Unmarshal(v, &c.Vercel); err != nil {
 				return fmt.Errorf("invalid field %q: %w", k, err)
@@ -188,6 +195,7 @@ func (c Config) Clone() Config {
 		Vercel:           c.Vercel,
 		CORS:             CORSConfig{AllowOrigins: slices.Clone(c.CORS.AllowOrigins)},
 		ContextEngine:    c.ContextEngine,
+		ParserV2:         c.ParserV2,
 		VercelSyncHash:   c.VercelSyncHash,
 		VercelSyncTime:   c.VercelSyncTime,
 		AdditionalFields: map[string]any{},

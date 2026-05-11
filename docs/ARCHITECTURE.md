@@ -205,7 +205,7 @@ flowchart LR
 - `internal/httpapi/admin/*`：Admin API 根装配与 auth/accounts/config/settings/proxies/rawsamples/vercel/history/devcapture/version 等资源子包。
 - `internal/chathistory`：服务器端对话记录持久化、分页、单条详情和保留策略。
 - `internal/responsehistory`：DeepSeek 上游响应归档，会在协议回译/裁剪前保存 assistant text、thinking、tool-call 原始片段和流式详情。
-- `internal/config`：配置加载、校验、运行时 settings 热更新；包含 `context_engine.mode`（`off`/`shadow`/`enforce`）feature flag，由环境变量 `DS2API_CONTEXT_ENGINE` 或配置文件 `context_engine.mode` 字段控制。
+- `internal/config`：配置加载、校验、运行时 settings 热更新；包含两个 feature flag：`context_engine.mode`（`off`/`shadow`/`enforce`，环境变量 `DS2API_CONTEXT_ENGINE`）和 `parser_v2.mode`（`off`/`shadow`/`enforce`，环境变量 `DS2API_PARSER_V2`）。详见 `docs/toolcall-semantics.md`（parser_v2）和 `docs/dev-plan-context-engine.md`（context_engine）。
 - `internal/contextengine`：Context Engine 编译层，落在 `promptcompat` 之后、`completionruntime` 之前。消费 `promptcompat` 归一后的标准 turn，产出 `ContextPlan`（含 segment 列表、token budget 报告、warnings）。M2 阶段 `shadow` 模式下仅输出结构化日志，不修改最终 prompt。
 - `internal/observe`：请求级结构化日志可观测性。`RequestMetrics` 上下文累加器在 completion 路径累计 TTFT / retry / account switch 等指标，`Middleware` 在请求完成后以 `[completion_request]` 键写入结构化日志。
 - `internal/account`：托管账号池、并发槽位、等待队列。

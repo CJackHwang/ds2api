@@ -135,8 +135,27 @@ node --test tests/node/toolcall-parity.test.js
 ./tests/scripts/run-unit-all.sh
 ```
 
-### 内部 parseCandidate（M2 预留）
+### feature flag：parser.v2（M2）
 
-`internal/toolcall/toolcalls_parse.go` 中的私有 `parseCandidate` 结构体是
-M2 shadow diff 的占位点。M2 会在此携带额外置信信号（parse path、ambiguity flags）
-而不修改 `ParseToolCallsDetailed` 的公开签名。
+#### 配置入口
+
+`internal/config/` 中的 `ParserV2Config`（字段 `parser_v2.mode`），通过以下方式控制：
+
+- **配置文件**：`config.json` 中 `"parser_v2": {"mode": "shadow"}` 
+- **环境变量**：`DS2API_PARSER_V2=shadow`（优先级高于配置文件）
+
+合法值：`"off"`（默认）| `"shadow"` | `"enforce"`。任何其他值均回退到 `"off"`。
+
+#### 三态语义
+
+| 模式 | 行为 |
+|------|------|
+| `off` | 仅运行现有解析路径，零额外开销；与 M1 行为完全一致 |
+| `shadow` | 现有路径提供对外结果；`buildParseCandidate`（新路径）并行运行，diff 以结构化日志写出（不暴露给客户端） |
+| `enforce` | 新路径提供对外结果（M3 验证后手动启用） |
+
+#### 内部 parseCandidate
+
+`internal/toolcall/toolcalls_parse.go` 中的私有 `parseCandidate` 结构体承载
+shadow diff 的新解析输出（`calls`、`sawToolCallSyntax`）。Shadow diff 发现
+差异时在 `internal/toolcall/shadow.go` 中以 `[parser_shadow_diff]` 键写入结构化日志。

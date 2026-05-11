@@ -197,6 +197,28 @@ func (s *Store) ContextEngineMode() string {
 	return "off"
 }
 
+// ParserV2Mode returns the tool-call parser v2 feature flag value.
+// Valid values: "off" (default) | "shadow" | "enforce".
+// The DS2API_PARSER_V2 environment variable takes precedence over the
+// config file value.
+func (s *Store) ParserV2Mode() string {
+	if raw := strings.ToLower(strings.TrimSpace(os.Getenv("DS2API_PARSER_V2"))); raw != "" {
+		switch raw {
+		case "shadow", "enforce":
+			return raw
+		case "off":
+			return "off"
+		}
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	switch strings.ToLower(strings.TrimSpace(s.cfg.ParserV2.Mode)) {
+	case "shadow", "enforce":
+		return strings.ToLower(strings.TrimSpace(s.cfg.ParserV2.Mode))
+	}
+	return "off"
+}
+
 func (s *Store) CORSAllowOrigins() []string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
