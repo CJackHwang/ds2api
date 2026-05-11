@@ -129,7 +129,15 @@ func NewApp() (*App, error) {
 	})
 
 	if auth.UsingDefaultAdminKey(store) {
-		config.Logger.Error("SECURITY: DS2API_ADMIN_KEY is not set and no password_hash configured. Using insecure default \"admin\". Set DS2API_ADMIN_KEY or admin.password_hash before production use.")
+		if !store.AllowDefaultAdminKey() {
+			return nil, fmt.Errorf(
+				"SECURITY: no admin credential configured (DS2API_ADMIN_KEY / admin.password_hash). " +
+					"Set a strong credential before starting. " +
+					"To allow the insecure default in local/CI environments, set DS2API_ALLOW_DEFAULT_ADMIN_KEY=true",
+			)
+		}
+		config.Logger.Error("SECURITY: DS2API_ADMIN_KEY is not set and no password_hash configured. " +
+			"Using insecure default \"admin\". Set a strong credential before production use.")
 	}
 
 	return &App{Store: store, Pool: pool, Resolver: resolver, DS: dsClient, Router: r}, nil

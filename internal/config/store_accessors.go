@@ -223,6 +223,35 @@ func (s *Store) ParserV2Mode() string {
 	return "off"
 }
 
+// AllowDefaultAdminKey reports whether the server is permitted to start when
+// no admin credential is configured (i.e. UsingDefaultAdminKey is true).
+//
+// Resolution order (first match wins):
+//  1. DS2API_ALLOW_DEFAULT_ADMIN_KEY environment variable.
+//     Truthy:  "1" / "true" / "yes" / "on"  → true (allow start, print warning).
+//     Falsy:   "0" / "false" / "no" / "off" → false (fail-closed).
+//  2. config.admin.allow_default_admin_key (explicit *bool).
+//  3. Default: false (fail-closed; requires explicit opt-in).
+func (s *Store) AllowDefaultAdminKey() bool {
+	if raw := strings.ToLower(strings.TrimSpace(os.Getenv("DS2API_ALLOW_DEFAULT_ADMIN_KEY"))); raw != "" {
+		switch raw {
+		case "1", "true", "yes", "on":
+			return true
+		case "0", "false", "no", "off":
+			return false
+		}
+	}
+	if s == nil {
+		return false
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.cfg.Admin.AllowDefaultAdminKey != nil {
+		return *s.cfg.Admin.AllowDefaultAdminKey
+	}
+	return false
+}
+
 // AllowGeminiQueryKey reports whether the Gemini-compatible
 // `?key=` / `?api_key=` query parameters are accepted as caller credential
 // fallbacks when no header-based credential is present.

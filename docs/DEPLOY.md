@@ -595,12 +595,32 @@ sudo systemctl stop ds2api
 
 ### Admin 鉴权配置
 
-**DS2API 默认使用不安全的 admin key `"admin"`**，如未配置会在每次鉴权时打印 `ERROR` 级日志。生产环境必须通过以下任一方式配置：
+**DS2API 采用 fail-closed 策略**：若未配置任何 admin 凭证，服务启动时会直接报错退出（而非静默使用默认值 `"admin"`）。生产环境必须通过以下任一方式配置：
 
 - **推荐**：在 `config.json` 的 `admin.password_hash` 填入哈希值（通过 WebUI Admin 页面生成）
 - 或设置环境变量 `DS2API_ADMIN_KEY=<强密钥>`
 
-未配置时，服务**可正常启动**但每次 admin 请求都会打印安全警告。建议在自动化部署中监控此类 `ERROR` 日志以快速发现配置缺失。
+#### 本地 / CI 环境允许无凭证启动
+
+开发或 CI 场景下若暂不配置凭证，需显式 opt-in：
+
+- **环境变量**（推荐）：
+  ```bash
+  DS2API_ALLOW_DEFAULT_ADMIN_KEY=true
+  # 支持的真值：1 / true / yes / on
+  # 支持的假值：0 / false / no / off（不填则 fail-closed）
+  ```
+
+- **配置文件**（`config.json` / `DS2API_CONFIG_JSON`）：
+  ```json
+  {
+    "admin": { "allow_default_admin_key": true }
+  }
+  ```
+
+启用后服务可正常启动，但每次启动会打印 `ERROR` 级安全警告。**生产环境请勿启用此选项**，应直接配置强凭证。
+
+> 环境变量优先级高于配置文件；两者均未设置时默认 `false`（fail-closed）。
 
 #### 密码哈希算法（bcrypt 默认 / sha256 透明迁移）
 

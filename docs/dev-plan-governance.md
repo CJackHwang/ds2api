@@ -64,7 +64,7 @@ DoD：
 任务：
 
 - Admin key fail-closed：缺失或默认值时拒绝启动并打印明确错误（不静默使用默认值）。
-  - **当前状态（M1 PR）**：`internal/server/router.go` 在 `UsingDefaultAdminKey` 时打印 `slog.Error` 警告但**未阻止启动**；按 §4 风险栏的过渡期策略，**真正 fail-closed 延期到 M3 分支 `feat/m3-governance-admin-failclosed`**，届时通过 `AdminConfig.AllowDefaultAdminKey` / `DS2API_ALLOW_DEFAULT_ADMIN_KEY` 提供本地 / CI 兜底。
+  - **已落地**（分支 `feat/m2-governance-fail-closed`）：`internal/server/router.go:NewApp` 在 `UsingDefaultAdminKey` 且 `!store.AllowDefaultAdminKey()` 时直接返回错误，阻止服务启动；通过 `DS2API_ALLOW_DEFAULT_ADMIN_KEY=true` 或 `config.admin.allow_default_admin_key: true` 可本地 / CI opt-in；`internal/config/AdminConfig.AllowDefaultAdminKey *bool` 新增字段，与 `AllowGeminiQueryKey` 相同的 env→config→default(false) 解析链；`docs/DEPLOY.md` 同步更新。
 - 日志脱敏：补 token / email / mobile / 文件内容的字段级脱敏；新增结构化日志字段时统一过过滤函数。
   - **当前状态**：`internal/util/redact.go` 已覆盖 `api_key / x-api-key / apikey`；token / email / mobile / 文件内容由分支 `feat/m1-governance-log-redaction-expand` 落地。
 - query key：新增配置开关，默认仍兼容；文档与发布说明里加 “建议关闭” 提示。
