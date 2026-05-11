@@ -38,7 +38,7 @@ SuppressedCharCount int     // sieve 拦截未下发的字节数（代理 token 
 - `IncrShadowDiffHit(ctx)`
 - `AddSuppressedCharCount(ctx, n)`
 
-- [ ] 完成
+- [x] 完成
 
 ### Step 2 — 更新 `internal/observe/middleware.go`
 
@@ -51,7 +51,7 @@ SuppressedCharCount int     // sieve 拦截未下发的字节数（代理 token 
 "parser_suppressed_char_count", suppressedCharCount,
 ```
 
-- [ ] 完成
+- [x] 完成
 
 ### Step 3 — `assistantturn.BuildOptions` 加 `Ctx context.Context`
 
@@ -70,7 +70,7 @@ SuppressedCharCount int     // sieve 拦截未下发的字节数（代理 token 
 - `internal/httpapi/gemini/handler_stream_runtime.go`
 - `internal/completionruntime/nonstream.go`
 
-- [ ] 完成
+- [x] 完成
 
 ### Step 4 — `toolstream.State` 追踪 suppressed 字节数
 
@@ -87,7 +87,7 @@ SuppressedCharCount int     // sieve 拦截未下发的字节数（代理 token 
 - `internal/httpapi/claude/stream_runtime_core.go`
 - `internal/httpapi/gemini/handler_stream_runtime.go`
 
-- [ ] 完成
+- [x] 完成
 
 ### Step 5 — Admin Settings API 加只读字段
 
@@ -95,18 +95,20 @@ SuppressedCharCount int     // sieve 拦截未下发的字节数（代理 token 
 - `internal/httpapi/admin/settings/deps.go`：`ConfigReader` 接口加 `ParserV2Mode() string`
 - 相关 test mock 加 `ParserV2Mode()`
 
-- [ ] 完成
+- [x] 完成
 
 ---
 
 ## PR-3a DoD
 
-- [ ] `go build ./...` 通过
-- [ ] `go test ./...` 全绿（含 observe/toolstream/admin 新测试）
-- [ ] `./scripts/lint.sh` 0 issues
-- [ ] `./tests/scripts/run-unit-all.sh` 通过
-- [ ] `[completion_request]` 日志含 5 个 parser 字段
-- [ ] Admin `GET /admin/settings` 返回 `parser_v2.mode`
+- [x] `go build ./...` 通过
+- [x] `go test ./...` 全绿（含 observe/toolstream/admin 新测试）
+- [x] `./scripts/lint.sh` 0 issues
+- [x] `./tests/scripts/run-unit-all.sh` 通过
+- [x] `[completion_request]` 日志含 5 个 parser 字段
+- [x] Admin `GET /admin/settings` 返回 `parser_v2.mode`
+
+> PR-3a 已于 PR #11 (`fix(toolparser): complete M2 parser metrics propagation`) 合入 main。状态于本次 `docs/m1-m2-status-reconciliation` 分支补勾。
 
 ---
 

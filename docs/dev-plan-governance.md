@@ -64,9 +64,13 @@ DoD：
 任务：
 
 - Admin key fail-closed：缺失或默认值时拒绝启动并打印明确错误（不静默使用默认值）。
+  - **当前状态（M1 PR）**：`internal/server/router.go` 在 `UsingDefaultAdminKey` 时打印 `slog.Error` 警告但**未阻止启动**；按 §4 风险栏的过渡期策略，**真正 fail-closed 延期到 M3 分支 `feat/m3-governance-admin-failclosed`**，届时通过 `AdminConfig.AllowDefaultAdminKey` / `DS2API_ALLOW_DEFAULT_ADMIN_KEY` 提供本地 / CI 兜底。
 - 日志脱敏：补 token / email / mobile / 文件内容的字段级脱敏；新增结构化日志字段时统一过过滤函数。
+  - **当前状态**：`internal/util/redact.go` 已覆盖 `api_key / x-api-key / apikey`；token / email / mobile / 文件内容由分支 `feat/m1-governance-log-redaction-expand` 落地。
 - query key：新增配置开关，默认仍兼容；文档与发布说明里加 “建议关闭” 提示。
+  - **当前状态**：`docs/DEPLOY.md` 已加 query key 警告文字；配置开关由分支 `feat/m1-governance-querykey-toggle` 落地（默认 `true` 保持兼容）。
 - CORS：明确 allowlist 配置入口；文档补充示例。
+  - **当前状态**：服务端 allowlist 已在 `internal/server/router.go:setCORSHeaders` 实现；`docs/DEPLOY.md` 示例由分支 `docs/governance-cors-deploy-examples` 落地。
 
 DoD：
 
