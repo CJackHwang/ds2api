@@ -68,7 +68,7 @@ DoD：
 - 日志脱敏：补 token / email / mobile / 文件内容的字段级脱敏；新增结构化日志字段时统一过过滤函数。
   - **当前状态**：`internal/util/redact.go` 已覆盖 `api_key / x-api-key / apikey`；token / email / mobile / 文件内容由分支 `feat/m1-governance-log-redaction-expand` 落地。
 - query key：新增配置开关，默认仍兼容；文档与发布说明里加 “建议关闭” 提示。
-  - **当前状态**：`docs/DEPLOY.md` 已加 query key 警告文字；配置开关由分支 `feat/m1-governance-querykey-toggle` 落地（默认 `true` 保持兼容）。
+  - **已落地**（分支 `feat/m1-governance-querykey-toggle`）：`config.auth.allow_gemini_query_key` (`*bool`，默认 `true` 保持兼容) + `DS2API_ALLOW_GEMINI_QUERY_KEY` 环境变量；`(*auth.Resolver).extractCallerToken` 按 store flag 决定是否接受 `?key=` / `?api_key=` fallback；`docs/DEPLOY.md` 已加关停示例。
 - CORS：明确 allowlist 配置入口；文档补充示例。
   - **当前状态**：服务端 allowlist 已在 `internal/server/router.go:setCORSHeaders` 实现；`docs/DEPLOY.md` 示例由分支 `docs/governance-cors-deploy-examples` 落地。
 

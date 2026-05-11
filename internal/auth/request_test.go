@@ -395,3 +395,102 @@ func TestDetermineManagedAccountReturnsLastEnsureErrorWhenAllFail(t *testing.T) 
 		t.Fatalf("expected auth-style ensure error, got ErrNoAccount")
 	}
 }
+
+// ─── query-key opt-in toggle (PR4: feat/m1-governance-querykey-toggle) ───
+
+// newTestResolverWithQueryKeyDisabled builds a resolver whose store has
+// config.auth.allow_gemini_query_key=false, so Gemini-compatible `?key=` /
+// `?api_key=` query parameters are rejected as credential fallbacks.
+func newTestResolverWithQueryKeyDisabled(t *testing.T) *Resolver {
+	t.Helper()
+	t.Setenv("DS2API_ALLOW_GEMINI_QUERY_KEY", "")
+	t.Setenv("DS2API_CONFIG_JSON", `{
+		"keys":["managed-key"],
+		"accounts":[{"email":"acc@example.com","password":"pwd","token":"account-token"}],
+		"auth":{"allow_gemini_query_key":false}
+	}`)
+	store := config.LoadStore()
+	pool := account.NewPool(store)
+	return NewResolver(store, pool, func(_ context.Context, _ config.Account) (string, error) {
+		return "fresh-token", nil
+	})
+}
+
+func TestDetermineRejectsQueryKeyWhenDisabledByConfig(t *testing.T) {
+	r := newTestResolverWithQueryKeyDisabled(t)
+	req, _ := http.NewRequest(http.MethodPost, "/v1beta/models/gemini-2.5-pro:generateContent?key=direct-query-key", nil)
+
+	_, err := r.Determine(req)
+	if !errors.Is(err, ErrUnauthorized) {
+		t.Fatalf("expected ErrUnauthorized when query-key disabled, got %v", err)
+	}
+}
+
+func TestDetermineRejectsAPIKeyQueryParamWhenDisabledByConfig(t *testing.T) {
+	r := newTestResolverWithQueryKeyDisabled(t)
+	req, _ := http.NewRequest(http.MethodPost, "/v1beta/models/gemini-2.5-pro:generateContent?api_key=direct-api-key", nil)
+
+	_, err := r.Determine(req)
+	if !errors.Is(err, ErrUnauthorized) {
+		t.Fatalf("expected ErrUnauthorized when api_key disabled, got %v", err)
+	}
+}
+
+func TestDetermineHeaderStillWorksWhenQueryKeyDisabled(t *testing.T) {
+	r := newTestResolverWithQueryKeyDisabled(t)
+	req, _ := http.NewRequest(http.MethodPost, "/v1beta/models/gemini-2.5-pro:generateContent?key=ignored", nil)
+	req.Header.Set("x-goog-api-key", "header-key")
+
+	a, err := r.Determine(req)
+	if err != nil {
+		t.Fatalf("Determine: %v", err)
+	}
+	if a.UseConfigToken {
+		t.Fatalf("expected direct token mode")
+	}
+	if a.DeepSeekToken != "header-key" {
+		t.Fatalf("expected header credential to win, got %q", a.DeepSeekToken)
+	}
+}
+
+func TestDetermineQueryKeyEnvOverrideDisablesEvenWhenConfigPermits(t *testing.T) {
+	t.Setenv("DS2API_ALLOW_GEMINI_QUERY_KEY", "false")
+	t.Setenv("DS2API_CONFIG_JSON", `{
+		"keys":["managed-key"],
+		"accounts":[{"email":"acc@example.com","password":"pwd","token":"account-token"}],
+		"auth":{"allow_gemini_query_key":true}
+	}`)
+	store := config.LoadStore()
+	pool := account.NewPool(store)
+	r := NewResolver(store, pool, func(_ context.Context, _ config.Account) (string, error) {
+		return "fresh-token", nil
+	})
+
+	req, _ := http.NewRequest(http.MethodPost, "/v1beta/models/gemini-2.5-pro:generateContent?key=direct", nil)
+	if _, err := r.Determine(req); !errors.Is(err, ErrUnauthorized) {
+		t.Fatalf("expected ErrUnauthorized when env disables query key, got %v", err)
+	}
+}
+
+func TestDetermineQueryKeyEnvOverrideEnablesEvenWhenConfigForbids(t *testing.T) {
+	t.Setenv("DS2API_ALLOW_GEMINI_QUERY_KEY", "true")
+	t.Setenv("DS2API_CONFIG_JSON", `{
+		"keys":["managed-key"],
+		"accounts":[{"email":"acc@example.com","password":"pwd","token":"account-token"}],
+		"auth":{"allow_gemini_query_key":false}
+	}`)
+	store := config.LoadStore()
+	pool := account.NewPool(store)
+	r := NewResolver(store, pool, func(_ context.Context, _ config.Account) (string, error) {
+		return "fresh-token", nil
+	})
+
+	req, _ := http.NewRequest(http.MethodPost, "/v1beta/models/gemini-2.5-pro:generateContent?key=direct", nil)
+	a, err := r.Determine(req)
+	if err != nil {
+		t.Fatalf("Determine: %v", err)
+	}
+	if a.DeepSeekToken != "direct" {
+		t.Fatalf("expected query key to be accepted via env override, got %q", a.DeepSeekToken)
+	}
+}

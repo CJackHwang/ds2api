@@ -22,6 +22,7 @@ type Config struct {
 	ThinkingInjection ThinkingInjectionConfig `json:"thinking_injection,omitempty"`
 	Vercel            VercelConfig            `json:"vercel,omitempty"`
 	CORS              CORSConfig              `json:"cors,omitempty"`
+	Auth              AuthConfig              `json:"auth,omitempty"`
 	ContextEngine     ContextEngineConfig     `json:"context_engine,omitempty"`
 	ParserV2          ParserV2Config          `json:"parser_v2,omitempty"`
 	VercelSyncHash    string                  `json:"_vercel_sync_hash,omitempty"`
@@ -189,6 +190,18 @@ type VercelConfig struct {
 
 type CORSConfig struct {
 	AllowOrigins []string `json:"allow_origins,omitempty"`
+}
+
+// AuthConfig holds caller-authentication configuration. All fields use
+// pointer types so an explicit `false` can be distinguished from "unset"
+// (which means "use the historical default").
+type AuthConfig struct {
+	// AllowGeminiQueryKey controls whether the Gemini-compatible
+	// `?key=` / `?api_key=` query parameters are honored as credential
+	// fallbacks when no header-based credential is present. Defaults to
+	// true (legacy behaviour) for backwards compatibility. Override via
+	// the DS2API_ALLOW_GEMINI_QUERY_KEY environment variable.
+	AllowGeminiQueryKey *bool `json:"allow_gemini_query_key,omitempty"`
 }
 
 // ContextEngineConfig controls the context compilation feature flag.
