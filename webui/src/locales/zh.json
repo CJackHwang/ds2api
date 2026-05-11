@@ -436,7 +436,7 @@
         "retryLoad": "立即重试",
         "featureFlagsTitle": "功能标志",
         "parserV2ModeLabel": "工具解析器 v2 模式",
-        "parserV2ModeDesc": "只读。通过 config.json parser.v2.mode 或 DS2API_PARSER_V2 环境变量修改。",
+        "parserV2ModeDesc": "只读。通过 config.json parser_v2.mode 或 DS2API_PARSER_V2 环境变量修改。",
         "envOverride": "环境变量覆盖"
     },
     "login": {

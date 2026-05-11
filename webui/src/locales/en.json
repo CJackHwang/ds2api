@@ -436,7 +436,7 @@
         "retryLoad": "Retry now",
         "featureFlagsTitle": "Feature Flags",
         "parserV2ModeLabel": "Tool parser v2 mode",
-        "parserV2ModeDesc": "Read-only. Change via config.json parser.v2.mode or DS2API_PARSER_V2 env var.",
+        "parserV2ModeDesc": "Read-only. Change via config.json parser_v2.mode or DS2API_PARSER_V2 env var.",
         "envOverride": "env override"
     },
     "login": {
