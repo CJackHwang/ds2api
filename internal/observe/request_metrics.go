@@ -7,7 +7,10 @@
 // Field naming convention (shared with Tool Parser M2 / Context Engine M2):
 //
 //	request_id, route, model_alias, account_id, ttft_ms,
-//	upstream_ttft_ms, retry_count, account_switch_count
+//	upstream_ttft_ms, retry_count, account_switch_count,
+//	current_input_history_hash, current_input_tools_hash,
+//	current_input_prompt_hash, current_input_cache_hits,
+//	current_input_cache_misses, current_input_ref_count
 package observe
 
 import (
@@ -57,6 +60,23 @@ type RequestMetrics struct {
 	// SuppressedCharCount is the total bytes held by the tool sieve and not
 	// forwarded to the client (used as a proxy for suppressed token count).
 	SuppressedCharCount int
+
+	// Current input file observability fields.
+	CurrentInputHistoryHash string
+	CurrentInputToolsHash   string
+	CurrentInputPromptHash  string
+	CurrentInputCacheHits   int
+	CurrentInputCacheMisses int
+	CurrentInputRefCount    int
+}
+
+type CurrentInputFileMetrics struct {
+	HistoryHash string
+	ToolsHash   string
+	PromptHash  string
+	CacheHits   int
+	CacheMisses int
+	RefCount    int
 }
 
 // WithMetrics returns a new context carrying the given metrics.
@@ -120,6 +140,19 @@ func IncrAccountSwitch(ctx context.Context) {
 	if m := FromContext(ctx); m != nil {
 		m.mu.Lock()
 		m.AccountSwitchCount++
+		m.mu.Unlock()
+	}
+}
+
+func RecordCurrentInputFiles(ctx context.Context, metrics CurrentInputFileMetrics) {
+	if m := FromContext(ctx); m != nil {
+		m.mu.Lock()
+		m.CurrentInputHistoryHash = metrics.HistoryHash
+		m.CurrentInputToolsHash = metrics.ToolsHash
+		m.CurrentInputPromptHash = metrics.PromptHash
+		m.CurrentInputCacheHits += metrics.CacheHits
+		m.CurrentInputCacheMisses += metrics.CacheMisses
+		m.CurrentInputRefCount = metrics.RefCount
 		m.mu.Unlock()
 	}
 }

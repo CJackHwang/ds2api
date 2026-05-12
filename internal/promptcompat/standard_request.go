@@ -3,26 +3,30 @@ package promptcompat
 import "ds2api/internal/config"
 
 type StandardRequest struct {
-	Surface                 string
-	RequestedModel          string
-	ResolvedModel           string
-	ResponseModel           string
-	Messages                []any
-	HistoryText             string
-	PromptTokenText         string
-	CurrentInputFileApplied bool
-	CurrentInputFileID      string
-	CurrentToolsFileID      string
-	ToolsRaw                any
-	FinalPrompt             string
-	ToolNames               []string
-	ToolChoice              ToolChoicePolicy
-	Stream                  bool
-	Thinking                bool
-	Search                  bool
-	RefFileIDs              []string
-	RefFileTokens           int
-	PassThrough             map[string]any
+	Surface                  string
+	RequestedModel           string
+	ResolvedModel            string
+	ResponseModel            string
+	Messages                 []any
+	HistoryText              string
+	PromptTokenText          string
+	CurrentInputFileApplied  bool
+	CurrentInputFileID       string
+	CurrentToolsFileID       string
+	CurrentInputHash         string
+	CurrentToolsHash         string
+	CurrentPromptHash        string
+	CurrentToolsFileCacheHit bool
+	ToolsRaw                 any
+	FinalPrompt              string
+	ToolNames                []string
+	ToolChoice               ToolChoicePolicy
+	Stream                   bool
+	Thinking                 bool
+	Search                   bool
+	RefFileIDs               []string
+	RefFileTokens            int
+	PassThrough              map[string]any
 }
 
 type ToolChoiceMode string

@@ -10,6 +10,7 @@ import (
 	"ds2api/internal/config"
 	dsclient "ds2api/internal/deepseek/client"
 	"ds2api/internal/httpapi/openai/shared"
+	"ds2api/internal/observe"
 	"ds2api/internal/promptcompat"
 )
 
@@ -53,39 +54,39 @@ func (s Service) ApplyCurrentInputFile(ctx context.Context, a *auth.RequestAuth,
 		return stdReq, errors.New("current user input file produced empty transcript")
 	}
 	toolsText, _ := promptcompat.BuildOpenAIToolsContextTranscript(stdReq.ToolsRaw, stdReq.ToolChoice)
+	historyHash := currentInputContentHash(fileText)
+	toolsHash := ""
+	if strings.TrimSpace(toolsText) != "" {
+		toolsHash = currentInputContentHash(toolsText)
+	}
 	modelType := "default"
 	if resolvedType, ok := config.GetModelType(stdReq.ResolvedModel); ok {
 		modelType = resolvedType
 	}
-	result, err := s.DS.UploadFile(ctx, a, dsclient.UploadFileRequest{
-		Filename:    currentInputFilename,
-		ContentType: currentInputContentType,
-		Purpose:     currentInputPurpose,
-		ModelType:   modelType,
-		Data:        []byte(fileText),
-	}, 3)
+	fileID, err := s.uploadGeneratedFile(ctx, a, currentInputFilename, modelType, fileText)
 	if err != nil {
 		return stdReq, fmt.Errorf("upload current user input file: %w", err)
 	}
-	fileID := strings.TrimSpace(result.ID)
 	if fileID == "" {
 		return stdReq, errors.New("upload current user input file returned empty file id")
 	}
 	toolFileID := ""
+	toolCacheHit := false
+	cacheHits := 0
+	cacheMisses := 0
 	if strings.TrimSpace(toolsText) != "" {
-		result, err := s.DS.UploadFile(ctx, a, dsclient.UploadFileRequest{
-			Filename:    currentToolsFilename,
-			ContentType: currentInputContentType,
-			Purpose:     currentInputPurpose,
-			ModelType:   modelType,
-			Data:        []byte(toolsText),
-		}, 3)
+		var err error
+		toolFileID, toolCacheHit, err = s.uploadCachedToolsFile(ctx, a, modelType, toolsText, toolsHash)
 		if err != nil {
 			return stdReq, fmt.Errorf("upload current tools file: %w", err)
 		}
-		toolFileID = strings.TrimSpace(result.ID)
 		if toolFileID == "" {
 			return stdReq, errors.New("upload current tools file returned empty file id")
+		}
+		if toolCacheHit {
+			cacheHits++
+		} else {
+			cacheMisses++
 		}
 	}
 
@@ -103,6 +104,11 @@ func (s Service) ApplyCurrentInputFile(ctx context.Context, a *auth.RequestAuth,
 	stdReq.CurrentToolsFileID = toolFileID
 	stdReq.RefFileIDs = prependUniqueRefFileIDs(stdReq.RefFileIDs, fileID, toolFileID)
 	stdReq.FinalPrompt, stdReq.ToolNames = promptcompat.BuildOpenAIPromptWithToolInstructionsOnly(messages, stdReq.ToolsRaw, "", stdReq.ToolChoice, stdReq.Thinking, s.Store.ContextEngineMode())
+	promptHash := currentInputContentHash(stdReq.FinalPrompt)
+	stdReq.CurrentInputHash = historyHash
+	stdReq.CurrentToolsHash = toolsHash
+	stdReq.CurrentPromptHash = promptHash
+	stdReq.CurrentToolsFileCacheHit = toolCacheHit
 	// Token accounting must reflect the actual downstream context:
 	// uploaded context files + the continuation live prompt.
 	tokenParts := []string{fileText}
@@ -111,6 +117,14 @@ func (s Service) ApplyCurrentInputFile(ctx context.Context, a *auth.RequestAuth,
 	}
 	tokenParts = append(tokenParts, stdReq.FinalPrompt)
 	stdReq.PromptTokenText = strings.Join(tokenParts, "\n")
+	observe.RecordCurrentInputFiles(ctx, observe.CurrentInputFileMetrics{
+		HistoryHash: historyHash,
+		ToolsHash:   toolsHash,
+		PromptHash:  promptHash,
+		CacheHits:   cacheHits,
+		CacheMisses: cacheMisses,
+		RefCount:    generatedCurrentInputRefCount(fileID, toolFileID),
+	})
 	return stdReq, nil
 }
 
@@ -122,48 +136,105 @@ func (s Service) ReuploadAppliedCurrentInputFile(ctx context.Context, a *auth.Re
 	if fileText == "" {
 		return stdReq, nil
 	}
+	historyHash := currentInputContentHash(stdReq.HistoryText)
 	modelType := "default"
 	if resolvedType, ok := config.GetModelType(stdReq.ResolvedModel); ok {
 		modelType = resolvedType
 	}
-	result, err := s.DS.UploadFile(ctx, a, dsclient.UploadFileRequest{
-		Filename:    currentInputFilename,
-		ContentType: currentInputContentType,
-		Purpose:     currentInputPurpose,
-		ModelType:   modelType,
-		Data:        []byte(stdReq.HistoryText),
-	}, 3)
+	fileID, err := s.uploadGeneratedFile(ctx, a, currentInputFilename, modelType, stdReq.HistoryText)
 	if err != nil {
 		return stdReq, fmt.Errorf("upload current user input file: %w", err)
 	}
-	fileID := strings.TrimSpace(result.ID)
 	if fileID == "" {
 		return stdReq, errors.New("upload current user input file returned empty file id")
 	}
 
 	toolsText, _ := promptcompat.BuildOpenAIToolsContextTranscript(stdReq.ToolsRaw, stdReq.ToolChoice)
-	toolFileID := ""
+	toolsHash := ""
 	if strings.TrimSpace(toolsText) != "" {
-		result, err := s.DS.UploadFile(ctx, a, dsclient.UploadFileRequest{
-			Filename:    currentToolsFilename,
-			ContentType: currentInputContentType,
-			Purpose:     currentInputPurpose,
-			ModelType:   modelType,
-			Data:        []byte(toolsText),
-		}, 3)
+		toolsHash = currentInputContentHash(toolsText)
+	}
+	toolFileID := ""
+	toolCacheHit := false
+	cacheHits := 0
+	cacheMisses := 0
+	if strings.TrimSpace(toolsText) != "" {
+		var err error
+		toolFileID, toolCacheHit, err = s.uploadCachedToolsFile(ctx, a, modelType, toolsText, toolsHash)
 		if err != nil {
 			return stdReq, fmt.Errorf("upload current tools file: %w", err)
 		}
-		toolFileID = strings.TrimSpace(result.ID)
 		if toolFileID == "" {
 			return stdReq, errors.New("upload current tools file returned empty file id")
+		}
+		if toolCacheHit {
+			cacheHits++
+		} else {
+			cacheMisses++
 		}
 	}
 
 	stdReq.RefFileIDs = replaceGeneratedCurrentInputRefs(stdReq.RefFileIDs, stdReq.CurrentInputFileID, stdReq.CurrentToolsFileID, fileID, toolFileID)
 	stdReq.CurrentInputFileID = fileID
 	stdReq.CurrentToolsFileID = toolFileID
+	stdReq.CurrentInputHash = historyHash
+	stdReq.CurrentToolsHash = toolsHash
+	stdReq.CurrentPromptHash = currentInputContentHash(stdReq.FinalPrompt)
+	stdReq.CurrentToolsFileCacheHit = toolCacheHit
+	observe.RecordCurrentInputFiles(ctx, observe.CurrentInputFileMetrics{
+		HistoryHash: historyHash,
+		ToolsHash:   toolsHash,
+		PromptHash:  stdReq.CurrentPromptHash,
+		CacheHits:   cacheHits,
+		CacheMisses: cacheMisses,
+		RefCount:    generatedCurrentInputRefCount(fileID, toolFileID),
+	})
 	return stdReq, nil
+}
+
+func (s Service) uploadGeneratedFile(ctx context.Context, a *auth.RequestAuth, filename, modelType, text string) (string, error) {
+	result, err := s.DS.UploadFile(ctx, a, dsclient.UploadFileRequest{
+		Filename:    filename,
+		ContentType: currentInputContentType,
+		Purpose:     currentInputPurpose,
+		ModelType:   modelType,
+		Data:        []byte(text),
+	}, 3)
+	if err != nil {
+		return "", err
+	}
+	if result == nil {
+		return "", nil
+	}
+	return strings.TrimSpace(result.ID), nil
+}
+
+func (s Service) uploadCachedToolsFile(ctx context.Context, a *auth.RequestAuth, modelType, text, hash string) (string, bool, error) {
+	key := generatedFileCacheKey{
+		AccountScope: currentInputCacheScope(a),
+		ModelType:    strings.TrimSpace(modelType),
+		Filename:     currentToolsFilename,
+		ContentHash:  strings.TrimSpace(hash),
+	}
+	if fileID, ok := currentInputToolsFileCache.lookup(key); ok {
+		return fileID, true, nil
+	}
+	fileID, err := s.uploadGeneratedFile(ctx, a, currentToolsFilename, modelType, text)
+	if err != nil {
+		return "", false, err
+	}
+	currentInputToolsFileCache.store(key, fileID)
+	return fileID, false, nil
+}
+
+func generatedCurrentInputRefCount(fileIDs ...string) int {
+	count := 0
+	for _, fileID := range fileIDs {
+		if strings.TrimSpace(fileID) != "" {
+			count++
+		}
+	}
+	return count
 }
 
 func latestUserInputForFile(messages []any) (int, string) {

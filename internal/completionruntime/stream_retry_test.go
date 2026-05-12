@@ -10,6 +10,7 @@ import (
 	"ds2api/internal/account"
 	"ds2api/internal/auth"
 	"ds2api/internal/config"
+	historysvc "ds2api/internal/httpapi/openai/history"
 	"ds2api/internal/httpapi/openai/shared"
 	"ds2api/internal/promptcompat"
 )
@@ -151,6 +152,7 @@ func TestExecuteStreamWithRetrySwitchesManagedAccountBeforeFinal429(t *testing.T
 }
 
 func TestExecuteStreamWithRetryReuploadsCurrentInputFilesAfterAccountSwitch(t *testing.T) {
+	historysvc.ResetCurrentInputToolsFileCacheForTesting()
 	t.Setenv("DS2API_CONFIG_JSON", `{
 		"keys":["managed-key"],
 		"accounts":[

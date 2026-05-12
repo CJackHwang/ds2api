@@ -18,6 +18,14 @@ func TestMiddlewareEmitsLogForCompletionRoute(t *testing.T) {
 		SetModel(r.Context(), "deepseek-chat")
 		SetAccount(r.Context(), "user@example.com")
 		SetSurface(r.Context(), "openai.chat")
+		RecordCurrentInputFiles(r.Context(), CurrentInputFileMetrics{
+			HistoryHash: "history-hash",
+			ToolsHash:   "tools-hash",
+			PromptHash:  "prompt-hash",
+			CacheHits:   1,
+			CacheMisses: 1,
+			RefCount:    2,
+		})
 		SetUpstreamResponseAt(r.Context(), time.Now())
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -27,7 +35,7 @@ func TestMiddlewareEmitsLogForCompletionRoute(t *testing.T) {
 	handler.ServeHTTP(rec, req)
 
 	logOutput := buf.String()
-	for _, field := range []string{"completion_request", "model_alias=deepseek-chat", "account_id=user***", "surface=openai.chat", "retry_count=0", "account_switch_count=0"} {
+	for _, field := range []string{"completion_request", "model_alias=deepseek-chat", "account_id=user***", "surface=openai.chat", "retry_count=0", "account_switch_count=0", "current_input_history_hash=history-hash", "current_input_tools_hash=tools-hash", "current_input_prompt_hash=prompt-hash", "current_input_cache_hits=1", "current_input_cache_misses=1", "current_input_ref_count=2"} {
 		if !strings.Contains(logOutput, field) {
 			t.Errorf("log missing field %q\nlog output:\n%s", field, logOutput)
 		}

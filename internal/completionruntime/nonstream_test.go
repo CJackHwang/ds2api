@@ -11,6 +11,7 @@ import (
 	"ds2api/internal/auth"
 	"ds2api/internal/config"
 	dsclient "ds2api/internal/deepseek/client"
+	historysvc "ds2api/internal/httpapi/openai/history"
 	"ds2api/internal/promptcompat"
 )
 
@@ -172,6 +173,7 @@ func TestExecuteNonStreamWithRetrySwitchesManagedAccountBeforeFinal429(t *testin
 }
 
 func TestExecuteNonStreamWithRetryReuploadsCurrentInputFilesAfterAccountSwitch(t *testing.T) {
+	historysvc.ResetCurrentInputToolsFileCacheForTesting()
 	t.Setenv("DS2API_CONFIG_JSON", `{
 		"keys":["managed-key"],
 		"accounts":[
@@ -306,6 +308,7 @@ func TestExecuteNonStreamWithRetryConvertsReferenceMarkers(t *testing.T) {
 }
 
 func TestStartCompletionAppliesCurrentInputFileGlobally(t *testing.T) {
+	historysvc.ResetCurrentInputToolsFileCacheForTesting()
 	ds := &fakeDeepSeekCaller{responses: []*http.Response{sseHTTPResponse(http.StatusOK, `data: {"p":"response/content","v":"ok"}`)}}
 	stdReq := promptcompat.StandardRequest{
 		Surface:         "test_adapter",

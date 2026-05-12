@@ -37,6 +37,12 @@ func Middleware(logger *slog.Logger) func(http.Handler) http.Handler {
 			shadowDiffRan := m.ShadowDiffRanCount
 			shadowDiffHit := m.ShadowDiffHitCount
 			suppressedCharCount := m.SuppressedCharCount
+			currentInputHistoryHash := m.CurrentInputHistoryHash
+			currentInputToolsHash := m.CurrentInputToolsHash
+			currentInputPromptHash := m.CurrentInputPromptHash
+			currentInputCacheHits := m.CurrentInputCacheHits
+			currentInputCacheMisses := m.CurrentInputCacheMisses
+			currentInputRefCount := m.CurrentInputRefCount
 			m.mu.Unlock()
 
 			// Only emit for completion routes (model was populated).
@@ -82,6 +88,12 @@ func Middleware(logger *slog.Logger) func(http.Handler) http.Handler {
 				"parser_shadow_diff_ran", shadowDiffRan,
 				"parser_shadow_diff_hit", shadowDiffHit,
 				"parser_suppressed_char_count", suppressedCharCount,
+				"current_input_history_hash", currentInputHistoryHash,
+				"current_input_tools_hash", currentInputToolsHash,
+				"current_input_prompt_hash", currentInputPromptHash,
+				"current_input_cache_hits", currentInputCacheHits,
+				"current_input_cache_misses", currentInputCacheMisses,
+				"current_input_ref_count", currentInputRefCount,
 			)
 		})
 	}
