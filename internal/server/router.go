@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"runtime"
 	"slices"
@@ -175,6 +176,16 @@ func (f *filteredLogFormatter) NewLogEntry(r *http.Request) middleware.LogEntry 
 			return noopLogEntry{}
 		}
 	}
+	if r != nil && r.URL != nil {
+		if redacted, changed := redactSensitiveQueryParams(r.URL); changed {
+			cloned := *r
+			clonedURL := *r.URL
+			clonedURL.RawQuery = redacted
+			cloned.URL = &clonedURL
+			cloned.RequestURI = clonedURL.RequestURI()
+			return f.base.NewLogEntry(&cloned)
+		}
+	}
 	return f.base.NewLogEntry(r)
 }
 
@@ -183,6 +194,86 @@ type noopLogEntry struct{}
 func (noopLogEntry) Write(_ int, _ int, _ http.Header, _ time.Duration, _ interface{}) {}
 
 func (noopLogEntry) Panic(_ interface{}, _ []byte) {}
+
+func redactSensitiveQueryParams(u *url.URL) (string, bool) {
+	if u == nil || u.RawQuery == "" {
+		return "", false
+	}
+	values, err := url.ParseQuery(u.RawQuery)
+	if err != nil {
+		return redactSensitiveRawQueryParams(u.RawQuery)
+	}
+	changed := false
+	for name, vals := range values {
+		if !isSensitiveQueryParam(name) {
+			continue
+		}
+		for i := range vals {
+			vals[i] = "REDACTED"
+		}
+		values[name] = vals
+		changed = true
+	}
+	if !changed {
+		return "", false
+	}
+	return values.Encode(), true
+}
+
+func redactSensitiveRawQueryParams(rawQuery string) (string, bool) {
+	if rawQuery == "" {
+		return "", false
+	}
+	var b strings.Builder
+	b.Grow(len(rawQuery))
+	changed := false
+	start := 0
+	for i := 0; i <= len(rawQuery); i++ {
+		if i < len(rawQuery) && rawQuery[i] != '&' && rawQuery[i] != ';' {
+			continue
+		}
+		segment := rawQuery[start:i]
+		b.WriteString(redactSensitiveRawQuerySegment(segment, &changed))
+		if i < len(rawQuery) {
+			b.WriteByte(rawQuery[i])
+		}
+		start = i + 1
+	}
+	if !changed {
+		return "", false
+	}
+	return b.String(), true
+}
+
+func redactSensitiveRawQuerySegment(segment string, changed *bool) string {
+	if segment == "" {
+		return segment
+	}
+	name := segment
+	valueStart := -1
+	if eq := strings.IndexByte(segment, '='); eq >= 0 {
+		name = segment[:eq]
+		valueStart = eq + 1
+	}
+	decodedName, err := url.QueryUnescape(name)
+	if err != nil {
+		decodedName = name
+	}
+	if !isSensitiveQueryParam(decodedName) {
+		return segment
+	}
+	if changed != nil {
+		*changed = true
+	}
+	if valueStart < 0 {
+		return name + "=REDACTED"
+	}
+	return segment[:valueStart] + "REDACTED"
+}
+
+func isSensitiveQueryParam(name string) bool {
+	return strings.EqualFold(name, "key") || strings.EqualFold(name, "api_key")
+}
 
 var defaultCORSAllowHeaders = []string{
 	"Content-Type",
