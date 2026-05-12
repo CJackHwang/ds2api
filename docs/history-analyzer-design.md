@@ -120,19 +120,33 @@ P3 规则约束：
 
 ## 7. CLI 形态
 
-建议命令：
+P4 提供离线命令：
 
 ```bash
 go run ./cmd/history-analyzer \
   --history data/chat_history.json \
-  --response-history data/response_history \
   --out artifacts/history-analyzer/report.md \
-  --json artifacts/history-analyzer/report.json
+  --json artifacts/history-analyzer/report.json \
+  --fixtures artifacts/history-analyzer/fixture-candidates.json
 ```
 
-后续可以封装成：
+输入：
+
+- `--history`：读取 `chathistory` v2 index + detail 或 legacy 单文件。
+- `--response-history`：读取 response history 兼容的 `chathistory` 文件，source 标为 `response_history`。
+- `--devcapture`：读取 Admin dev capture JSON，可接受 `items` envelope 或 entry 数组。
+- `--rawsample`：读取单个 `meta.json`、单个 raw sample 目录，或包含多个 sample 子目录的 root。
+
+输出：
+
+- `--json`：完整 `Report`，包含 summary、findings、readiness、metadata。
+- `--out`：脱敏 Markdown 报告。
+- `--fixtures`：只包含 `FixtureHint` 的 fixture candidate JSON 清单；为空时跳过。该清单只给人工 review，不自动写入 fixtures。
+
+脚本封装：
 
 ```bash
+DS2API_HISTORY_ANALYZER_HISTORY=data/chat_history.json \
 ./tests/scripts/run-history-analyzer.sh
 ```
 

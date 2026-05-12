@@ -19,6 +19,7 @@ ds2api/
 ├── cmd/                                  # 可执行程序入口
 │   ├── ds2api/                           # 主服务启动入口
 │   ├── ds2api-tests/                     # E2E 测试集 CLI 入口
+│   ├── history-analyzer/                 # History Analyzer 离线报告生成器
 │   └── release-readiness/                # Release readiness 本地报告生成器
 ├── docs/                                 # 项目文档目录
 ├── internal/                             # 核心业务实现（不对外暴露）
@@ -40,7 +41,7 @@ ds2api/
 │   ├── format/                           # 响应格式化层
 │   │   ├── claude/                       # Claude 输出格式化
 │   │   └── openai/                       # OpenAI 输出格式化
-│   ├── historyanalyzer/                  # 离线历史诊断报告模型、规则接口与脱敏证据
+│   ├── historyanalyzer/                  # 离线历史诊断模型、规则、渲染、数据导入与脱敏证据
 │   ├── httpapi/                          # HTTP surface：OpenAI/Claude/Gemini/Admin
 │   │   ├── admin/                        # Admin API 根装配与资源子包
 │   │   ├── claude/                       # Claude HTTP 协议适配
@@ -206,7 +207,7 @@ flowchart LR
 - `internal/js/chat-stream` + `api/chat-stream.js`：Vercel Node 流式桥；Go prepare/release 管理鉴权、账号租约和 completion payload，Node 侧负责实时 SSE 转发并保持 Go 对齐的终结态和 tool sieve 语义。
 - `internal/stream` + `internal/sse`：Go 流式解析与增量处理。
 - `internal/toolcall` + `internal/toolstream`：DSML 外壳兼容与 canonical XML 工具调用解析、防泄漏筛分；DSML 会在入口归一化回 XML，内部仍按 XML 语义解析。
-- `internal/historyanalyzer`：History Analyzer 离线诊断核心，定义 `AnalysisRecord`、`Finding`、`Report`、规则接口、规则 ID 元数据、脱敏证据构造、数据接入辅助和首批确定性 HA_* 规则。该包不执行 CLI，也不参与主请求链路；CLI/Admin/WebUI 在 M4.1 后续阶段叠加。
+- `cmd/history-analyzer` + `internal/historyanalyzer`：History Analyzer 离线诊断入口与核心。`internal/historyanalyzer` 定义 `AnalysisRecord`、`Finding`、`Report`、规则接口、规则 ID 元数据、脱敏证据构造、数据接入辅助、首批确定性 HA_* 规则、Markdown 渲染和 fixture candidate 清单；`cmd/history-analyzer` 只负责读取本地输入、运行规则并写出 JSON/Markdown/候选清单。该路径不参与主请求链路；Admin/WebUI 在后续阶段叠加。
 - `internal/httpapi/admin/*`：Admin API 根装配与 auth/accounts/config/settings/proxies/rawsamples/vercel/history/devcapture/version 等资源子包。
 - `internal/chathistory`：服务器端对话记录持久化、分页、单条详情和保留策略。
 - `internal/responsehistory`：DeepSeek 上游响应归档，会在协议回译/裁剪前保存 assistant text、thinking、tool-call 原始片段和流式详情。

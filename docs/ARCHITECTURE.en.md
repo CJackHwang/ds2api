@@ -19,6 +19,7 @@ ds2api/
 ├── cmd/                                  # Executable entrypoints
 │   ├── ds2api/                           # Main service bootstrap
 │   ├── ds2api-tests/                     # E2E testsuite CLI bootstrap
+│   ├── history-analyzer/                 # Offline History Analyzer report generator
 │   └── release-readiness/                # Local Release Readiness report generator
 ├── docs/                                 # Project documentation
 ├── internal/                             # Core implementation (non-public packages)
@@ -38,7 +39,7 @@ ds2api/
 │   ├── format/                           # Response formatting layer
 │   │   ├── claude/                       # Claude output formatting
 │   │   └── openai/                       # OpenAI output formatting
-│   ├── historyanalyzer/                  # Offline history diagnostics report model, rule interfaces, and redacted evidence
+│   ├── historyanalyzer/                  # Offline history diagnostics model, rules, rendering, ingestion, and redacted evidence
 │   ├── httpapi/                          # HTTP surfaces: OpenAI/Claude/Gemini/Admin
 │   │   ├── admin/                        # Admin API root assembly and resource packages
 │   │   ├── claude/                       # Claude HTTP protocol adapter
@@ -204,7 +205,7 @@ flowchart LR
 - `internal/js/chat-stream` + `api/chat-stream.js`: Vercel Node streaming bridge; Go prepare/release owns auth, account lease, and completion payload assembly, while Node relays real-time SSE with Go-aligned finalization and tool sieve semantics.
 - `internal/stream` + `internal/sse`: Go stream parsing and incremental assembly.
 - `internal/toolcall` + `internal/toolstream`: DSML shell compatibility plus canonical XML tool-call parsing and anti-leak sieve; DSML is normalized back to XML at the entrypoint, and internal parsing remains XML-based.
-- `internal/historyanalyzer`: offline History Analyzer core. It defines `AnalysisRecord`, `Finding`, `Report`, rule interfaces, rule ID metadata, redacted evidence helpers, ingestion helpers, and the first deterministic HA_* rules. It does not execute a CLI or participate in the primary request path; CLI/Admin/WebUI integration is layered in later M4.1 phases.
+- `cmd/history-analyzer` + `internal/historyanalyzer`: offline History Analyzer entrypoint and core. `internal/historyanalyzer` defines `AnalysisRecord`, `Finding`, `Report`, rule interfaces, rule ID metadata, redacted evidence helpers, ingestion helpers, the first deterministic HA_* rules, Markdown rendering, and fixture candidate listing; `cmd/history-analyzer` only reads local inputs, runs rules, and writes JSON/Markdown/candidate outputs. This path does not participate in the primary request path; Admin/WebUI integration is layered in later phases.
 - `internal/httpapi/admin/*`: Admin API root assembly plus auth/accounts/config/settings/proxies/rawsamples/vercel/history/devcapture/version resource packages.
 - `internal/chathistory`: server-side conversation history persistence, pagination, detail lookup, and retention policy.
 - `internal/responsehistory`: DeepSeek upstream response archive, saving assistant text, thinking, raw tool-call fragments, and streaming detail before protocol rendering/trimming.
