@@ -266,10 +266,14 @@ func (s *Store) Save() error {
 	if err != nil {
 		return err
 	}
-	if err := writeConfigBytesWithComments(s.path, b, s.rawJSON); err != nil {
+	mergedJSON, err := writeConfigBytesWithComments(s.path, b, s.rawJSON)
+	if err != nil {
 		return err
 	}
 	s.fromEnv = false
+	if mergedJSON != nil {
+		_ = json.Unmarshal(mergedJSON, &s.rawJSON)
+	}
 	return nil
 }
 
@@ -284,27 +288,38 @@ func (s *Store) saveLocked() error {
 	if err != nil {
 		return err
 	}
-	if err := writeConfigBytesWithComments(s.path, b, s.rawJSON); err != nil {
+	mergedJSON, err := writeConfigBytesWithComments(s.path, b, s.rawJSON)
+	if err != nil {
 		return err
 	}
 	s.fromEnv = false
+	if mergedJSON != nil {
+		_ = json.Unmarshal(mergedJSON, &s.rawJSON)
+	}
 	return nil
 }
 
-func writeConfigBytesWithComments(path string, configJSON []byte, rawJSON map[string]any) error {
+func writeConfigBytesWithComments(path string, configJSON []byte, rawJSON map[string]any) ([]byte, error) {
 	if rawJSON == nil {
-		return os.WriteFile(path, configJSON, 0o644)
+		err := os.WriteFile(path, configJSON, 0o644)
+		return nil, err
 	}
 	var cfg map[string]any
 	if err := json.Unmarshal(configJSON, &cfg); err != nil {
-		return os.WriteFile(path, configJSON, 0o644)
+		err := os.WriteFile(path, configJSON, 0o644)
+		return nil, err
 	}
 	merged := mergeRawWithComments(rawJSON, cfg)
 	mergedJSON, err := json.MarshalIndent(merged, "", "  ")
 	if err != nil {
-		return os.WriteFile(path, configJSON, 0o644)
+		err := os.WriteFile(path, configJSON, 0o644)
+		return nil, err
 	}
-	return os.WriteFile(path, mergedJSON, 0o644)
+	err = os.WriteFile(path, mergedJSON, 0o644)
+	if err != nil {
+		return nil, err
+	}
+	return mergedJSON, nil
 }
 
 func mergeRawWithComments(raw, cfg map[string]any) map[string]any {
