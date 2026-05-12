@@ -285,6 +285,7 @@ OpenAI 的文件上传现在不再是“只传文件本体”的通用路径，�
 - 如果 `current_input_file.enabled=false`，请求会直接透传，不上传任何拆分上下文文件。
 - 即使触发 `current_input_file` 后 live prompt 被缩短，对客户端回包里的上下文 token 统计，仍会沿用**拆分前的完整 prompt 语义**做计数，而不是按缩短后的占位 prompt 计算；否则会把真实上下文显著算小。
 - 如果空输出重试最终需要切换托管账号，runtime 会在新账号下重新上传已生成的 `DS2API_HISTORY.txt` 和可选 `DS2API_TOOLS.txt`，再用新的 generated `file_id` 重建 completion payload；客户端原有文件引用会保留在 generated 文件之后。这样可以避免把旧账号不可见的 generated file_id 带到新账号请求里。
+- runtime 会为 `DS2API_HISTORY.txt`、`DS2API_TOOLS.txt` 和 live prompt 计算稳定 SHA-256 内容 hash，并写入 completion request 日志字段；`DS2API_TOOLS.txt` 还会使用账号隔离、`model_type` 隔离、内容 hash 隔离的 5 分钟内存缓存。同一账号在短时间内复用完全相同的工具 schema 时，会复用已上传的 tools `file_id`；`DS2API_HISTORY.txt` 只记录 hash，不做 file_id 缓存，避免把长对话历史大量留存在本地内存。
 
 相关实现：
 
@@ -330,6 +331,13 @@ Parameters: {"type":"object",...}
 ```
 
 开启后，请求的 live prompt 不再直接内联完整上下文和大段工具 schema，而是保留一个 user role 的短提示，提示模型基于已提供上下文直接回答最新请求；system prompt 中仍保留 DSML tool call 格式约束。上传后的生成文件 `file_id` 会排在 `ref_file_ids` 前部，顺序是 `DS2API_HISTORY.txt`、可选的 `DS2API_TOOLS.txt`，再接客户端原有文件引用。
+
+缓存边界：
+
+- 缓存 key 包含账号 scope、`model_type`、文件名和内容 hash，不跨账号复用 generated `file_id`
+- 只缓存 `DS2API_TOOLS.txt` 的 `file_id`，因为工具 schema 在写代码 / agent 场景中高度重复
+- 不缓存 `DS2API_HISTORY.txt` 的 `file_id`，因为历史内容通常随每轮请求变化且可能很大
+- 日志字段包括 `current_input_history_hash`、`current_input_tools_hash`、`current_input_prompt_hash`、`current_input_cache_hits`、`current_input_cache_misses` 和 `current_input_ref_count`
 
 ## 10. 各协议入口的差异
 

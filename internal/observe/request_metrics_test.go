@@ -32,6 +32,14 @@ func TestSettersPopulateFields(t *testing.T) {
 	IncrRetry(ctx)
 	IncrRetry(ctx)
 	IncrAccountSwitch(ctx)
+	RecordCurrentInputFiles(ctx, CurrentInputFileMetrics{
+		HistoryHash: "history-hash",
+		ToolsHash:   "tools-hash",
+		PromptHash:  "prompt-hash",
+		CacheHits:   1,
+		CacheMisses: 2,
+		RefCount:    2,
+	})
 
 	now := time.Now()
 	SetUpstreamResponseAt(ctx, now)
@@ -58,6 +66,12 @@ func TestSettersPopulateFields(t *testing.T) {
 	}
 	if m.AccountSwitchCount != 1 {
 		t.Fatalf("account_switch_count=%d", m.AccountSwitchCount)
+	}
+	if m.CurrentInputHistoryHash != "history-hash" || m.CurrentInputToolsHash != "tools-hash" || m.CurrentInputPromptHash != "prompt-hash" {
+		t.Fatalf("unexpected current input hashes: %#v", m)
+	}
+	if m.CurrentInputCacheHits != 1 || m.CurrentInputCacheMisses != 2 || m.CurrentInputRefCount != 2 {
+		t.Fatalf("unexpected current input cache metrics: %#v", m)
 	}
 	if !m.UpstreamResponseAt.Equal(now) {
 		t.Fatalf("upstream_response_at should be first set value")
@@ -93,6 +107,7 @@ func TestSettersNoopOnNilContext(t *testing.T) {
 	SetSurface(ctx, "s")
 	IncrRetry(ctx)
 	IncrAccountSwitch(ctx)
+	RecordCurrentInputFiles(ctx, CurrentInputFileMetrics{})
 	SetUpstreamResponseAt(ctx, time.Now())
 	SetFirstByteAt(ctx, time.Now())
 }
