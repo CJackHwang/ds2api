@@ -87,6 +87,13 @@ P1 已将完整报告结构拆为：
 - `Report`：离线分析报告，包含 generated_at、scope、summary、findings、readiness 和 metadata。
 - `Rule`：确定性规则接口，后续 P3 逐条实现 HA_* 检测。
 
+P2 数据接入约束：
+
+- `AnalysisRecord.Text` 仅供进程内规则使用，JSON 序列化时忽略，避免完整 prompt/content 进入中间产物。
+- `AnalysisRecord.Snapshots` 保存脱敏摘录和 hash，可安全用于报告、测试和后续 WebUI 展示。
+- `chathistory` 支持 v2 index + detail 文件和 legacy 单文件格式。
+- `devcapture` 与 `rawsample` 在 P2 先作为归一化 record 输入，不在本阶段实现跨源 request/session 自动关联。
+
 ## 6. 规则集
 
 | Rule ID | Category | 检测内容 | 建议动作 |

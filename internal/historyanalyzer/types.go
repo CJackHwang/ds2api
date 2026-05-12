@@ -56,7 +56,7 @@ type AnalysisRecord struct {
 	Status        string                  `json:"status,omitempty"`
 	StatusCode    int                     `json:"status_code,omitempty"`
 	FinishReason  string                  `json:"finish_reason,omitempty"`
-	Text          map[string]string       `json:"text,omitempty"`
+	Text          map[string]string       `json:"-"`
 	Snapshots     map[string]TextSnapshot `json:"snapshots,omitempty"`
 	Flags         map[string]string       `json:"flags,omitempty"`
 	Metrics       RuntimeMetrics          `json:"metrics,omitempty"`
