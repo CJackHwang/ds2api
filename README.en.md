@@ -185,7 +185,7 @@ Besides the primary aliases above, `/anthropic/v1/models` also returns Claude 4.
 - Set `ANTHROPIC_BASE_URL` to the DS2API root URL (for example `http://127.0.0.1:5001`). Claude Code sends requests to `/v1/messages?beta=true`.
 - `ANTHROPIC_API_KEY` must match an entry in `keys` from `config.json`. Keeping both a regular key and an `sk-ant-*` style key improves client compatibility.
 - If your environment has proxy variables, set `NO_PROXY=127.0.0.1,localhost,<your_host_ip>` for DS2API to avoid proxy interception of local traffic.
-- If tool calls are rendered as plain text and not executed, first verify the model output uses the recommended fullwidth-separator DSML block: `<｜DSML｜tool_calls><｜DSML｜invoke name="..."><｜DSML｜parameter name="...">...`. DS2API also accepts halfwidth DSML and legacy canonical XML: `<tool_calls><invoke name="..."><parameter name="...">...`; legacy `<tools>` / `<tool_call>` / `<tool_name>` / `<param>`, `<function_call>`, `tool_use`, or standalone JSON `tool_calls` are not executed and stay plain text.
+- If tool calls are rendered as plain text and not executed, first verify the model output uses the recommended halfwidth-pipe DSML block: `<|DSML|tool_calls><|DSML|invoke name="..."><|DSML|parameter name="...">...`. DS2API also accepts legacy canonical XML: `<tool_calls><invoke name="..."><parameter name="...">...`; legacy `<tools>` / `<tool_call>` / `<tool_name>` / `<param>`, `<function_call>`, `tool_use`, or standalone JSON `tool_calls` are not executed and stay plain text.
 
 ### Gemini Endpoint
 
@@ -358,8 +358,8 @@ Queue limit = DS2API_ACCOUNT_MAX_QUEUE (default = recommended concurrency)
 
 When `tools` is present in the request, DS2API performs anti-leak handling:
 
-1. Toolcall feature matching is enabled only in **non-code-block context** (fenced examples are ignored)
-2. The parser treats the fullwidth-separator DSML shell as the recommended executable tool-calling syntax: `<｜DSML｜tool_calls>` → `<｜DSML｜invoke name="...">` → `<｜DSML｜parameter name="...">`; it also accepts halfwidth DSML, legacy canonical XML `<tool_calls>` → `<invoke name="...">` → `<parameter name="...">`, plus common DSML prefix/separator drift. DSML is a shell alias and internal parsing remains XML-based; legacy `<tools>` / `<tool_call>` / `<tool_name>` / `<param>`, `<function_call>`, `tool_use`, antml variants, and standalone JSON `tool_calls` payloads are treated as plain text, and complete but malformed wrappers are released as plain text too
+1. Toolcall feature matching is enabled only in **non-Markdown code context** (fenced examples and inline code spans are ignored)
+2. The parser treats the halfwidth-pipe DSML shell as the recommended executable tool-calling syntax: `<|DSML|tool_calls>` → `<|DSML|invoke name="...">` → `<|DSML|parameter name="...">`; it also accepts legacy canonical XML `<tool_calls>` → `<invoke name="...">` → `<parameter name="...">`, plus common DSML prefix/separator drift. DSML is a shell alias and internal parsing remains XML-based; legacy `<tools>` / `<tool_call>` / `<tool_name>` / `<param>`, `<function_call>`, `tool_use`, antml variants, and standalone JSON `tool_calls` payloads are treated as plain text, and complete but malformed wrappers are released as plain text too
 3. `responses` streaming strictly uses official item lifecycle events (`response.output_item.*`, `response.content_part.*`, `response.function_call_arguments.*`)
 4. `responses` supports and enforces `tool_choice` (`auto`/`none`/`required`/forced function); `required` violations return `422` for non-stream and `response.failed` for stream
 5. The output protocol follows the client request (OpenAI / Claude / Gemini native shapes); model-side prompting can prefer XML, and the compatibility layer handles the protocol-specific translation

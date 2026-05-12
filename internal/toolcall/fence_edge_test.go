@@ -64,3 +64,44 @@ func TestStripFencedCodeBlocks_InlineBackticksNotFence(t *testing.T) {
 		t.Fatalf("expected Before/After, got %q", got)
 	}
 }
+
+func TestParseToolCalls_IgnoresMarkdownDocumentationExamples(t *testing.T) {
+	text := "解析器支持多种工具调用格式。\n\n" +
+		"入口函数 `ParseToolCalls(text, availableToolNames)` 会返回调用列表。\n\n" +
+		"核心流程会解析 XML 格式的 `<tool_calls>` / `<invoke>` 标记。\n\n" +
+		"### 标准 XML 结构\n" +
+		"```xml\n" +
+		"<tool_calls>\n" +
+		"  <invoke name=\"read_file\">\n" +
+		"    <parameter name=\"path\">config.json</parameter>\n" +
+		"  </invoke>\n" +
+		"</tool_calls>\n" +
+		"```\n\n" +
+		"DSML 风格形如 `<invoke name=\"tool\">...</invoke>`，也可能提到 `<tool_calls>` 包裹。\n"
+
+	got := ParseToolCallsDetailed(text, []string{"read_file"})
+	if len(got.Calls) != 0 {
+		t.Fatalf("markdown documentation examples should not parse as tool calls, got %#v", got.Calls)
+	}
+}
+
+func TestParseToolCalls_IgnoresInlineMarkdownToolCallExample(t *testing.T) {
+	text := "示例：`<tool_calls><invoke name=\"read_file\"><parameter name=\"path\">README.md</parameter></invoke></tool_calls>`"
+
+	got := ParseToolCallsDetailed(text, []string{"read_file"})
+	if len(got.Calls) != 0 {
+		t.Fatalf("inline markdown tool example should not parse as tool calls, got %#v", got.Calls)
+	}
+}
+
+func TestParseToolCalls_PreservesBackticksInsideToolParameters(t *testing.T) {
+	text := "<tool_calls><invoke name=\"Bash\"><parameter name=\"command\">echo `date`</parameter></invoke></tool_calls>"
+
+	got := ParseToolCallsDetailed(text, []string{"Bash"})
+	if len(got.Calls) != 1 {
+		t.Fatalf("expected one tool call, got %#v", got.Calls)
+	}
+	if got.Calls[0].Input["command"] != "echo `date`" {
+		t.Fatalf("expected command backticks preserved, got %#v", got.Calls[0].Input["command"])
+	}
+}

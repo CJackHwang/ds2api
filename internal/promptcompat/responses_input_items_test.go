@@ -88,7 +88,7 @@ func TestNormalizeResponsesInputArrayMergesReasoningMessageIntoFunctionCallHisto
 	if !strings.Contains(history, "[reasoning_content]\nneed fresh docs before answering\n[/reasoning_content]") {
 		t.Fatalf("expected reasoning in history transcript, got %q", history)
 	}
-	if !strings.Contains(history, `<｜DSML｜invoke name="search_web">`) {
+	if !strings.Contains(history, `<|DSML|invoke name="search_web">`) {
 		t.Fatalf("expected tool call in history transcript, got %q", history)
 	}
 }

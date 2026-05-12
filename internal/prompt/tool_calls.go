@@ -17,12 +17,12 @@ var promptXMLTextEscaper = strings.NewReplacer(
 var promptXMLNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_.:-]*$`)
 
 const (
-	promptDSMLToolCallsOpen  = "<｜DSML｜tool_calls>"
-	promptDSMLToolCallsClose = "</｜DSML｜tool_calls>"
-	promptDSMLInvokeOpen     = "<｜DSML｜invoke"
-	promptDSMLInvokeClose    = "</｜DSML｜invoke>"
-	promptDSMLParameterOpen  = "<｜DSML｜parameter"
-	promptDSMLParameterClose = "</｜DSML｜parameter>"
+	promptDSMLToolCallsOpen  = "<|DSML|tool_calls>"
+	promptDSMLToolCallsClose = "</|DSML|tool_calls>"
+	promptDSMLInvokeOpen     = "<|DSML|invoke"
+	promptDSMLInvokeClose    = "</|DSML|invoke>"
+	promptDSMLParameterOpen  = "<|DSML|parameter"
+	promptDSMLParameterClose = "</|DSML|parameter>"
 )
 
 // FormatToolCallsForPrompt renders a tool_calls slice into the prompt-visible

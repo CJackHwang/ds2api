@@ -6,14 +6,14 @@
 
 ## 1) 当前可执行格式
 
-当前版本推荐模型输出全角分隔符 DSML 外壳：
+当前版本推荐模型输出半角管道符 DSML 外壳：
 
 ```xml
-<｜DSML｜tool_calls>
-  <｜DSML｜invoke name="read_file">
-    <｜DSML｜parameter name="path"><![CDATA[README.MD]]></｜DSML｜parameter>
-  </｜DSML｜invoke>
-</｜DSML｜tool_calls>
+<|DSML|tool_calls>
+  <|DSML|invoke name="read_file">
+    <|DSML|parameter name="path"><![CDATA[README.MD]]></|DSML|parameter>
+  </|DSML|invoke>
+</|DSML|tool_calls>
 ```
 
 兼容层仍接受旧式 canonical XML：
@@ -30,17 +30,20 @@
 
 约束：
 
-- 必须有 `<｜DSML｜tool_calls>...</｜DSML｜tool_calls>` 或 `<tool_calls>...</tool_calls>` wrapper
-- 每个调用必须在 `<｜DSML｜invoke name="...">...</｜DSML｜invoke>` 或 `<invoke name="...">...</invoke>` 内
+- 必须有 `<|DSML|tool_calls>...</|DSML|tool_calls>` 或 `<tool_calls>...</tool_calls>` wrapper
+- 每个调用必须在 `<|DSML|invoke name="...">...</|DSML|invoke>` 或 `<invoke name="...">...</invoke>` 内
 - 工具名必须放在 `invoke` 的 `name` 属性
-- 参数必须使用 `<｜DSML｜parameter name="...">...</｜DSML｜parameter>` 或 `<parameter name="...">...</parameter>`
+- 参数必须使用 `<|DSML|parameter name="...">...</|DSML|parameter>` 或 `<parameter name="...">...</parameter>`
 - 同一个工具块内不要混用 DSML 标签和旧 XML 工具标签；混搭会被视为非法工具块
 
 兼容修复：
 
 - 如果模型漏掉 opening wrapper，但后面仍输出了一个或多个 invoke 并以 closing wrapper 收尾，Go 解析链路会在解析前补回缺失的 opening wrapper。
+- 在进入现有 DSML rewrite / XML parse 之前，Go / Node 都会先做一次非常窄的 candidate-span canonicalization：只处理已经被 scanner 识别为工具标签壳的 wrapper / `invoke` / `parameter` / `name` / `CDATA` / `DSML` 及其结构分隔符；这里会移除零宽 / BOM / 控制类干扰字符，并把 `<`、`>`、`/`、`|`、`=`、引号、Unicode 空白、常见 dash / underscore 变体这类工具语法外壳符号折回 ASCII 语义。
 - Go / Node 解析层不再枚举每一种 DSML typo。它以固定本地标签名 `tool_calls` / `invoke` / `parameter` 为准，把标签名前的任意协议前缀壳视为可容忍噪声，并继续兼容管道符 `|` / `｜`、全角感叹号 `！`、顿号 `、`、空白、重复 leading `<`、可视控制符 `␂`、原始 STX `\x02`、非 ASCII 分隔符、CJK 尖括号 `〈` / `〉`、弯引号属性值、PascalCase 本地名等漂移。例如 `<DSML|tool_calls>`、`<<|DSML|tool_calls>`、`<|DSML tool_calls>`、`<DSMLtool_calls>`、`<DSmartToolCalls>`、`<<DSML|DSML|tool_calls>`、`<DSML␂tool_calls>`、`<proto💥tool_calls>`、`<DSM｜tool_calls>...〈/DSM｜tool_calls〉`、`<！DSML！tool_calls>...<！/DSML！tool_calls>`、`<、DSML、tool_calls>...<、/DSML、tool_calls>` 都会归一化；相似但非固定标签名（如 `tool_calls_extra` / `ToolCallsExtra`）仍按普通文本处理。
+- 这个 candidate-span canonicalization 不会对普通 prose、参数正文、CDATA 内容或嵌套的非工具 XML 做广义 Unicode 归一化。也就是说，参数里的示例 `<invοke>`、普通聊天文本里的 confusable 单词、或其他非工具壳 XML 片段都保持原样；只有真正落在工具标签壳上的 whitelist 关键字和结构符号会被折叠。
 - 如果模型在固定工具标签名后多输出一个非结构性分隔符，例如 `<|DSML|tool_calls|` / `<|DSML|invoke|` / `<|DSML|parameter|` / `<DSMLtool_calls※>`，或在带属性标签的结束符前多输出一个尾部分隔符（如 `<DSM｜parameter name="command"｜>`），兼容层会把这个尾部分隔符当作异常标签终止符并补齐或归一化；如果后面已经有 `>` / `〉`，也会消费这个多余分隔符后再归一化。结构性字符如 `<` / `>` / `/` / `=` / 引号、空白和 ASCII 字母数字不会被当作这类分隔符。
+- “缺失 opening wrapper”的修复只会在 wrapper-confidence 足够高时触发：scanner 必须已经识别出白名单工具壳结构（wrapper / invoke / parameter / `name=` 等），且剩余失败看起来只是壳层结构问题。相似但不在白名单内的 near-miss 标签名，或缺少足够 wrapper 证据的 malformed 片段，仍会按普通文本透传。
 - 这是一个针对常见模型失误的窄修复，不改变推荐输出格式；prompt 仍要求模型直接输出完整 DSML 外壳。
 - 裸 `<invoke ...>` / `<parameter ...>` 不会被当成“已支持的工具语法”；只有 `tool_calls` wrapper 或可修复的缺失 opening wrapper 才会进入工具调用路径。
 
@@ -54,16 +57,17 @@
 
 在流式链路中（Go / Node 一致）：
 
-- DSML `<｜DSML｜tool_calls>` wrapper、短横线形式（如 `<dsml-tool-calls>` / `<dsml-invoke>` / `<dsml-parameter>`）、基于固定本地标签名的 DSML 噪声容错形态、尾部非结构性分隔符形态（如 `<|DSML|tool_calls|` / `<DSMLtool_calls※>`）和 canonical `<tool_calls>` wrapper 都会进入结构化捕获
+- DSML `<|DSML|tool_calls>` wrapper、短横线形式（如 `<dsml-tool-calls>` / `<dsml-invoke>` / `<dsml-parameter>`）、基于固定本地标签名的 DSML 噪声容错形态、尾部非结构性分隔符形态（如 `<|DSML|tool_calls|` / `<DSMLtool_calls※>`）和 canonical `<tool_calls>` wrapper 都会进入结构化捕获
 - 如果流里直接从 invoke 开始，但后面补上了 closing wrapper，Go 流式筛分也会按缺失 opening wrapper 的修复路径尝试恢复
 - 已识别成功的工具调用不会再次回流到普通文本
 - 不符合新格式的块不会执行，并继续按原样文本透传
-- fenced code block（反引号 `` ``` `` 和波浪线 `~~~`）中的 XML 示例始终按普通文本处理
+- 如果一个 confusable / 漂移过的工具壳在 candidate-span canonicalization + repair 后仍能形成有效工具调用，wrapper 后面的 suffix prose 会继续按普通文本输出；如果 canonicalization 后仍不满足 wrapper-confidence 或 XML 语义，整块就作为普通文本释放，不会半吞半漏。
+- fenced code block（反引号 `` ``` `` 和波浪线 `~~~`）以及 Markdown inline code span（例如 `` `<tool_calls>...</tool_calls>` ``）中的 XML 示例始终按普通文本处理
 - 支持嵌套围栏（如 4 反引号嵌套 3 反引号）和 CDATA 内围栏保护
 - 对 `command` / `content` 等长文本参数，CDATA 内部如果包含 Markdown fenced DSML / XML 示例，即使示例里出现 `]]></parameter>` / `</tool_calls>` 这类看起来像外层结束标签的片段，也会继续按参数原文保留，直到真正位于围栏外的外层结束标签
 - CDATA 开头也按扫描式识别，除了标准 `<![CDATA[`，还会接受 `<！[CDATA[`、`<、[CDATA[` 这类分隔符漂移，并统一还原为原文字段内容。
 - 如果模型把 `<![CDATA[` 打开后却没有闭合，流式扫描阶段仍会保守地继续缓冲，不会误把 CDATA 里的示例 XML 当成真实工具调用；在最终 parse / flush 恢复阶段，会对这类 loose CDATA 做窄修复，尽量保住外层已完整包裹的真实工具调用
-- 当文本中 mention 了某种标签名（如 `<dsml|tool_calls>` 或 Markdown inline code 里的 `<|DSML|tool_calls>`）而后面紧跟真正工具调用时，sieve 会跳过不可解析的 mention 候选并继续匹配后续真实工具块，不会因 mention 导致工具调用丢失，也不会截断 mention 后的正文
+- 当文本中 mention 了某种标签名（如 `<dsml|tool_calls>` 或 Markdown inline code 里的 `<|DSML|tool_calls>`）而后面紧跟真正工具调用时，sieve 会跳过不可解析的 mention 候选并继续匹配后续真实工具块；行内 code span 中即使出现完整 `<tool_calls>...</tool_calls>` 示例也不会执行，不会因 mention 导致工具调用丢失，也不会截断 mention 后的正文
 - Go 侧 SSE 读取不再使用 `bufio.Scanner` 的固定 token 上限；单个 `data:` 行中包含很长的写文件参数时，非流式收集、流式解析与 auto-continue 透传都应保留完整行，再交给 tool parser 处理
 
 另外，`<parameter>` 的值如果本身是合法 JSON 字面量，也会按结构化值解析，而不是一律保留为字符串。例如 `123`、`true`、`null`、`[1,2]`、`{"a":1}` 都会还原成对应的 number / boolean / null / array / object。
@@ -101,12 +105,13 @@ go test -v -run 'TestParseToolCalls|TestProcessToolSieve' ./internal/toolcall ./
 
 重点覆盖：
 
-- DSML `<｜DSML｜tool_calls>` wrapper 正常解析
+- DSML `<|DSML|tool_calls>` wrapper 正常解析
 - legacy canonical `<tool_calls>` wrapper 正常解析
 - 固定本地标签名的 DSML 噪声容错形态（如 `<DSML|tool_calls>`、`<<|DSML|tool_calls>`、`<|DSML tool_calls>`、`<DSMLtool_calls>`、`<DSmartToolCalls>`、`<<DSML|DSML|tool_calls>`、`<DSM｜tool_calls>...〈/DSM｜tool_calls〉`、`<！DSML！tool_calls>...<！/DSML！tool_calls>`）正常解析
 - 混搭标签（DSML wrapper + canonical inner）归一化后正常解析
 - 波浪线围栏 `~~~` 内的示例不执行
 - 嵌套围栏（4 反引号嵌套 3 反引号）内的示例不执行
+- Markdown 行内 code span 内的完整工具调用示例不执行
 - 文本 mention 标签名后紧跟真正工具调用的场景（含同一 wrapper 变体）
 - 空参数结构化保留，malformed executable-looking XML wrapper 作为文本释放
 - 非兼容内容按普通文本透传

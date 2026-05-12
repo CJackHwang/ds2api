@@ -167,8 +167,8 @@ OpenAI Chat / Responses 在标准化后、current input file 之前，会默认�
 3. 再附上统一的 DSML tool call 外壳格式约束。
 4. 把这整段内容并入 system prompt。
 
-工具调用正例现在优先示范全角分隔符 DSML 风格：`<｜DSML｜tool_calls>` → `<｜DSML｜invoke name="...">` → `<｜DSML｜parameter name="...">`。
-兼容层仍接受旧式纯 `<tool_calls>` wrapper，并会容错若干 DSML 标签变体，包括短横线形式 `<dsml-tool-calls>` / `<dsml-invoke>` / `<dsml-parameter>`、下划线形式 `<dsml_tool_calls>` / `<dsml_invoke>` / `<dsml_parameter>`，以及其他前缀分隔形态如 `<vendor|tool_calls>` / `<vendor_tool_calls>` / `<vendor - tool_calls>`；标签壳扫描还会把全角 ASCII 漂移归一化，例如 `<ｄＳＭＬ｜tool_calls>` 与全角 `＞` 结束符，也会容错 CJK 尖括号、全角感叹号或顿号分隔符、弯引号属性值、PascalCase 本地名和属性尾部分隔符漂移，例如 `<DSM｜parameter name="command"｜>...〈/DSM｜parameter〉`、`<！DSML！invoke name=“Bash”>`、`<、DSML、tool_calls>`、`<DSmartToolCalls>`、`<DSMLtool_calls※>`。更一般地，Go / Node tag 扫描以固定本地标签名 `tool_calls` / `invoke` / `parameter` 为准，标签名前或标签名后的非结构性协议分隔符都会在解析入口剥离，例如 `<DSML␂tool_calls>`、`<proto💥tool_calls>` 这类控制符或非 ASCII 分隔符漂移也会归一化回现有 XML 标签后继续走同一套 parser；结构性字符如 `<` / `>` / `/` / `=` / 引号、空白和 ASCII 字母数字不会被当作这类分隔符。CDATA 开头也使用同一类扫描式容错，`<![CDATA[` / `<！[CDATA[` / `<、[CDATA[` 都会作为参数原文容器处理。但提示词会优先要求模型输出官方 DSML 标签，并强调不能只输出 closing wrapper 而漏掉 opening tag。需要注意：这是“兼容 DSML 外壳，内部仍以 XML 解析语义为准”，不是原生 DSML 全链路实现。解析器会先截获非代码块中的疑似工具 wrapper，完整解析失败或工具语义无效时再按普通文本放行。
+工具调用正例现在优先示范半角管道符 DSML 风格：`<|DSML|tool_calls>` → `<|DSML|invoke name="...">` → `<|DSML|parameter name="...">`。
+兼容层仍接受旧式纯 `<tool_calls>` wrapper，并会容错若干 DSML 标签变体，包括短横线形式 `<dsml-tool-calls>` / `<dsml-invoke>` / `<dsml-parameter>`、下划线形式 `<dsml_tool_calls>` / `<dsml_invoke>` / `<dsml_parameter>`，以及其他前缀分隔形态如 `<vendor|tool_calls>` / `<vendor_tool_calls>` / `<vendor - tool_calls>`；标签壳扫描还会把全角 ASCII 漂移归一化，例如 `<ｄＳＭＬ|tool_calls>` 与全角 `＞` 结束符，也会容错 CJK 尖括号、全角感叹号或顿号分隔符、弯引号属性值、PascalCase 本地名和属性尾部分隔符漂移，例如 `<DSM|parameter name="command"|>...〈/DSM|parameter〉`、`<！DSML！invoke name=“Bash”>`、`<、DSML、tool_calls>`、`<DSmartToolCalls>`、`<DSMLtool_calls※>`。更一般地，Go / Node tag 扫描以固定本地标签名 `tool_calls` / `invoke` / `parameter` 为准，标签名前或标签名后的非结构性协议分隔符都会在解析入口剥离，例如 `<DSML␂tool_calls>`、`<proto💥tool_calls>` 这类控制符或非 ASCII 分隔符漂移也会归一化回现有 XML 标签后继续走同一套 parser；结构性字符如 `<` / `>` / `/` / `=` / 引号、空白和 ASCII 字母数字不会被当作这类分隔符。进入现有 DSML rewrite / XML parse 之前，Go / Node 还会先对“已经识别成工具标签壳的 candidate span”做一次窄 canonicalization：只折叠 wrapper / `invoke` / `parameter` / `name` / `CDATA` / `DSML` 及其壳层分隔符里的 confusable 字符，清理零宽 / BOM / 控制类干扰，并把引号、空白、dash / underscore 变体等统一回可解析的工具语法。这个阶段不会广义改写普通正文、参数内容、Markdown 行内 code span、CDATA 里的示例文本或其他非工具 XML。CDATA 开头也使用同一类扫描式容错，`<![CDATA[` / `<！[CDATA[` / `<、[CDATA[` 都会作为参数原文容器处理。但提示词会优先要求模型输出官方 DSML 标签，并强调不能只输出 closing wrapper 而漏掉 opening tag。需要注意：这是“兼容 DSML 外壳，内部仍以 XML 解析语义为准”，不是原生 DSML 全链路实现。解析器会先截获非 Markdown 代码上下文中的疑似工具 wrapper，完整解析失败或工具语义无效时再按普通文本放行。
 数组参数使用 `<item>...</item>` 子节点表示；当某个参数体只包含 item 子节点时，Go / Node 解析器会把它还原成数组，避免 `questions` / `options` 这类 schema 中要求 array 的参数被误解析成 `{ "item": ... }` 对象。除此之外，解析器还会回收一些更松散的列表写法，例如 JSON array 字面量或逗号分隔的 JSON 项序列，只要它们足够明确；但 `<item>` 仍然是首选形态。若模型把完整结构化 XML fragment 误包进 CDATA，兼容层会在保护 `content` / `command` 等原文字段的前提下，尝试把非原文字段中的 CDATA XML fragment 还原成 object / array。不过，如果 CDATA 只是单个平面的 XML/HTML 标签，例如 `<b>urgent</b>` 这种行内标记，兼容层会保留原始字符串，不会强行升成 object / array；只有明显表示结构的 CDATA 片段，例如多兄弟节点、嵌套子节点或 `item` 列表，才会触发结构化恢复。对 `command` / `content` 等长文本参数，CDATA 内部的 Markdown fenced DSML / XML 示例会作为原文保护；示例里的 `]]></parameter>` 或 `</tool_calls>` 不会截断外层工具调用，解析器会继续等待围栏外真正的参数 / wrapper 结束标签。
 Go 侧读取 DeepSeek SSE 时不再依赖 `bufio.Scanner` 的固定 2MiB 单行上限；当写文件类工具把很长的 `content` 放在单个 `data:` 行里返回时，非流式收集、流式解析和 auto-continue 透传都会保留完整行，再进入同一套工具解析与序列化流程。
 在 assistant 最终回包阶段，如果某个 tool 参数在声明 schema 中明确是 `string`，兼容层会在把解析后的 `tool_calls` / `function_call` 重新序列化成 OpenAI / Responses / Claude 可见参数前，递归把该路径上的 number / bool / object / array 统一转成字符串；其中 object / array 会压成紧凑 JSON 字符串。这个保护只对 schema 明确声明为 string 的路径生效，不会改写本来就是 `number` / `boolean` / `object` / `array` 的参数。这样可以兼容 DeepSeek 输出了结构化片段、但上游客户端工具 schema 又严格要求字符串参数的场景（例如 `content`、`prompt`、`path`、`taskId` 等）。
@@ -215,11 +215,11 @@ assistant 的 reasoning 会变成一个显式标签块：
 assistant 历史 `tool_calls` 会转成 prompt 可见的 DSML 外壳：
 
 ```xml
-<｜DSML｜tool_calls>
-  <｜DSML｜invoke name="read_file">
-    <｜DSML｜parameter name="path"><![CDATA[src/main.go]]></｜DSML｜parameter>
-  </｜DSML｜invoke>
-</｜DSML｜tool_calls>
+<|DSML|tool_calls>
+  <|DSML|invoke name="read_file">
+    <|DSML|parameter name="path"><![CDATA[src/main.go]]></|DSML|parameter>
+  </|DSML|invoke>
+</|DSML|tool_calls>
 ```
 
 同时，归一化后的 message 会保留结构化 `tool_calls` 字段供 Context Engine shadow 编译 tool-pair 不变量使用；最终 prompt 仍只渲染 `content` 中的 DSML 文本，不会把 OpenAI 原生 JSON 作为隐藏 transport 发送给上游。
@@ -227,7 +227,7 @@ assistant 历史 `tool_calls` 会转成 prompt 可见的 DSML 外壳：
 如果客户端历史里没有结构化 `tool_calls` 字段、却把一个可独立解析的 assistant 工具块放进了普通 `content`，兼容层会在写入后续 prompt 前先按工具调用解析它，再重渲染为规范 DSML 历史外壳。这样可以避免一次 malformed 工具块未被结构化保存后，作为普通 assistant 文本回灌，继续污染后续模型的 few-shot 工具格式。
 
 解析层同时兼容旧式纯 XML 形态：`<tool_calls>` / `<invoke>` / `<parameter>`。两者都会先归一到现有 XML 解析语义；其他旧格式都会作为普通文本保留，不会作为可执行调用语法。
-例外是 parser 会对一个非常窄的模型失误做修复：如果 assistant 输出了 `<invoke ...>` ... `</tool_calls>`（或 DSML 对应标签），但漏掉最前面的 opening wrapper，解析阶段会补回 wrapper 后再尝试识别。
+例外是 parser 会对一个非常窄的模型失误做修复：如果 assistant 输出了 `<invoke ...>` ... `</tool_calls>`（或 DSML 对应标签），但漏掉最前面的 opening wrapper，解析阶段会在 wrapper-confidence 足够高时补回 wrapper 后再尝试识别。这里的 wrapper-confidence 指 scanner 已经识别出白名单工具壳结构，剩余失败只像壳层结构漂移，而不是语义上接近但不在白名单内的 near-miss 标签名。修复成功时，wrapper 后面的 suffix prose 会继续保留在可见文本里；修复失败时，该块仍按普通文本处理。
 
 这件事很重要，因为它决定了：
 
