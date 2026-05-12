@@ -25,6 +25,11 @@ func normalizeClaudeRequest(store ConfigReader, req map[string]any) (claudeNorma
 		req["max_tokens"] = 8192
 	}
 	normalizedMessages := normalizeClaudeMessages(messagesRaw)
+	contextPayload := cloneMap(req)
+	contextPayload["messages"] = normalizedMessages
+	contextDSPayload := convertClaudeToDeepSeek(contextPayload, store)
+	contextMessages, _ := contextDSPayload["messages"].([]any)
+
 	payload := cloneMap(req)
 	payload["messages"] = normalizedMessages
 	toolsRequested, _ := req["tools"].([]any)
@@ -52,7 +57,7 @@ func normalizeClaudeRequest(store ConfigReader, req map[string]any) (claudeNorma
 			RequestedModel:  strings.TrimSpace(model),
 			ResolvedModel:   dsModel,
 			ResponseModel:   strings.TrimSpace(model),
-			Messages:        payload["messages"].([]any),
+			Messages:        contextMessages,
 			PromptTokenText: finalPrompt,
 			ToolsRaw:        toolsRequested,
 			FinalPrompt:     finalPrompt,

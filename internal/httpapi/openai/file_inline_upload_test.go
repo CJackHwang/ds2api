@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -42,7 +43,7 @@ func (m *inlineUploadDSStub) UploadFile(ctx context.Context, _ *auth.RequestAuth
 		return nil, m.uploadErr
 	}
 	return &dsclient.UploadFileResult{
-		ID:       "file-inline-1",
+		ID:       fmt.Sprintf("file-inline-%d", len(m.uploadCalls)),
 		Filename: req.Filename,
 		Bytes:    int64(len(req.Data)),
 		Status:   "uploaded",

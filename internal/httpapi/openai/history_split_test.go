@@ -537,6 +537,69 @@ func TestResponsesCurrentInputFileUploadsContextAndKeepsNeutralPrompt(t *testing
 	}
 }
 
+func TestResponsesCurrentInputFileUploadsToolsSeparately(t *testing.T) {
+	ds := &inlineUploadDSStub{}
+	h := &openAITestSurface{
+		Store: mockOpenAIConfig{
+			currentInputEnabled: true,
+		},
+		Auth: streamStatusAuthStub{},
+		DS:   ds,
+	}
+	r := chi.NewRouter()
+	registerOpenAITestRoutes(r, h)
+	reqBody, _ := json.Marshal(map[string]any{
+		"model":    "deepseek-v4-flash",
+		"messages": historySplitTestMessages(),
+		"tools": []any{
+			map[string]any{
+				"type": "function",
+				"function": map[string]any{
+					"name":        "search",
+					"description": "search docs",
+					"parameters":  map[string]any{"type": "object"},
+				},
+			},
+		},
+		"stream": false,
+	})
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(string(reqBody)))
+	req.Header.Set("Authorization", "Bearer direct-token")
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if len(ds.uploadCalls) != 2 {
+		t.Fatalf("expected history and tools uploads, got %d", len(ds.uploadCalls))
+	}
+	if ds.uploadCalls[0].Filename != "DS2API_HISTORY.txt" || ds.uploadCalls[1].Filename != "DS2API_TOOLS.txt" {
+		t.Fatalf("unexpected upload filenames: %#v", ds.uploadCalls)
+	}
+	historyText := string(ds.uploadCalls[0].Data)
+	if strings.Contains(historyText, "Description: search docs") {
+		t.Fatalf("history transcript should not embed tool descriptions, got %q", historyText)
+	}
+	toolsText := string(ds.uploadCalls[1].Data)
+	if !strings.Contains(toolsText, "# DS2API_TOOLS.txt") || !strings.Contains(toolsText, "Tool: search") || !strings.Contains(toolsText, "Description: search docs") {
+		t.Fatalf("expected tools transcript to include schema, got %q", toolsText)
+	}
+	promptText, _ := ds.completionReq["prompt"].(string)
+	if !strings.Contains(promptText, "DS2API_TOOLS.txt") || !strings.Contains(promptText, "TOOL CALL FORMAT") {
+		t.Fatalf("expected live prompt to reference tools file and retain format instructions, got %q", promptText)
+	}
+	if strings.Contains(promptText, "Description: search docs") {
+		t.Fatalf("live prompt should not inline tool descriptions, got %q", promptText)
+	}
+	refIDs, _ := ds.completionReq["ref_file_ids"].([]any)
+	if len(refIDs) < 2 || refIDs[0] != "file-inline-1" || refIDs[1] != "file-inline-2" {
+		t.Fatalf("expected history and tools ref ids first, got %#v", ds.completionReq["ref_file_ids"])
+	}
+}
+
 func TestChatCompletionsCurrentInputFileMapsManagedAuthFailureTo401(t *testing.T) {
 	ds := &inlineUploadDSStub{
 		uploadErr: &dsclient.RequestFailure{Op: "upload file", Kind: dsclient.FailureManagedUnauthorized, Message: "expired token"},

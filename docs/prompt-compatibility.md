@@ -165,7 +165,7 @@ OpenAI Chat / Responses 在标准化后、current input file 之前，会默认�
 1. 把每个 tool 的名称、描述、参数 schema 序列化成文本。
 2. 拼成 `You have access to these tools:` 大段说明。
 3. 再附上统一的 DSML tool call 外壳格式约束。
-4. 把这整段内容并入 system prompt。
+4. 普通请求会把这整段内容并入 system prompt；触发 `current_input_file` 时，工具名称、描述和参数 schema 会改为上传到 `DS2API_TOOLS.txt`，live prompt / system prompt 只保留对该文件的引用和 DSML tool call 外壳格式约束。
 
 工具调用正例现在优先示范半角管道符 DSML 风格：`<|DSML|tool_calls>` → `<|DSML|invoke name="...">` → `<|DSML|parameter name="...">`。
 兼容层仍接受旧式纯 `<tool_calls>` wrapper，并会容错若干 DSML 标签变体，包括短横线形式 `<dsml-tool-calls>` / `<dsml-invoke>` / `<dsml-parameter>`、下划线形式 `<dsml_tool_calls>` / `<dsml_invoke>` / `<dsml_parameter>`，以及其他前缀分隔形态如 `<vendor|tool_calls>` / `<vendor_tool_calls>` / `<vendor - tool_calls>`；标签壳扫描还会把全角 ASCII 漂移归一化，例如 `<ｄＳＭＬ|tool_calls>` 与全角 `＞` 结束符，也会容错 CJK 尖括号、全角感叹号或顿号分隔符、弯引号属性值、PascalCase 本地名和属性尾部分隔符漂移，例如 `<DSM|parameter name="command"|>...〈/DSM|parameter〉`、`<！DSML！invoke name=“Bash”>`、`<、DSML、tool_calls>`、`<DSmartToolCalls>`、`<DSMLtool_calls※>`。更一般地，Go / Node tag 扫描以固定本地标签名 `tool_calls` / `invoke` / `parameter` 为准，标签名前或标签名后的非结构性协议分隔符都会在解析入口剥离，例如 `<DSML␂tool_calls>`、`<proto💥tool_calls>` 这类控制符或非 ASCII 分隔符漂移也会归一化回现有 XML 标签后继续走同一套 parser；结构性字符如 `<` / `>` / `/` / `=` / 引号、空白和 ASCII 字母数字不会被当作这类分隔符。进入现有 DSML rewrite / XML parse 之前，Go / Node 还会先对“已经识别成工具标签壳的 candidate span”做一次窄 canonicalization：只折叠 wrapper / `invoke` / `parameter` / `name` / `CDATA` / `DSML` 及其壳层分隔符里的 confusable 字符，清理零宽 / BOM / 控制类干扰，并把引号、空白、dash / underscore 变体等统一回可解析的工具语法。这个阶段不会广义改写普通正文、参数内容、Markdown 行内 code span、CDATA 里的示例文本或其他非工具 XML。CDATA 开头也使用同一类扫描式容错，`<![CDATA[` / `<！[CDATA[` / `<、[CDATA[` 都会作为参数原文容器处理。但提示词会优先要求模型输出官方 DSML 标签，并强调不能只输出 closing wrapper 而漏掉 opening tag。需要注意：这是“兼容 DSML 外壳，内部仍以 XML 解析语义为准”，不是原生 DSML 全链路实现。解析器会先截获非 Markdown 代码上下文中的疑似工具 wrapper，完整解析失败或工具语义无效时再按普通文本放行。
@@ -281,7 +281,7 @@ OpenAI 的文件上传现在不再是“只传文件本体”的通用路径，�
 
 兼容层现在只保留 `current_input_file` 这一种拆分方式；旧的 `history_split` 配置字段已移除，读取旧配置时会忽略它且不会再写回。
 
-- `current_input_file` 默认开启；它在统一 completion runtime 入口全局生效，用于把“完整上下文”合并进 `DS2API_HISTORY.txt` 上下文文件。当最新 user turn 的纯文本长度达到 `current_input_file.min_chars`（默认 `0`）时，runtime 会上传一个文件名为 `DS2API_HISTORY.txt` 的上下文文件。文件内容会先经过各协议入口的标准化，再序列化成按轮次编号的 `DS2API_HISTORY.txt` 风格 transcript，带有 `# DS2API_HISTORY.txt` 标题和 `=== N. ROLE ===` 分段；live prompt 中则会给出一个 continuation 语气的 user 消息，引导模型从 `DS2API_HISTORY.txt` 的最新状态继续推进，并直接回答最新请求，避免把任务拉回起点。
+- `current_input_file` 默认开启；它在统一 completion runtime 入口全局生效，用于把“完整上下文”合并进 `DS2API_HISTORY.txt` 上下文文件。当最新 user turn 的纯文本长度达到 `current_input_file.min_chars`（默认 `0`）时，runtime 会上传一个文件名为 `DS2API_HISTORY.txt` 的上下文文件。文件内容会先经过各协议入口的标准化，再序列化成按轮次编号的 `DS2API_HISTORY.txt` 风格 transcript，带有 `# DS2API_HISTORY.txt` 标题和 `=== N. ROLE ===` 分段；如果当前请求带有可用 tools 且 tool choice 不是 `none`，runtime 还会上传 `DS2API_TOOLS.txt`，只承载本次请求的工具名称、描述和参数 schema。live prompt 中则会给出一个 continuation 语气的 user 消息，引导模型从 `DS2API_HISTORY.txt` 的最新状态继续推进，并直接回答最新请求；如果有 `DS2API_TOOLS.txt`，live prompt 会额外要求模型把该文件视为可调用工具和 schema 的权威来源，避免把任务拉回起点，也避免把大段 schema 再次内联到 prompt。
 - 如果 `current_input_file.enabled=false`，请求会直接透传，不上传任何拆分上下文文件。
 - 即使触发 `current_input_file` 后 live prompt 被缩短，对客户端回包里的上下文 token 统计，仍会沿用**拆分前的完整 prompt 语义**做计数，而不是按缩短后的占位 prompt 计算；否则会把真实上下文显著算小。
 
@@ -294,7 +294,7 @@ OpenAI 的文件上传现在不再是“只传文件本体”的通用路径，�
 - 全局 completion runtime 应用点：
   [internal/completionruntime/nonstream.go](../internal/completionruntime/nonstream.go)
 
-当前输入转文件启用并触发时，上传文件的真实文件名是 `DS2API_HISTORY.txt`，文件内容是完整 `messages` 上下文；它会使用 OpenAI-compatible 的消息/transcript 序列化规则和 DeepSeek 角色标记，再按轮次编号成 `DS2API_HISTORY.txt` 风格的 transcript（不再注入文件边界标签）：
+当前输入转文件启用并触发时，上传的历史文件真实文件名是 `DS2API_HISTORY.txt`，文件内容是完整 `messages` 上下文；它会使用 OpenAI-compatible 的消息/transcript 序列化规则和 DeepSeek 角色标记，再按轮次编号成 `DS2API_HISTORY.txt` 风格的 transcript（不再注入文件边界标签）：
 
 ```text
 [uploaded filename]: DS2API_HISTORY.txt
@@ -314,7 +314,21 @@ Prior conversation history and tool progress.
 ...
 ```
 
-开启后，请求的 live prompt 不再直接内联完整上下文，而是保留一个 user role 的短提示，提示模型基于已提供上下文直接回答最新请求；上传后的 `file_id` 会进入 `ref_file_ids`。
+如果当前请求带有可用 tools，还会额外上传 `DS2API_TOOLS.txt`：
+
+```text
+[uploaded filename]: DS2API_TOOLS.txt
+# DS2API_TOOLS.txt
+Available tool descriptions and parameter schemas for this request.
+
+You have access to these tools:
+
+Tool: search
+Description: Search docs
+Parameters: {"type":"object",...}
+```
+
+开启后，请求的 live prompt 不再直接内联完整上下文和大段工具 schema，而是保留一个 user role 的短提示，提示模型基于已提供上下文直接回答最新请求；system prompt 中仍保留 DSML tool call 格式约束。上传后的生成文件 `file_id` 会排在 `ref_file_ids` 前部，顺序是 `DS2API_HISTORY.txt`、可选的 `DS2API_TOOLS.txt`，再接客户端原有文件引用。
 
 ## 10. 各协议入口的差异
 
@@ -324,7 +338,7 @@ Prior conversation history and tool progress.
 
 - `developer` 会映射到 `system`
 - Responses `instructions` 会 prepend 为 system message
-- `tools` 会注入 system prompt
+- 普通请求的 `tools` 会注入 system prompt；触发 `current_input_file` 时，工具 schema 会拆到 `DS2API_TOOLS.txt`，system prompt 只保留文件引用和 DSML tool call 格式约束
 - `attachments` / `input_file` / inline 文件会进入 `ref_file_ids`
 - current input file 在统一 completion runtime 入口全局生效
 
@@ -363,9 +377,10 @@ Prior conversation history and tool progress.
 
 ```json
 {
-  "prompt": "<｜begin▁of▁sentence｜><｜System｜>原 system / developer\n\nYou have access to these tools: ...<｜end▁of▁instructions｜><｜User｜>Continue from the latest state in the attached DS2API_HISTORY.txt context. Treat it as the current working state and answer the latest user request directly.<｜Assistant｜>",
+  "prompt": "<｜begin▁of▁sentence｜><｜System｜>原 system / developer\n\nAvailable tool descriptions and parameter schemas are attached in DS2API_TOOLS.txt...\n\nTOOL CALL FORMAT: ...<｜end▁of▁instructions｜><｜User｜>Continue from the latest state in the attached DS2API_HISTORY.txt context. Treat it as the current working state and answer the latest user request directly. Available tool descriptions and parameter schemas are attached in DS2API_TOOLS.txt; use only those tools and follow the tool-call format rules in this prompt.<｜Assistant｜>",
   "ref_file_ids": [
-    "file-current-input-ignore",
+    "file-current-input-history",
+    "file-current-input-tools",
     "file-systemprompt",
     "file-other-attachment"
   ],
@@ -378,7 +393,7 @@ Prior conversation history and tool progress.
 
 - 大部分结构化语义被压进 `prompt`
 - 文件保持文件
-- 需要时把完整上下文拆进 `DS2API_HISTORY.txt` 上下文文件，并按轮次编号成 transcript
+- 需要时把完整上下文拆进 `DS2API_HISTORY.txt` 上下文文件，把工具 schema 拆进 `DS2API_TOOLS.txt`，并按生成文件优先的顺序放入 `ref_file_ids`
 
 ## 12. 修改时必须同步本文档的场景
 

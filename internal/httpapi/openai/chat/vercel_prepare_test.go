@@ -142,6 +142,78 @@ func TestHandleVercelStreamPrepareAppliesCurrentInputFile(t *testing.T) {
 	}
 }
 
+func TestHandleVercelStreamPrepareUploadsToolsSeparately(t *testing.T) {
+	t.Setenv("VERCEL", "1")
+	t.Setenv("DS2API_VERCEL_INTERNAL_SECRET", "stream-secret")
+
+	ds := &inlineUploadDSStub{}
+	h := &Handler{
+		Store: mockOpenAIConfig{
+			currentInputEnabled: true,
+		},
+		Auth: streamStatusAuthStub{},
+		DS:   ds,
+	}
+
+	reqBody, _ := json.Marshal(map[string]any{
+		"model": "deepseek-v4-flash",
+		"messages": []any{
+			map[string]any{"role": "user", "content": "search docs"},
+		},
+		"tools": []any{
+			map[string]any{
+				"type": "function",
+				"function": map[string]any{
+					"name":        "search",
+					"description": "search docs",
+					"parameters":  map[string]any{"type": "object"},
+				},
+			},
+		},
+		"stream": true,
+	})
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions?__stream_prepare=1", strings.NewReader(string(reqBody)))
+	req.Header.Set("Authorization", "Bearer direct-token")
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Ds2-Internal-Token", "stream-secret")
+	rec := httptest.NewRecorder()
+
+	h.handleVercelStreamPrepare(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if len(ds.uploadCalls) != 2 {
+		t.Fatalf("expected history and tools uploads, got %d", len(ds.uploadCalls))
+	}
+	if ds.uploadCalls[0].Filename != "DS2API_HISTORY.txt" || ds.uploadCalls[1].Filename != "DS2API_TOOLS.txt" {
+		t.Fatalf("unexpected upload filenames: %#v", ds.uploadCalls)
+	}
+	if strings.Contains(string(ds.uploadCalls[0].Data), "Description: search docs") {
+		t.Fatalf("history transcript should not embed tool descriptions, got %q", string(ds.uploadCalls[0].Data))
+	}
+
+	var body map[string]any
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode failed: %v", err)
+	}
+	finalPrompt, _ := body["final_prompt"].(string)
+	payload, _ := body["payload"].(map[string]any)
+	payloadPrompt, _ := payload["prompt"].(string)
+	for label, promptText := range map[string]string{"final_prompt": finalPrompt, "payload.prompt": payloadPrompt} {
+		if !strings.Contains(promptText, "DS2API_TOOLS.txt") || !strings.Contains(promptText, "TOOL CALL FORMAT") {
+			t.Fatalf("expected %s to reference tools file and retain tool instructions, got %q", label, promptText)
+		}
+		if strings.Contains(promptText, "Description: search docs") {
+			t.Fatalf("expected %s not to inline tool descriptions, got %q", label, promptText)
+		}
+	}
+	refIDs, _ := payload["ref_file_ids"].([]any)
+	if len(refIDs) < 2 || refIDs[0] != "file-inline-1" || refIDs[1] != "file-inline-2" {
+		t.Fatalf("expected history and tools ref ids first, got %#v", payload["ref_file_ids"])
+	}
+}
+
 type vercelReleaseAutoDeleteDSStub struct {
 	resp             *http.Response
 	auth             *vercelReleaseAuthStub
