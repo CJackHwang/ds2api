@@ -18,7 +18,8 @@ ds2api/
 ├── artifacts/                            # Debug artifacts (raw-stream-sim, stream-debug, etc.)
 ├── cmd/                                  # Executable entrypoints
 │   ├── ds2api/                           # Main service bootstrap
-│   └── ds2api-tests/                     # E2E testsuite CLI bootstrap
+│   ├── ds2api-tests/                     # E2E testsuite CLI bootstrap
+│   └── release-readiness/                # Local Release Readiness report generator
 ├── docs/                                 # Project documentation
 ├── internal/                             # Core implementation (non-public packages)
 │   ├── account/                          # Account pool, inflight slots, waiting queue

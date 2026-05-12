@@ -161,3 +161,40 @@ Required follow-ups:
 - 报告不包含未脱敏 artifacts。
 - 每次 release 可追溯到一份报告。
 - 缺失 History Analyzer 或 shadow report 时，报告仍可生成，并清楚标记 `PENDING`。
+
+## 9. 本地生成器
+
+M4.0 提供轻量本地生成器，只负责组装 readiness baseline，不执行 History Analyzer 规则，也不自动运行 PR Gate。
+
+```bash
+go run ./cmd/release-readiness \
+  --branch current \
+  --out artifacts/release-readiness/report.md \
+  --json artifacts/release-readiness/report.json \
+  --lint-result pass \
+  --refactor-result pass \
+  --unit-result pass \
+  --webui-build-result pass \
+  --live-result skip \
+  --live-skip-reason "no credentials"
+```
+
+也可以使用脚本封装：
+
+```bash
+DS2API_READINESS_LINT_RESULT=pass \
+DS2API_READINESS_REFACTOR_RESULT=pass \
+DS2API_READINESS_UNIT_RESULT=pass \
+DS2API_READINESS_WEBUI_BUILD_RESULT=pass \
+tests/scripts/run-release-readiness.sh
+```
+
+未来输入预留：
+
+- `--history-analyzer-json`
+- `--parser-shadow-json`
+- `--context-shadow-json`
+- `--auto-continue-json`
+- `--capability-router-json`
+
+当这些输入缺失时，报告会把对应来源标记为 `pending`，不能作为晋级到 `enforce` 的证据。

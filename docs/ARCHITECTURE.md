@@ -18,7 +18,8 @@ ds2api/
 ├── artifacts/                            # 调试产物（raw-stream-sim, stream-debug 等）
 ├── cmd/                                  # 可执行程序入口
 │   ├── ds2api/                           # 主服务启动入口
-│   └── ds2api-tests/                     # E2E 测试集 CLI 入口
+│   ├── ds2api-tests/                     # E2E 测试集 CLI 入口
+│   └── release-readiness/                # Release readiness 本地报告生成器
 ├── docs/                                 # 项目文档目录
 ├── internal/                             # 核心业务实现（不对外暴露）
 │   ├── account/                          # 账号池、并发槽位、等待队列
