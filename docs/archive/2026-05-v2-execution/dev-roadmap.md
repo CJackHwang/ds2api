@@ -1,6 +1,8 @@
 # DS2API v2 开发路线总览
 
-文档导航：[总览](../README.MD) / [文档索引](./README.md) / [架构说明](./ARCHITECTURE.md) / [PRD v1](./ds_2_api_prd.md) / [PRD 评审](./prd-review-and-improvements.md) / [Tool Parser 计划](./dev-plan-toolparser.md) / [Context Engine 计划](./dev-plan-context-engine.md) / [治理计划](./dev-plan-governance.md)
+> Status: archived execution record. Future planning is governed by [`../../v2-prd.md`](../../v2-prd.md).
+
+文档导航：[总览](../../../README.MD) / [文档索引](../../README.md) / [归档索引](./README.md) / [架构说明](../../ARCHITECTURE.md) / [PRD v1](./ds_2_api_prd.md) / [PRD 评审](./prd-review-and-improvements.md) / [Tool Parser 计划](./dev-plan-toolparser.md) / [Context Engine 计划](./dev-plan-context-engine.md) / [治理计划](./dev-plan-governance.md)
 
 > 本文是 v2 阶段的**总入口与里程碑索引**。具体执行细节落在三份 `dev-plan-*.md`。
 

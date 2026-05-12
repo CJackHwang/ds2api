@@ -1,6 +1,8 @@
 # 治理与产品化开发计划：安全 / 可观测 / Provider / WebUI
 
-文档导航：[总览](../README.MD) / [文档索引](./README.md) / [开发路线总览](./dev-roadmap.md) / [PRD 评审](./prd-review-and-improvements.md) / [架构说明](./ARCHITECTURE.md) / [部署指南](./DEPLOY.md)
+> Status: archived execution record. Future planning is governed by [`../../v2-prd.md`](../../v2-prd.md).
+
+文档导航：[总览](../../../README.MD) / [文档索引](../../README.md) / [归档索引](./README.md) / [开发路线总览](./dev-roadmap.md) / [PRD 评审](./prd-review-and-improvements.md) / [架构说明](../../ARCHITECTURE.md) / [部署指南](../../DEPLOY.md)
 
 > 本文是 v2 阶段 Governance 主题的执行计划，覆盖 Tool Parser / Context Engine 之外的“地基性”治理能力：
 > 安全治理、可观测性、Provider 抽象（长期）、WebUI / 文档治理。

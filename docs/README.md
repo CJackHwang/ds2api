@@ -23,12 +23,11 @@
 
 ### v2 开发规划
 
-- [PRD v1（已归档为规划输入）](./ds_2_api_prd.md)
-- [PRD 评审与改进建议](./prd-review-and-improvements.md)
-- [v2 开发路线总览（含分支与集成策略）](./dev-roadmap.md)
-- [Tool Parser v2 计划：加固 + 可观测](./dev-plan-toolparser.md)
-- [Context Engine 计划：渐进引入](./dev-plan-context-engine.md)
-- [治理与产品化计划](./dev-plan-governance.md)
+- [未来主规划：DeepSeek 专用智能 Agent 网关 PRD](./v2-prd.md)
+
+### 历史规划归档
+
+- [2026-05 v2 执行阶段归档](./archive/2026-05-v2-execution/README.md)
 
 ### 文档维护约定
 
@@ -64,12 +63,11 @@ Recommended reading order:
 
 ### v2 development planning (Chinese only)
 
-- [PRD v1 (archived as planning input)](./ds_2_api_prd.md)
-- [PRD review & improvement notes](./prd-review-and-improvements.md)
-- [v2 development roadmap (branching & integration policy)](./dev-roadmap.md)
-- [Tool Parser v2 plan: harden + observability](./dev-plan-toolparser.md)
-- [Context Engine plan: incremental rollout](./dev-plan-context-engine.md)
-- [Governance & productization plan](./dev-plan-governance.md)
+- [Future roadmap: DeepSeek-focused intelligent Agent gateway PRD](./v2-prd.md)
+
+### Archived planning docs
+
+- [2026-05 v2 execution archive](./archive/2026-05-v2-execution/README.md)
 
 ### Maintenance conventions
 

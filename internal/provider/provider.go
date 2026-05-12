@@ -13,8 +13,8 @@
 //
 // This package contains the interface definition only (M3 Stage 7 design
 // deliverable). Concrete implementations are deferred to M4.
-// See docs/dev-plan-governance.md §1.3 for the full design rationale and
-// migration constraints.
+// See docs/archive/2026-05-v2-execution/dev-plan-governance.md §1.3 for the
+// original design rationale and migration constraints.
 package provider
 
 import "context"

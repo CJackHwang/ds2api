@@ -1,6 +1,8 @@
 # Tool Parser v2 开发计划：加固 + 可观测
 
-文档导航：[总览](../README.MD) / [文档索引](./README.md) / [开发路线总览](./dev-roadmap.md) / [PRD 评审](./prd-review-and-improvements.md) / [Tool Calling 语义](./toolcall-semantics.md) / [DeepSeek SSE 行为](./DeepSeekSSE行为结构说明-2026-04-05.md)
+> Status: archived execution record. Future planning is governed by [`../../v2-prd.md`](../../v2-prd.md).
+
+文档导航：[总览](../../../README.MD) / [文档索引](../../README.md) / [归档索引](./README.md) / [开发路线总览](./dev-roadmap.md) / [PRD 评审](./prd-review-and-improvements.md) / [Tool Calling 语义](../../toolcall-semantics.md) / [DeepSeek SSE 行为](../../DeepSeekSSE行为结构说明-2026-04-05.md)
 
 > 本文是 v2 阶段 Tool Parser / Stream 主题的执行计划。
 > **核心原则**：现有 `internal/toolcall` + `internal/toolstream` + Node sieve 已足够覆盖大多数已知格式，本期目标是 **加固边界、引入 feature flag、shadow diff、可观测性**，而不是另起炉灶。

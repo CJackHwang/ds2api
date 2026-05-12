@@ -1,6 +1,8 @@
 # Context Engine 开发计划：渐进引入
 
-文档导航：[总览](../README.MD) / [文档索引](./README.md) / [开发路线总览](./dev-roadmap.md) / [PRD 评审](./prd-review-and-improvements.md) / [兼容主链路](./prompt-compatibility.md) / [架构说明](./ARCHITECTURE.md)
+> Status: archived execution record. Future planning is governed by [`../../v2-prd.md`](../../v2-prd.md).
+
+文档导航：[总览](../../../README.MD) / [文档索引](../../README.md) / [归档索引](./README.md) / [开发路线总览](./dev-roadmap.md) / [PRD 评审](./prd-review-and-improvements.md) / [兼容主链路](../../prompt-compatibility.md) / [架构说明](../../ARCHITECTURE.md)
 
 > 本文是 v2 阶段 Context Engine 主题的执行计划。
 > **核心原则**：在 `internal/promptcompat`（已承担请求归一）与 `internal/completionruntime`（completion 启动）之间，新增独立的上下文编译层 `internal/contextengine/`，以 shadow → enforce 的方式渐进接入主链路。

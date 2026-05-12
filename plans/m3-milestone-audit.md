@@ -58,9 +58,9 @@
 | 文件 | 变更 |
 |------|------|
 | `docs/prompt-compatibility.md` | Context Engine M3 Stages 1-3 行为描述 |
-| `docs/dev-plan-governance.md` | §1.3 Provider 接口设计（§1.3.1–1.3.4） |
-| `docs/dev-plan-context-engine.md` | 附录 B：发布候选 checklist（off→shadow / shadow→enforce） |
-| `docs/dev-plan-toolparser.md` | 附录 A：发布候选 checklist（off→shadow / shadow→enforce） |
+| `docs/archive/2026-05-v2-execution/dev-plan-governance.md` | §1.3 Provider 接口设计（§1.3.1–1.3.4） |
+| `docs/archive/2026-05-v2-execution/dev-plan-context-engine.md` | 附录 B：发布候选 checklist（off→shadow / shadow→enforce） |
+| `docs/archive/2026-05-v2-execution/dev-plan-toolparser.md` | 附录 A：发布候选 checklist（off→shadow / shadow→enforce） |
 | `docs/DEPLOY.md` | §八 Feature Flags（`DS2API_CONTEXT_ENGINE` / `DS2API_PARSER_V2`） |
 
 ### 2.6 plans/
@@ -90,7 +90,7 @@
 以下 AGENTS.md 规则在 M3 所有变更中均已遵守：
 
 - **Protocol Adapter Boundary**：`contextengine.Compile` / `RunShadowDiff` / `ClassifyConfidence` 均不感知 OpenAI/Claude/Gemini 协议形状；`internal/provider/provider.go` 接口只接受归一化后的 `Prompt string`。
-- **文档同步**：所有影响 prompt 归一化行为的变更均同步到 `docs/prompt-compatibility.md`；Provider 设计同步到 `docs/dev-plan-governance.md`；feature flag 操作同步到 `docs/DEPLOY.md`。
+- **文档同步**：所有影响 prompt 归一化行为的变更均同步到 `docs/prompt-compatibility.md`；Provider 设计记录归档在 `docs/archive/2026-05-v2-execution/dev-plan-governance.md`；feature flag 操作同步到 `docs/DEPLOY.md`。
 - **feature flag 三态**：所有新能力默认 `off`；`shadow` 可观测；`enforce` 有 checklist 门禁。
 - **go lint + gofmt**：所有修改文件通过 `./scripts/lint.sh`（golangci-lint v2.11.4，0 issues）。
 - **回归测试**：unit 144 pass 0 fail；fuzz seed corpus 无 panic；benchmark 基线已记录。

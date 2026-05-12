@@ -770,8 +770,9 @@ curl http://127.0.0.1:5001/v1/chat/completions \
 
 以下环境变量控制 v2 渐进式功能的启用阶段（`off` → `shadow` → `enforce`）。
 功能上线时应先在 staging 环境跑 shadow 模式收集数据，满足发布候选 checklist
-后再切 enforce。详见 `docs/dev-plan-context-engine.md` 附录 B 和
-`docs/dev-plan-toolparser.md` 附录 A。
+后再切 enforce。历史发布候选 checklist 见
+`docs/archive/2026-05-v2-execution/dev-plan-context-engine.md` 附录 B 和
+`docs/archive/2026-05-v2-execution/dev-plan-toolparser.md` 附录 A。
 
 | 变量名 | 默认值 | 可选值 | 说明 |
 |--------|--------|--------|------|

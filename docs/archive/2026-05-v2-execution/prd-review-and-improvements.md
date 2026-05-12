@@ -1,6 +1,8 @@
 # PRD 评审与改进建议（针对 `docs/ds_2_api_prd.md`）
 
-文档导航：[总览](../README.MD) / [文档索引](./README.md) / [PRD v1](./ds_2_api_prd.md) / [开发路线总览](./dev-roadmap.md) / [Tool Parser v2 计划](./dev-plan-toolparser.md) / [Context Engine 计划](./dev-plan-context-engine.md) / [治理计划](./dev-plan-governance.md)
+> Status: archived review record. Future planning is governed by [`../../v2-prd.md`](../../v2-prd.md).
+
+文档导航：[总览](../../../README.MD) / [文档索引](../../README.md) / [归档索引](./README.md) / [PRD v1](./ds_2_api_prd.md) / [开发路线总览](./dev-roadmap.md) / [Tool Parser v2 计划](./dev-plan-toolparser.md) / [Context Engine 计划](./dev-plan-context-engine.md) / [治理计划](./dev-plan-governance.md)
 
 > 本文是对 `docs/ds_2_api_prd.md`（以下简称 “PRD v1”）的评审与改进建议，不直接改写原文。
 > 落地以本目录下三份 `dev-plan-*.md` 与 `dev-roadmap.md` 为准；PRD v1 仅作为规划输入保留。

@@ -44,7 +44,7 @@ These rules apply to all agent-made changes in this repository.
 
 - Never commit or push directly to `main`. `main` is integration-only and accepts changes via PR.
 - If the working tree is on `main`, the agent must first create and switch to a topic branch before making any edits or running write actions.
-- Always create a topic branch from the latest `main`. Use the naming convention defined in `docs/dev-roadmap.md`:
+- Always create a topic branch from the latest `main`. Use this naming convention:
   - `feat/<milestone>-<theme>-<short-slug>` (e.g. `feat/m1-toolparser-confidence-rework`)
   - `fix/<theme>-<short-slug>`
   - `docs/<theme>-<short-slug>`

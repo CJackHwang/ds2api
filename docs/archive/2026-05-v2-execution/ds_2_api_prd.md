@@ -1,5 +1,7 @@
 # ds2api 双核心改造 PRD
 
+> Status: archived planning input. Future planning is governed by [`../../v2-prd.md`](../../v2-prd.md).
+>
 > **Status: v1 设想（planning input, 2026-05）。**
 > 本文档保留作为 v2 阶段的规划输入，**不再作为执行口径**。落地以下列 v2 文档为准：
 >
@@ -574,4 +576,3 @@ Context State Engine 负责长任务连续性。
 ```
 
 一位工程师配合 Subagent 与 worktree，可以用 16 个 2 小时 Phase，在 4 到 5 个工作日内完成推荐稳定版。正式 PR 控制在 6 到 8 个，新能力全部通过 feature flag 先 shadow、再灰度、再默认启用。这样既能快速推进，也能避免把主链路改成一锅冒泡的协议火锅。
-
