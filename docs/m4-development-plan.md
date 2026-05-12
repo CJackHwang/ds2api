@@ -44,17 +44,28 @@ M4.0 Release Readiness baseline
 
 目标：建立统一发布候选报告，把 parser/context/continue/capability/account 的风险放进同一张表。
 
+Phase 切分：
+
+| Phase | 目标 | PR |
+|---|---|---|
+| M4.0-P1 | 固化 release readiness 文档、决策口径和 feature flag 晋级规则 | `docs/m4-readiness-template` |
+| M4.0-P2 | 增加 readiness 报告数据模型、样例和 Markdown 渲染 | `feat/m4-readiness-model` |
+| M4.0-P3 | 增加本地生成器、脚本和使用文档 | `feat/m4-readiness-cli` |
+
 任务：
 
 - 新增 release readiness 报告格式，见 [release-readiness.md](./release-readiness.md)。
 - 汇总 M3 归档 checklist、当前 feature flag 状态、单元测试、live smoke、shadow diff 数据。
 - 明确每个高风险功能从 `off` 到 `shadow`、从 `shadow` 到 `enforce` 的证据要求。
+- 定义缺失 History Analyzer / shadow report 时的 `PENDING` / `UNKNOWN` 处理方式。
+- 建立 Phase Closure Review 检查清单，确保 M4.0 不提前改主请求链路。
 
 DoD：
 
 - `docs/release-readiness.md` 中的报告模板可直接用于 PR / release。
 - 报告能引用 History Analyzer 的异常统计。
 - 不需要改主请求链路。
+- 每个 Phase 完成后完成偏差检查，修复缺口后再进入下一 Phase。
 
 ### M4.1 History Analyzer
 
@@ -162,18 +173,39 @@ DoD：
 
 ## 4. PR 切分建议
 
+M4.0 使用 stacked PR 推进：
+
+```text
+main
+└── docs/m4-readiness-template
+    └── feat/m4-readiness-model
+        └── feat/m4-readiness-cli
+```
+
+开发规则：
+
+- 不能在 `main` 分支上开发；先从最新 `origin/main` 创建 M4.0 底部分支。
+- 每个 PR 只完成一个明确任务集，完成后提交、push、打开 PR。
+- 基于当前 PR 分支创建下一层堆叠分支。
+- 每个 Phase 开发完成后执行 Phase Closure Review，对照 `docs/v2-prd.md` 和本计划检查偏差。
+- Phase Closure Review 后等待 6 分钟，读取该 Phase 远程 PR review 和 checks；如有反馈，修复后 push。
+- 从底层 PR 开始合并；每合并一个 PR，拉取最新 `main` 并 restack 后续分支。
+- 全部 Phase 完成后，再做一次实际开发结果与规划一致性检查。
+
 | 顺序 | 建议分支 | 内容 |
 |---|---|---|
-| 1 | `docs/m4-release-readiness` | 完成 release readiness 文档和报告模板 |
-| 2 | `feat/m4-history-analyzer-core` | 规则模型、报告结构、脱敏工具复用 |
-| 3 | `feat/m4-history-analyzer-cli` | 离线 CLI、Markdown/JSON 输出 |
-| 4 | `feat/m4-shadow-report` | Parser / Context shadow report 汇总 |
-| 5 | `feat/m4-auto-continue-config` | 配置、flag、shadow detector |
-| 6 | `feat/m4-auto-continue-nonstream` | OpenAI Chat non-stream continuation |
-| 7 | `feat/m4-auto-continue-stream` | OpenAI Chat stream merge |
-| 8 | `feat/m4-capability-router-profile` | capability profile、trace、WebUI matrix |
-| 9 | `feat/m4-webui-diagnostics` | WebUI 诊断页和报告展示 |
-| 10 | `feat/m5-agent-context-shadow` | Agent profile / Task Memory shadow |
+| 1 | `docs/m4-readiness-template` | M4.0-P1：完成 release readiness 文档、报告模板、晋级规则和 Phase Closure Review |
+| 2 | `feat/m4-readiness-model` | M4.0-P2：readiness 报告模型、样例、Markdown 渲染 |
+| 3 | `feat/m4-readiness-cli` | M4.0-P3：本地 CLI、脚本、使用文档 |
+| 4 | `feat/m4-history-analyzer-core` | 规则模型、报告结构、脱敏工具复用 |
+| 5 | `feat/m4-history-analyzer-cli` | 离线 CLI、Markdown/JSON 输出 |
+| 6 | `feat/m4-shadow-report` | Parser / Context shadow report 汇总 |
+| 7 | `feat/m4-auto-continue-config` | 配置、flag、shadow detector |
+| 8 | `feat/m4-auto-continue-nonstream` | OpenAI Chat non-stream continuation |
+| 9 | `feat/m4-auto-continue-stream` | OpenAI Chat stream merge |
+| 10 | `feat/m4-capability-router-profile` | capability profile、trace、WebUI matrix |
+| 11 | `feat/m4-webui-diagnostics` | WebUI 诊断页和报告展示 |
+| 12 | `feat/m5-agent-context-shadow` | Agent profile / Task Memory shadow |
 
 ## 5. 门禁
 
