@@ -10,47 +10,47 @@ echo.
 
 set "ROOT=%~dp0"
 
-:: ── Bước 1: Kiểm tra / tự cài Go ─────────────────────────────────────────
+:: ── Step 1: Check / auto-install Go ──────────────────────────────────────
 where go >nul 2>&1
 if errorlevel 1 (
-    echo [SETUP] Khong tim thay Go. Dang tu dong tai va cai dat Go 1.26.3...
+    echo [SETUP] Go not found. Downloading and installing Go 1.26.3...
     powershell -NoProfile -ExecutionPolicy Bypass -Command ^
         "$msi = \"$env:TEMP\go-installer.msi\";" ^
         "$url = 'https://go.dev/dl/go1.26.3.windows-amd64.msi';" ^
-        "Write-Host '[SETUP] Dang tai...';" ^
+        "Write-Host '[SETUP] Downloading...';" ^
         "try { Invoke-WebRequest -Uri $url -OutFile $msi -UseBasicParsing }" ^
-        "catch { Write-Host '[LOI]' $_.Exception.Message; exit 1 };" ^
-        "Write-Host '[SETUP] Dang cai dat (Windows se hoi quyen Admin)...';" ^
+        "catch { Write-Host '[ERROR]' $_.Exception.Message; exit 1 };" ^
+        "Write-Host '[SETUP] Installing (Windows will prompt for Admin)...';" ^
         "Start-Process msiexec.exe -ArgumentList \"/i `\"$msi`\" /quiet /norestart\" -Verb RunAs -Wait;" ^
         "Remove-Item $msi -Force -ErrorAction SilentlyContinue;" ^
-        "Write-Host '[OK] Cai dat xong.'"
+        "Write-Host '[OK] Go installed.'"
     if errorlevel 1 (
-        echo [LOI] Cai dat that bai. Cai thu cong tai: https://go.dev/dl/
+        echo [ERROR] Installation failed. Install manually from: https://go.dev/dl/
         pause & exit /b 1
     )
-    :: Reload PATH trong session hien tai
+    :: Reload PATH in current session
     for /f "tokens=*" %%p in ('powershell -NoProfile -Command ^
         "[System.Environment]::GetEnvironmentVariable('PATH','Machine')"') do set "PATH=%%p;%PATH%"
     where go >nul 2>&1
     if errorlevel 1 (
-        echo [INFO] Go da cai xong. Dong va mo lai cua so nay de PATH cap nhat.
+        echo [INFO] Go installed. Please close and reopen this window to reload PATH.
         pause & exit /b 0
     )
 )
 for /f "tokens=3" %%v in ('go version') do set GO_VER=%%v
 echo [OK] Go %GO_VER%
 
-:: ── Bước 2: Kiểm tra config.json ─────────────────────────────────────────
+:: ── Step 2: Check config.json ─────────────────────────────────────────────
 if not exist "%ROOT%config.json" (
-    echo [SETUP] Chua co config.json, sao chep tu config.example.json...
+    echo [SETUP] config.json not found. Copying from config.example.json...
     copy "%ROOT%config.example.json" "%ROOT%config.json" >nul
-    echo [SETUP] Da tao config.json. Hay dien tai khoan DeepSeek va API key.
+    echo [SETUP] config.json created. Fill in your DeepSeek account and API key.
     start "" notepad "%ROOT%config.json"
     pause & exit /b 0
 )
 echo [OK] config.json
 
-:: ── Bước 3: Đọc PORT từ .env ─────────────────────────────────────────────
+:: ── Step 3: Read PORT from .env ───────────────────────────────────────────
 set "PORT=5001"
 if exist "%ROOT%.env" (
     for /f "usebackq tokens=1,2 delims==" %%a in ("%ROOT%.env") do (
@@ -58,13 +58,13 @@ if exist "%ROOT%.env" (
     )
 )
 
-:: ── Bước 4: Chạy server ──────────────────────────────────────────────────
+:: ── Step 4: Start server ──────────────────────────────────────────────────
 echo.
 echo   Admin : http://127.0.0.1:%PORT%/admin
 echo   API   : http://127.0.0.1:%PORT%/v1
 echo   Health: http://127.0.0.1:%PORT%/healthz
 echo.
-echo [INFO] Khoi dong server... (Ctrl+C de dung)
+echo [INFO] Starting server... (Ctrl+C to stop)
 echo ============================================
 echo.
 
@@ -76,5 +76,5 @@ set "PORT=%PORT%"
 go run ./cmd/ds2api
 
 echo.
-echo [INFO] Server da dung.
+echo [INFO] Server stopped.
 pause
