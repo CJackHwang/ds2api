@@ -144,9 +144,13 @@ func TestHandleVercelStreamPrepareAppliesCurrentInputFile(t *testing.T) {
 
 type vercelReleaseAutoDeleteDSStub struct {
 	resp             *http.Response
+	auth             *vercelReleaseAuthStub
 	deleteCallCount  int
+	deleteAllCount   int
 	deletedSessionID string
 	deletedToken     string
+	deletedAllToken  string
+	releasedAtDelete bool
 	deleteErr        error
 }
 
@@ -170,17 +174,27 @@ func (m *vercelReleaseAutoDeleteDSStub) DeleteSessionForToken(_ context.Context,
 	m.deleteCallCount++
 	m.deletedSessionID = sessionID
 	m.deletedToken = token
+	if m.auth != nil {
+		m.releasedAtDelete = m.auth.releaseCallCount > 0
+	}
 	if m.deleteErr != nil {
 		return nil, m.deleteErr
 	}
 	return &dsclient.DeleteSessionResult{SessionID: sessionID, Success: true}, nil
 }
 
-func (m *vercelReleaseAutoDeleteDSStub) DeleteAllSessionsForToken(_ context.Context, _ string) error {
+func (m *vercelReleaseAutoDeleteDSStub) DeleteAllSessionsForToken(_ context.Context, token string) error {
+	m.deleteAllCount++
+	m.deletedAllToken = token
+	if m.auth != nil {
+		m.releasedAtDelete = m.auth.releaseCallCount > 0
+	}
 	return nil
 }
 
-type vercelReleaseAuthStub struct{}
+type vercelReleaseAuthStub struct {
+	releaseCallCount int
+}
 
 func (a *vercelReleaseAuthStub) Determine(_ *http.Request) (*auth.RequestAuth, error) {
 	return &auth.RequestAuth{DeepSeekToken: "test-token", AccountID: "test-account"}, nil
@@ -190,18 +204,21 @@ func (a *vercelReleaseAuthStub) DetermineCaller(_ *http.Request) (*auth.RequestA
 	return &auth.RequestAuth{DeepSeekToken: "test-token", AccountID: "test-account"}, nil
 }
 
-func (a *vercelReleaseAuthStub) Release(_ *auth.RequestAuth) {}
+func (a *vercelReleaseAuthStub) Release(_ *auth.RequestAuth) {
+	a.releaseCallCount++
+}
 
 func TestHandleVercelStreamReleaseTriggersAutoDelete(t *testing.T) {
 	t.Setenv("VERCEL", "1")
 	t.Setenv("DS2API_VERCEL_INTERNAL_SECRET", "stream-secret")
 
-	ds := &vercelReleaseAutoDeleteDSStub{}
+	authStub := &vercelReleaseAuthStub{}
+	ds := &vercelReleaseAutoDeleteDSStub{auth: authStub}
 	h := &Handler{
 		Store: mockOpenAIConfig{
 			autoDeleteMode: "single",
 		},
-		Auth: &vercelReleaseAuthStub{},
+		Auth: authStub,
 		DS:   ds,
 	}
 
@@ -227,6 +244,52 @@ func TestHandleVercelStreamReleaseTriggersAutoDelete(t *testing.T) {
 	}
 	if ds.deletedSessionID != "session-to-delete" {
 		t.Fatalf("expected deleted session id=session-to-delete, got %q", ds.deletedSessionID)
+	}
+	if ds.releasedAtDelete {
+		t.Fatalf("expected auto-delete before releasing the leased account")
+	}
+	if authStub.releaseCallCount != 1 {
+		t.Fatalf("expected leased account release after auto-delete, got %d", authStub.releaseCallCount)
+	}
+}
+
+func TestHandleVercelStreamReleaseAutoDeleteAllBeforeRelease(t *testing.T) {
+	t.Setenv("VERCEL", "1")
+	t.Setenv("DS2API_VERCEL_INTERNAL_SECRET", "stream-secret")
+
+	authStub := &vercelReleaseAuthStub{}
+	ds := &vercelReleaseAutoDeleteDSStub{auth: authStub}
+	h := &Handler{
+		Store: mockOpenAIConfig{
+			autoDeleteMode: "all",
+		},
+		Auth: authStub,
+		DS:   ds,
+	}
+
+	leaseID := h.holdStreamLease(&auth.RequestAuth{DeepSeekToken: "test-token", AccountID: "test-account"}, "session-to-delete")
+	reqJSON, _ := json.Marshal(map[string]any{"lease_id": leaseID})
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions?__stream_release=1", strings.NewReader(string(reqJSON)))
+	req.Header.Set("X-Ds2-Internal-Token", "stream-secret")
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	h.handleVercelStreamRelease(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if ds.deleteAllCount != 1 {
+		t.Fatalf("expected delete-all call count=1, got %d", ds.deleteAllCount)
+	}
+	if ds.deletedAllToken != "test-token" {
+		t.Fatalf("expected delete-all token=test-token, got %q", ds.deletedAllToken)
+	}
+	if ds.releasedAtDelete {
+		t.Fatalf("expected delete-all before releasing the leased account")
+	}
+	if authStub.releaseCallCount != 1 {
+		t.Fatalf("expected leased account release after delete-all, got %d", authStub.releaseCallCount)
 	}
 }
 

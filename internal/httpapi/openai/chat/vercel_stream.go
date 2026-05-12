@@ -145,6 +145,9 @@ func (h *Handler) handleVercelStreamRelease(w http.ResponseWriter, r *http.Reque
 		writeOpenAIError(w, http.StatusNotFound, "stream lease not found")
 		return
 	}
+	if h.Auth != nil && leaseAuth != nil {
+		defer h.Auth.Release(leaseAuth)
+	}
 	if sessionID != "" && leaseAuth != nil {
 		h.autoDeleteRemoteSession(r.Context(), leaseAuth, sessionID)
 	}
@@ -277,9 +280,6 @@ func (h *Handler) releaseStreamLease(leaseID string) (bool, *auth.RequestAuth, s
 
 	if !ok {
 		return false, nil, ""
-	}
-	if h.Auth != nil {
-		h.Auth.Release(lease.Auth)
 	}
 	return true, lease.Auth, lease.SessionID
 }
