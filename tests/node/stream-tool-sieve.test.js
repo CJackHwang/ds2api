@@ -81,6 +81,18 @@ test('parseToolCalls tolerates fullwidth opening delimiter and Unicode attribute
   assert.deepEqual(calls[0].input, { code: 'print("hi")' });
 });
 
+test('parseToolCalls tolerates angle and small end delimiters', () => {
+  for (const payload of [
+    '〈tool_calls〉〈invoke name="execute_code"〉〈parameter name="code"〉print("hi")〈/parameter〉〈/invoke〉〈/tool_calls〉',
+    '<tool_calls﹥<invoke name="execute_code"﹥<parameter name="code"﹥print("hi")</parameter﹥</invoke﹥</tool_calls﹥',
+  ]) {
+    const calls = parseToolCalls(payload, ['execute_code']);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].name, 'execute_code');
+    assert.deepEqual(calls[0].input, { code: 'print("hi")' });
+  }
+});
+
 test('parseToolCalls canonicalizes confusable candidate shell only', () => {
   const payload = '<|\u200b\uff24\u0405\u039cL|to\u03bfl\uff3fcalls><|\ufeffDSML|inv\u03bfk\u0435 n\u0430me\uff1d\u201cexecute_code\u201d><|\u200bDSML|par\u0430meter n\u0430me\uff1d\u201ccode\u201d><![\ufeff\u0421D\u0410T\u0410[print("hi")]]></|\u200bDSML|par\u0430meter></|\u200bDSML|inv\u03bfk\u0435></|\u200b\uff24\u0405\u039cL|to\u03bfl\uff3fcalls>';
   const calls = parseToolCalls(payload, ['execute_code']);

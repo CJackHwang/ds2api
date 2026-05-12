@@ -1235,6 +1235,33 @@ func TestParseToolCallsSupportsDSMLShellWithFullwidthLTUnicodeSpaceAndFullwidthA
 	}
 }
 
+func TestParseToolCallsSupportsAngleAndSmallEndDelimiters(t *testing.T) {
+	tests := []struct {
+		name string
+		text string
+	}{
+		{
+			name: "angle",
+			text: `〈tool_calls〉〈invoke name="execute_code"〉〈parameter name="code"〉print("hi")〈/parameter〉〈/invoke〉〈/tool_calls〉`,
+		},
+		{
+			name: "small",
+			text: `<tool_calls﹥<invoke name="execute_code"﹥<parameter name="code"﹥print("hi")</parameter﹥</invoke﹥</tool_calls﹥`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			calls := ParseToolCalls(tt.text, []string{"execute_code"})
+			if len(calls) != 1 {
+				t.Fatalf("expected 1 call with %s delimiters, got %#v", tt.name, calls)
+			}
+			if calls[0].Name != "execute_code" || calls[0].Input["code"] != `print("hi")` {
+				t.Fatalf("unexpected %s-delimiter parse result: %#v", tt.name, calls[0])
+			}
+		})
+	}
+}
+
 func TestParseToolCallsCanonicalizesConfusableCandidateShellOnly(t *testing.T) {
 	text := "<|\u200b\uff24\u0405\u039cL|to\u03bfl\uff3fcalls>" +
 		"<|\ufeffDSML|inv\u03bfk\u0435 n\u0430me\uff1d\u201cexecute_code\u201d>" +

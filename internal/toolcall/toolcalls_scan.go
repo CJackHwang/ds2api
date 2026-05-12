@@ -483,16 +483,18 @@ func isToolMarkupTagTerminator(text string, idx int) bool {
 	if idx >= len(text) {
 		return false
 	}
-	if text[idx] == '>' {
+	if xmlTagEndDelimiterLenAt(text, idx) > 0 {
 		return true
 	}
-	r, _ := utf8.DecodeRuneInString(text[idx:])
-	return normalizeFullwidthASCII(r) == '>'
+	return false
 }
 
 func consumeToolMarkupSeparator(text string, idx int) (int, bool) {
 	idx = skipToolMarkupIgnorables(text, idx)
 	if idx >= len(text) {
+		return idx, false
+	}
+	if xmlTagEndDelimiterLenAt(text, idx) > 0 {
 		return idx, false
 	}
 	r, size := utf8.DecodeRuneInString(text[idx:])
