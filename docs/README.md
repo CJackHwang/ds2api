@@ -24,6 +24,12 @@
 ### v2 开发规划
 
 - [未来主规划：DeepSeek 专用智能 Agent 网关 PRD](./v2-prd.md)
+- [M4/M5 后续开发执行规划](./m4-development-plan.md)
+- [History Analyzer 设计草案](./history-analyzer-design.md)
+- [Auto Continue + Stream Merger 设计草案](./auto-continue-design.md)
+- [DeepSeek Capability Router 设计草案](./capability-router.md)
+- [Release Readiness 报告规范](./release-readiness.md)
+- [WebUI v2 配置与观测中心规划](./webui-v2-observability.md)
 
 ### 历史规划归档
 
@@ -64,6 +70,12 @@ Recommended reading order:
 ### v2 development planning (Chinese only)
 
 - [Future roadmap: DeepSeek-focused intelligent Agent gateway PRD](./v2-prd.md)
+- [M4/M5 execution plan](./m4-development-plan.md)
+- [History Analyzer design](./history-analyzer-design.md)
+- [Auto Continue + Stream Merger design](./auto-continue-design.md)
+- [DeepSeek Capability Router design](./capability-router.md)
+- [Release Readiness report spec](./release-readiness.md)
+- [WebUI v2 observability plan](./webui-v2-observability.md)
 
 ### Archived planning docs
 

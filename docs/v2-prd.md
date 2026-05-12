@@ -460,6 +460,23 @@ History Analyzer 将成为 ds2api 的“黑匣子分析仪”：
 
 ---
 
+### 执行文档索引
+
+后续开发以本文为产品方向，以以下文档作为执行依据：
+
+| 文档 | 用途 |
+|---|---|
+| [`m4-development-plan.md`](./m4-development-plan.md) | M4/M5 里程碑、任务拆分、PR 顺序和门禁 |
+| [`history-analyzer-design.md`](./history-analyzer-design.md) | History Analyzer 规则、报告结构、CLI/Admin/WebUI 演进 |
+| [`auto-continue-design.md`](./auto-continue-design.md) | Auto Continue detector、配置、stream merge 和 trace 设计 |
+| [`capability-router.md`](./capability-router.md) | DeepSeek 模型能力 profile、策略路由、WebUI matrix |
+| [`release-readiness.md`](./release-readiness.md) | 发布候选报告、feature flag 晋级证据和 GO/NO-GO 口径 |
+| [`webui-v2-observability.md`](./webui-v2-observability.md) | WebUI v2 诊断中心、观测页和 Admin API 需求 |
+
+这些执行文档应随代码进展持续更新；当实现改变用户可见行为时，同步更新 `prompt-compatibility.md`、`toolcall-semantics.md`、`ARCHITECTURE*.md` 或 `API*.md`。
+
+---
+
 ## 6. 优先级建议
 
 | 优先级 | 方向 | 原因 |
@@ -531,12 +548,13 @@ main
 当前最推荐的路线是：
 
 ```text
-第一步：History Analyzer + Release Readiness
-第二步：Tool Parser 稳定化与 shadow 审计
-第三步：Auto Continue MVP
-第四步：Capability Router
-第五步：WebUI v2 配置与诊断中心
-第六步：Agent 长任务增强
+第一步：Release Readiness baseline
+第二步：History Analyzer CLI / report
+第三步：Tool Parser 与 Context shadow 审计
+第四步：Auto Continue MVP
+第五步：Capability Router profile
+第六步：WebUI v2 配置与诊断中心
+第七步：Agent 长任务增强
 ```
 
 其中 History Analyzer 应该提前做，因为它能把后续所有改造从“凭感觉”变成“有证据”。
