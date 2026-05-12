@@ -15,6 +15,7 @@ import (
 
 const (
 	currentInputFilename    = promptcompat.CurrentInputContextFilename
+	currentToolsFilename    = promptcompat.CurrentToolsContextFilename
 	currentInputContentType = "text/plain; charset=utf-8"
 	currentInputPurpose     = "assistants"
 )
@@ -51,6 +52,7 @@ func (s Service) ApplyCurrentInputFile(ctx context.Context, a *auth.RequestAuth,
 	if strings.TrimSpace(fileText) == "" {
 		return stdReq, errors.New("current user input file produced empty transcript")
 	}
+	toolsText, _ := promptcompat.BuildOpenAIToolsContextTranscript(stdReq.ToolsRaw, stdReq.ToolChoice)
 	modelType := "default"
 	if resolvedType, ok := config.GetModelType(stdReq.ResolvedModel); ok {
 		modelType = resolvedType
@@ -69,22 +71,46 @@ func (s Service) ApplyCurrentInputFile(ctx context.Context, a *auth.RequestAuth,
 	if fileID == "" {
 		return stdReq, errors.New("upload current user input file returned empty file id")
 	}
+	toolFileID := ""
+	if strings.TrimSpace(toolsText) != "" {
+		result, err := s.DS.UploadFile(ctx, a, dsclient.UploadFileRequest{
+			Filename:    currentToolsFilename,
+			ContentType: currentInputContentType,
+			Purpose:     currentInputPurpose,
+			ModelType:   modelType,
+			Data:        []byte(toolsText),
+		}, 3)
+		if err != nil {
+			return stdReq, fmt.Errorf("upload current tools file: %w", err)
+		}
+		toolFileID = strings.TrimSpace(result.ID)
+		if toolFileID == "" {
+			return stdReq, errors.New("upload current tools file returned empty file id")
+		}
+	}
 
 	messages := []any{
 		map[string]any{
 			"role":    "user",
-			"content": currentInputFilePrompt(),
+			"content": currentInputFilePrompt(toolFileID != ""),
 		},
 	}
 
 	stdReq.Messages = messages
 	stdReq.HistoryText = fileText
 	stdReq.CurrentInputFileApplied = true
-	stdReq.RefFileIDs = prependUniqueRefFileID(stdReq.RefFileIDs, fileID)
-	stdReq.FinalPrompt, stdReq.ToolNames = promptcompat.BuildOpenAIPrompt(messages, stdReq.ToolsRaw, "", stdReq.ToolChoice, stdReq.Thinking, s.Store.ContextEngineMode())
+	stdReq.CurrentInputFileID = fileID
+	stdReq.CurrentToolsFileID = toolFileID
+	stdReq.RefFileIDs = prependUniqueRefFileIDs(stdReq.RefFileIDs, fileID, toolFileID)
+	stdReq.FinalPrompt, stdReq.ToolNames = promptcompat.BuildOpenAIPromptWithToolInstructionsOnly(messages, stdReq.ToolsRaw, "", stdReq.ToolChoice, stdReq.Thinking, s.Store.ContextEngineMode())
 	// Token accounting must reflect the actual downstream context:
-	// the uploaded DS2API_HISTORY.txt file content + the continuation live prompt.
-	stdReq.PromptTokenText = fileText + "\n" + stdReq.FinalPrompt
+	// uploaded context files + the continuation live prompt.
+	tokenParts := []string{fileText}
+	if strings.TrimSpace(toolsText) != "" {
+		tokenParts = append(tokenParts, toolsText)
+	}
+	tokenParts = append(tokenParts, stdReq.FinalPrompt)
+	stdReq.PromptTokenText = strings.Join(tokenParts, "\n")
 	return stdReq, nil
 }
 
@@ -107,23 +133,40 @@ func latestUserInputForFile(messages []any) (int, string) {
 	return -1, ""
 }
 
-func currentInputFilePrompt() string {
-	return "Continue from the latest state in the attached DS2API_HISTORY.txt context. Treat it as the current working state and answer the latest user request directly."
+func currentInputFilePrompt(hasToolsFile bool) string {
+	prompt := "Continue from the latest state in the attached DS2API_HISTORY.txt context. Treat it as the current working state and answer the latest user request directly."
+	if hasToolsFile {
+		prompt += " Available tool descriptions and parameter schemas are attached in DS2API_TOOLS.txt; use only those tools and follow the tool-call format rules in this prompt."
+	}
+	return prompt
 }
 
-func prependUniqueRefFileID(existing []string, fileID string) []string {
-	fileID = strings.TrimSpace(fileID)
-	if fileID == "" {
-		return existing
-	}
-	out := make([]string, 0, len(existing)+1)
-	out = append(out, fileID)
-	for _, id := range existing {
-		trimmed := strings.TrimSpace(id)
-		if trimmed == "" || strings.EqualFold(trimmed, fileID) {
+func prependUniqueRefFileIDs(existing []string, fileIDs ...string) []string {
+	out := make([]string, 0, len(existing)+len(fileIDs))
+	seen := map[string]struct{}{}
+	for _, fileID := range fileIDs {
+		trimmed := strings.TrimSpace(fileID)
+		if trimmed == "" {
+			continue
+		}
+		key := strings.ToLower(trimmed)
+		if _, ok := seen[key]; ok {
 			continue
 		}
 		out = append(out, trimmed)
+		seen[key] = struct{}{}
+	}
+	for _, id := range existing {
+		trimmed := strings.TrimSpace(id)
+		if trimmed == "" {
+			continue
+		}
+		key := strings.ToLower(trimmed)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		out = append(out, trimmed)
+		seen[key] = struct{}{}
 	}
 	return out
 }

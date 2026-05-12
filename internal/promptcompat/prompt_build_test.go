@@ -174,6 +174,60 @@ func TestBuildOpenAIFinalPromptNonReadToolOmitsCacheGuard(t *testing.T) {
 	}
 }
 
+func TestBuildOpenAIPromptWithToolInstructionsOnlyOmitsSchemas(t *testing.T) {
+	messages := []any{
+		map[string]any{"role": "user", "content": "search docs"},
+	}
+	tools := []any{
+		map[string]any{
+			"type": "function",
+			"function": map[string]any{
+				"name":        "search",
+				"description": "Search docs",
+				"parameters":  map[string]any{"type": "object"},
+			},
+		},
+	}
+
+	finalPrompt, toolNames := BuildOpenAIPromptWithToolInstructionsOnly(messages, tools, "", DefaultToolChoicePolicy(), false, "off")
+	if len(toolNames) != 1 || toolNames[0] != "search" {
+		t.Fatalf("unexpected tool names: %#v", toolNames)
+	}
+	if !strings.Contains(finalPrompt, "DS2API_TOOLS.txt") {
+		t.Fatalf("instructions-only prompt should reference tools file, got %q", finalPrompt)
+	}
+	if !strings.Contains(finalPrompt, "TOOL CALL FORMAT") || !strings.Contains(finalPrompt, "<|DSML|tool_calls>") {
+		t.Fatalf("instructions-only prompt should retain tool-call format rules, got %q", finalPrompt)
+	}
+	if strings.Contains(finalPrompt, "Description: Search docs") || strings.Contains(finalPrompt, "Parameters:") {
+		t.Fatalf("instructions-only prompt should omit tool descriptions and schemas, got %q", finalPrompt)
+	}
+}
+
+func TestBuildOpenAIToolsContextTranscriptContainsOnlyDescriptions(t *testing.T) {
+	tools := []any{
+		map[string]any{
+			"type": "function",
+			"function": map[string]any{
+				"name":        "search",
+				"description": "Search docs",
+				"parameters":  map[string]any{"type": "object"},
+			},
+		},
+	}
+
+	transcript, toolNames := BuildOpenAIToolsContextTranscript(tools, DefaultToolChoicePolicy())
+	if len(toolNames) != 1 || toolNames[0] != "search" {
+		t.Fatalf("unexpected tool names: %#v", toolNames)
+	}
+	if !strings.Contains(transcript, "# DS2API_TOOLS.txt") || !strings.Contains(transcript, "Tool: search") || !strings.Contains(transcript, "Description: Search docs") {
+		t.Fatalf("expected tools transcript to include descriptions, got %q", transcript)
+	}
+	if strings.Contains(transcript, "TOOL CALL FORMAT") || strings.Contains(transcript, "<|DSML|tool_calls>") {
+		t.Fatalf("tools transcript should not duplicate format instructions, got %q", transcript)
+	}
+}
+
 func TestBuildOpenAIFinalPromptWithThinkingKeepsPromptUnchanged(t *testing.T) {
 	messages := []any{
 		map[string]any{"role": "user", "content": "继续回答上一个问题"},
