@@ -114,6 +114,58 @@ func (s Service) ApplyCurrentInputFile(ctx context.Context, a *auth.RequestAuth,
 	return stdReq, nil
 }
 
+func (s Service) ReuploadAppliedCurrentInputFile(ctx context.Context, a *auth.RequestAuth, stdReq promptcompat.StandardRequest) (promptcompat.StandardRequest, error) {
+	if !stdReq.CurrentInputFileApplied || s.DS == nil || a == nil {
+		return stdReq, nil
+	}
+	fileText := strings.TrimSpace(stdReq.HistoryText)
+	if fileText == "" {
+		return stdReq, nil
+	}
+	modelType := "default"
+	if resolvedType, ok := config.GetModelType(stdReq.ResolvedModel); ok {
+		modelType = resolvedType
+	}
+	result, err := s.DS.UploadFile(ctx, a, dsclient.UploadFileRequest{
+		Filename:    currentInputFilename,
+		ContentType: currentInputContentType,
+		Purpose:     currentInputPurpose,
+		ModelType:   modelType,
+		Data:        []byte(stdReq.HistoryText),
+	}, 3)
+	if err != nil {
+		return stdReq, fmt.Errorf("upload current user input file: %w", err)
+	}
+	fileID := strings.TrimSpace(result.ID)
+	if fileID == "" {
+		return stdReq, errors.New("upload current user input file returned empty file id")
+	}
+
+	toolsText, _ := promptcompat.BuildOpenAIToolsContextTranscript(stdReq.ToolsRaw, stdReq.ToolChoice)
+	toolFileID := ""
+	if strings.TrimSpace(toolsText) != "" {
+		result, err := s.DS.UploadFile(ctx, a, dsclient.UploadFileRequest{
+			Filename:    currentToolsFilename,
+			ContentType: currentInputContentType,
+			Purpose:     currentInputPurpose,
+			ModelType:   modelType,
+			Data:        []byte(toolsText),
+		}, 3)
+		if err != nil {
+			return stdReq, fmt.Errorf("upload current tools file: %w", err)
+		}
+		toolFileID = strings.TrimSpace(result.ID)
+		if toolFileID == "" {
+			return stdReq, errors.New("upload current tools file returned empty file id")
+		}
+	}
+
+	stdReq.RefFileIDs = replaceGeneratedCurrentInputRefs(stdReq.RefFileIDs, stdReq.CurrentInputFileID, stdReq.CurrentToolsFileID, fileID, toolFileID)
+	stdReq.CurrentInputFileID = fileID
+	stdReq.CurrentToolsFileID = toolFileID
+	return stdReq, nil
+}
+
 func latestUserInputForFile(messages []any) (int, string) {
 	for i := len(messages) - 1; i >= 0; i-- {
 		msg, ok := messages[i].(map[string]any)
@@ -169,4 +221,26 @@ func prependUniqueRefFileIDs(existing []string, fileIDs ...string) []string {
 		seen[key] = struct{}{}
 	}
 	return out
+}
+
+func replaceGeneratedCurrentInputRefs(existing []string, oldHistoryID, oldToolsID, newHistoryID, newToolsID string) []string {
+	filtered := make([]string, 0, len(existing))
+	old := map[string]struct{}{}
+	for _, id := range []string{oldHistoryID, oldToolsID} {
+		trimmed := strings.ToLower(strings.TrimSpace(id))
+		if trimmed != "" {
+			old[trimmed] = struct{}{}
+		}
+	}
+	for _, id := range existing {
+		trimmed := strings.TrimSpace(id)
+		if trimmed == "" {
+			continue
+		}
+		if _, ok := old[strings.ToLower(trimmed)]; ok {
+			continue
+		}
+		filtered = append(filtered, trimmed)
+	}
+	return prependUniqueRefFileIDs(filtered, newHistoryID, newToolsID)
 }

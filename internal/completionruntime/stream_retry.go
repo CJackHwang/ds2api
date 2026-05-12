@@ -10,8 +10,10 @@ import (
 	"ds2api/internal/assistantturn"
 	"ds2api/internal/auth"
 	"ds2api/internal/config"
+	"ds2api/internal/httpapi/openai/history"
 	"ds2api/internal/httpapi/openai/shared"
 	"ds2api/internal/observe"
+	"ds2api/internal/promptcompat"
 )
 
 type StreamRetryOptions struct {
@@ -21,6 +23,8 @@ type StreamRetryOptions struct {
 	RetryMaxAttempts int
 	MaxAttempts      int
 	UsagePrompt      string
+	Request          promptcompat.StandardRequest
+	CurrentInputFile history.CurrentInputConfigReader
 }
 
 type StreamRetryHooks struct {
@@ -73,7 +77,7 @@ func ExecuteStreamWithRetry(ctx context.Context, ds DeepSeekCaller, a *auth.Requ
 
 		if attempts >= retryMax {
 			if canRetryOnAlternateAccount(ctx, a, &assistantturn.OutputError{Status: http.StatusTooManyRequests}, opts.RetryEnabled, &accountSwitchAttempted) {
-				switched, switchErr := startPayloadCompletionOnAlternateAccount(ctx, ds, a, payload, maxAttempts)
+				switched, switchErr := startPayloadCompletionOnAlternateAccount(ctx, ds, a, payload, opts, maxAttempts)
 				if switchErr != nil {
 					if hooks.OnRetryFailure != nil {
 						hooks.OnRetryFailure(switchErr.Status, switchErr.Message, switchErr.Code)
@@ -91,7 +95,11 @@ func ExecuteStreamWithRetry(ctx context.Context, ds DeepSeekCaller, a *auth.Requ
 						hooks.OnAccountSwitch(switched.SessionID)
 					}
 					if hooks.OnRetryPrompt != nil {
-						hooks.OnRetryPrompt(opts.UsagePrompt)
+						retryPrompt := opts.UsagePrompt
+						if strings.TrimSpace(switched.Request.PromptTokenText) != "" {
+							retryPrompt = switched.Request.PromptTokenText
+						}
+						hooks.OnRetryPrompt(retryPrompt)
 					}
 					continue
 				}
@@ -148,24 +156,35 @@ func ExecuteStreamWithRetry(ctx context.Context, ds DeepSeekCaller, a *auth.Requ
 	}
 }
 
-func startPayloadCompletionOnAlternateAccount(ctx context.Context, ds DeepSeekCaller, a *auth.RequestAuth, payload map[string]any, maxAttempts int) (StartResult, *assistantturn.OutputError) {
+func startPayloadCompletionOnAlternateAccount(ctx context.Context, ds DeepSeekCaller, a *auth.RequestAuth, payload map[string]any, opts StreamRetryOptions, maxAttempts int) (StartResult, *assistantturn.OutputError) {
+	stdReq := opts.Request
+	if opts.CurrentInputFile != nil && stdReq.CurrentInputFileApplied {
+		var prepErr *assistantturn.OutputError
+		stdReq, prepErr = reuploadCurrentInputFileForAccount(ctx, ds, a, stdReq, Options{CurrentInputFile: opts.CurrentInputFile})
+		if prepErr != nil {
+			return StartResult{Request: stdReq}, prepErr
+		}
+	}
 	sessionID, err := ds.CreateSession(ctx, a, maxAttempts)
 	if err != nil {
-		return StartResult{}, authOutputError(a)
+		return StartResult{Request: stdReq}, authOutputError(a)
 	}
 	pow, err := ds.GetPow(ctx, a, maxAttempts)
 	if err != nil {
-		return StartResult{SessionID: sessionID}, &assistantturn.OutputError{Status: http.StatusUnauthorized, Message: "Failed to get PoW (invalid token or unknown error).", Code: "error"}
+		return StartResult{SessionID: sessionID, Request: stdReq}, &assistantturn.OutputError{Status: http.StatusUnauthorized, Message: "Failed to get PoW (invalid token or unknown error).", Code: "error"}
 	}
 	nextPayload := clonePayload(payload)
+	if opts.CurrentInputFile != nil && stdReq.CurrentInputFileApplied {
+		nextPayload = stdReq.CompletionPayload(sessionID)
+	}
 	nextPayload["chat_session_id"] = sessionID
 	delete(nextPayload, "parent_message_id")
 	resp, err := ds.CallCompletion(ctx, a, nextPayload, pow, maxAttempts)
 	if err != nil {
-		return StartResult{SessionID: sessionID, Payload: nextPayload, Pow: pow}, &assistantturn.OutputError{Status: http.StatusInternalServerError, Message: "Failed to get completion.", Code: "error"}
+		return StartResult{SessionID: sessionID, Payload: nextPayload, Pow: pow, Request: stdReq}, &assistantturn.OutputError{Status: http.StatusInternalServerError, Message: "Failed to get completion.", Code: "error"}
 	}
 	observe.ForceSetUpstreamResponseAt(ctx, time.Now())
-	return StartResult{SessionID: sessionID, Payload: nextPayload, Pow: pow, Response: resp}, nil
+	return StartResult{SessionID: sessionID, Payload: nextPayload, Pow: pow, Response: resp, Request: stdReq}, nil
 }
 
 func clonePayload(payload map[string]any) map[string]any {

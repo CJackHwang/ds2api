@@ -17,7 +17,14 @@ import (
 	streamengine "ds2api/internal/stream"
 )
 
-func (h *Handler) handleResponsesStreamWithRetry(w http.ResponseWriter, r *http.Request, a *auth.RequestAuth, resp *http.Response, payload map[string]any, pow, owner, responseID, model, finalPrompt string, refFileTokens int, thinkingEnabled, searchEnabled bool, toolNames []string, toolsRaw any, toolChoice promptcompat.ToolChoicePolicy, traceID string, historySession *responsehistory.Session) {
+func (h *Handler) handleResponsesStreamWithRetry(w http.ResponseWriter, r *http.Request, a *auth.RequestAuth, resp *http.Response, payload map[string]any, pow, owner, responseID string, stdReq promptcompat.StandardRequest, refFileTokens int, traceID string, historySession *responsehistory.Session) {
+	model := stdReq.ResponseModel
+	finalPrompt := stdReq.PromptTokenText
+	thinkingEnabled := stdReq.Thinking
+	searchEnabled := stdReq.Search
+	toolNames := stdReq.ToolNames
+	toolsRaw := stdReq.ToolsRaw
+	toolChoice := stdReq.ToolChoice
 	onFirstByte := func() { observe.SetFirstByteAt(r.Context(), time.Now()) }
 	streamRuntime, initialType, ok := h.prepareResponsesStreamRuntime(w, r.Context(), resp, owner, responseID, model, finalPrompt, refFileTokens, thinkingEnabled, searchEnabled, toolNames, toolsRaw, toolChoice, traceID, historySession, onFirstByte)
 	if !ok {
@@ -30,6 +37,8 @@ func (h *Handler) handleResponsesStreamWithRetry(w http.ResponseWriter, r *http.
 		RetryMaxAttempts: emptyOutputRetryMaxAttempts(),
 		MaxAttempts:      3,
 		UsagePrompt:      finalPrompt,
+		Request:          stdReq,
+		CurrentInputFile: h.Store,
 	}, completionruntime.StreamRetryHooks{
 		ConsumeAttempt: func(currentResp *http.Response, allowDeferEmpty bool) (bool, bool) {
 			return h.consumeResponsesStreamAttempt(r, currentResp, streamRuntime, initialType, thinkingEnabled, allowDeferEmpty)
