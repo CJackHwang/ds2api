@@ -49,6 +49,10 @@ select_targets() {
   done
 
   if [[ ${#selected[@]} -eq 0 ]]; then
+    if ! { true </dev/tty; } 2>/dev/null; then
+      printf '%s\n' "${DS2API_RELEASE_TARGETS[@]}"
+      return
+    fi
     echo "请选择构建目标：" >&2
     local i=1 choices=""
     for target in "${DS2API_RELEASE_TARGETS[@]}"; do
