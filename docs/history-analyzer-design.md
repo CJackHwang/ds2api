@@ -85,7 +85,7 @@ P1 已将完整报告结构拆为：
 - `AnalysisRecord`：规则输入的统一中间记录。
 - `Finding`：单条异常诊断，包含 rule_id、category、severity、request_id、session_id、evidence、suggested_action。
 - `Report`：离线分析报告，包含 generated_at、scope、summary、findings、readiness 和 metadata。
-- `Rule`：确定性规则接口，后续 P3 逐条实现 HA_* 检测。
+- `Rule`：确定性规则接口，P3 已提供 `DefaultRules()` 作为首批 HA_* 检测入口。
 
 P2 数据接入约束：
 
@@ -93,6 +93,15 @@ P2 数据接入约束：
 - `AnalysisRecord.Snapshots` 保存脱敏摘录和 hash，可安全用于报告、测试和后续 WebUI 展示。
 - `chathistory` 支持 v2 index + detail 文件和 legacy 单文件格式。
 - `devcapture` 与 `rawsample` 在 P2 先作为归一化 record 输入，不在本阶段实现跨源 request/session 自动关联。
+
+P3 规则约束：
+
+- `DefaultRules()` 覆盖 10 个首批 HA_* 规则，每条规则对单条 `AnalysisRecord` 产生 0 或 1 个 finding，避免第一版报告过度放大重复证据。
+- 规则只使用归一化字段、flags、metrics 和进程内 `Text`，输出 evidence 时仍经过 `Redactor`。
+- Tool 规则会跳过 Markdown fenced example 的 marker leak；如果同一 fenced example 已被渲染成结构化 tool call，则归类为 false positive。
+- Continue 规则覆盖 `finish_reason=length/max_tokens/incomplete`、截断 flags、未闭合 fenced block 和明显未闭合 JSON。
+- Account Runtime 规则只在 retry/account switch 后结合最终状态判断 recovered 或 exhausted。
+- 本阶段不调用 LLM、不写 fixtures、不接 CLI/Admin/WebUI，也不改变主请求链路。
 
 ## 6. 规则集
 
