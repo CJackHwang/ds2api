@@ -18,6 +18,7 @@ type Store struct {
 	keyMap  map[string]struct{} // O(1) API key lookup index
 	accMap  map[string]int      // O(1) account lookup: identifier -> slice index
 	accTest map[string]string   // runtime-only account test status cache
+	rawJSON map[string]any      // preserved raw JSON including _comment fields
 }
 
 func LoadStore() *Store {
@@ -47,7 +48,8 @@ func loadStore() (*Store, error) {
 	if validateErr := ValidateConfig(cfg); validateErr != nil {
 		err = errors.Join(err, validateErr)
 	}
-	return &Store{cfg: cfg, path: ConfigPath(), fromEnv: fromEnv}, err
+	_, rawJSON, _ := loadConfigFromFile(ConfigPath())
+	return &Store{cfg: cfg, path: ConfigPath(), fromEnv: fromEnv, rawJSON: rawJSON}, err
 }
 
 func loadConfig() (Config, bool, error) {
@@ -57,7 +59,7 @@ func loadConfig() (Config, bool, error) {
 		cfg, err := parseConfigString(rawCfg)
 		if err != nil {
 			if !IsVercel() && envWritebackEnabled() {
-				if fileCfg, fileErr := loadConfigFromFile(path); fileErr == nil {
+				if fileCfg, _, fileErr := loadConfigFromFile(path); fileErr == nil {
 					return fileCfg, false, nil
 				}
 			}
@@ -88,11 +90,11 @@ func loadConfig() (Config, bool, error) {
 		}
 		return cfg, true, err
 	}
-	cfg, err := loadConfigFromFile(path)
+	cfg, _, err := loadConfigFromFile(path)
 	if err != nil {
 		if shouldTryLegacyContainerConfigPath() {
 			legacyPath := legacyContainerConfigPath()
-			if legacyCfg, legacyErr := loadConfigFromFile(legacyPath); legacyErr == nil {
+			if legacyCfg, _, legacyErr := loadConfigFromFile(legacyPath); legacyErr == nil {
 				Logger.Info("[config] loaded legacy container config path", "path", legacyPath)
 				return legacyCfg, false, nil
 			}
@@ -118,14 +120,18 @@ func shouldBootstrapMissingConfigFile(err error) bool {
 	return errors.Is(err, os.ErrNotExist) && strings.TrimSpace(os.Getenv("DS2API_CONFIG_PATH")) != ""
 }
 
-func loadConfigFromFile(path string) (Config, error) {
+func loadConfigFromFile(path string) (Config, map[string]any, error) {
 	content, err := os.ReadFile(path)
 	if err != nil {
-		return Config{}, err
+		return Config{}, nil, err
+	}
+	var rawJSON map[string]any
+	if err := json.Unmarshal(content, &rawJSON); err != nil {
+		return Config{}, nil, err
 	}
 	var cfg Config
 	if err := json.Unmarshal(content, &cfg); err != nil {
-		return Config{}, err
+		return Config{}, nil, err
 	}
 	cfg.NormalizeCredentials()
 	cfg.DropInvalidAccounts()
@@ -134,7 +140,7 @@ func loadConfigFromFile(path string) (Config, error) {
 			_ = os.WriteFile(path, b, 0o644)
 		}
 	}
-	return cfg, nil
+	return cfg, rawJSON, nil
 }
 
 func (s *Store) Snapshot() Config {
@@ -226,6 +232,9 @@ func (s *Store) Replace(cfg Config) error {
 	cfg.NormalizeCredentials()
 	s.cfg = cfg.Clone()
 	s.rebuildIndexes()
+	// rawJSON will be reloaded from file on next save since comments are file-specific
+	_, newRawJSON, _ := loadConfigFromFile(s.path)
+	s.rawJSON = newRawJSON
 	return s.saveLocked()
 }
 
@@ -257,10 +266,14 @@ func (s *Store) Save() error {
 	if err != nil {
 		return err
 	}
-	if err := writeConfigBytes(s.path, b); err != nil {
+	mergedJSON, err := writeConfigBytesWithComments(s.path, b, s.rawJSON)
+	if err != nil {
 		return err
 	}
 	s.fromEnv = false
+	if mergedJSON != nil {
+		_ = json.Unmarshal(mergedJSON, &s.rawJSON)
+	}
 	return nil
 }
 
@@ -275,11 +288,94 @@ func (s *Store) saveLocked() error {
 	if err != nil {
 		return err
 	}
-	if err := writeConfigBytes(s.path, b); err != nil {
+	mergedJSON, err := writeConfigBytesWithComments(s.path, b, s.rawJSON)
+	if err != nil {
 		return err
 	}
 	s.fromEnv = false
+	if mergedJSON != nil {
+		_ = json.Unmarshal(mergedJSON, &s.rawJSON)
+	}
 	return nil
+}
+
+func writeConfigBytesWithComments(path string, configJSON []byte, rawJSON map[string]any) ([]byte, error) {
+	if rawJSON == nil {
+		err := writeConfigBytes(path, configJSON)
+		return nil, err
+	}
+	var cfg map[string]any
+	if err := json.Unmarshal(configJSON, &cfg); err != nil {
+		err := writeConfigBytes(path, configJSON)
+		return nil, err
+	}
+	merged := mergeRawWithComments(rawJSON, cfg)
+	mergedJSON, err := json.MarshalIndent(merged, "", "  ")
+	if err != nil {
+		err := writeConfigBytes(path, configJSON)
+		return nil, err
+	}
+	err = writeConfigBytes(path, mergedJSON)
+	if err != nil {
+		return nil, err
+	}
+	return mergedJSON, nil
+}
+
+func mergeRawWithComments(raw, cfg map[string]any) map[string]any {
+	if raw == nil {
+		return cfg
+	}
+	result := deepMergeComments(raw, cfg)
+	return result
+}
+
+func deepMergeComments(raw, cfg map[string]any) map[string]any {
+	if raw == nil {
+		return cfg
+	}
+	result := make(map[string]any)
+	for k, v := range cfg {
+		if rawV, ok := raw[k]; ok {
+			result[k] = deepMergeValue(rawV, v)
+		} else {
+			result[k] = v
+		}
+	}
+	for k, v := range raw {
+		if _, exists := cfg[k]; !exists {
+			if isCommentKey(k) {
+				result[k] = v
+			}
+		}
+	}
+	return result
+}
+
+func deepMergeValue(rawVal, cfgVal any) any {
+	rawMap, rawOK := rawVal.(map[string]any)
+	cfgMap, cfgOK := cfgVal.(map[string]any)
+	if rawOK && cfgOK {
+		return deepMergeComments(rawMap, cfgMap)
+	}
+	rawArr, rawArrOK := rawVal.([]any)
+	cfgArr, cfgArrOK := cfgVal.([]any)
+	if rawArrOK && cfgArrOK {
+		result := make([]any, len(cfgArr))
+		for i, cfgItem := range cfgArr {
+			if i < len(rawArr) {
+				result[i] = deepMergeValue(rawArr[i], cfgItem)
+			} else {
+				result[i] = cfgItem
+			}
+		}
+		return result
+	}
+	return cfgVal
+}
+
+func isCommentKey(key string) bool {
+	return key == "_comment" || key == "_doc"
 }
 
 func (s *Store) IsEnvBacked() bool {
