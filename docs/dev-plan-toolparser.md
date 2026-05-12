@@ -149,3 +149,41 @@ DoD：
 - `parser.v2` 三态可配置；`off` 与 v1 行为一致；`shadow` 提供 diff；`enforce` 可手动启用做内部验证。
 - `docs/toolcall-semantics.md` 与本计划交叉链接；新增语义在文档中可查。
 - PR Gate 全绿，`run-live.sh` 报告归档。
+
+---
+
+## 附录 A — 发布候选 Checklist（M3 Stage 8）
+
+> 状态：`parser.v2` 默认仍为 `off`。  
+> 本 checklist 定义"何时可以把默认改为 `shadow`"和"何时可以改为 `enforce`"。  
+> 每项需有 **代码/日志/fixture 证据链接**，不接受主观判断。
+
+### A1. `off` → `shadow`（在 staging 环境开启 shadow diff 收集）
+
+| 条件 | 验证方式 | 当前状态 |
+|------|---------|---------|
+| 所有 M3 单元测试通过（fuzz seed / confidence / shadow diff） | `./tests/scripts/run-unit-all.sh` 全绿 | ✅ |
+| Fuzz seed corpus 无 panic（13 seeds × 2 targets） | `go test -run "^FuzzParse"` | ✅ |
+| Benchmark 基线记录（`BenchmarkParseToolCallsDSML ≈ 230 µs`） | `go test -bench=. -benchtime=1x` | ✅ |
+| `ClassifyConfidence` 阈值规则有测试覆盖（High/Medium/Low 各分支） | `TestClassifyConfidence_*` 7 个测试 | ✅ |
+| `ShadowDiffRecord` 置信信号在日志中可观测 | `[parser_shadow_diff]` 结构化日志 | ✅ |
+| E2E pipeline 集成测试通过 | `TestBuildOpenAIPromptShadowMode` 等 | ✅ |
+| **实际流量 shadow diff 收集 ≥ 24h，diff 率统计无异常** | staging 日志审查 | ⏳ 待 staging 部署 |
+
+**晋级操作**：设置 `DS2API_PARSER_V2=shadow` 部署 staging。
+
+---
+
+### A2. `shadow` → `enforce`（在生产环境启用 v2 parser 主链路）
+
+在满足 A1 所有条件并完成以下额外检查后方可执行。
+
+| 条件 | 验证方式 | 当前状态 |
+|------|---------|---------|
+| Shadow diff 中 `ConfidenceHigh` 比例 ≥ 95% 持续 72h | `[parser_shadow_diff] confidence=high` 日志统计 | ⏳ 待数据 |
+| Diff 中 `has_diff=true` 比例 < 0.5% 持续 72h | 日志统计 | ⏳ 待数据 |
+| 所有 `ConfidenceLow` diff 样本已人工审查并记录 | `artifacts/` 样本 review | ⏳ 待数据 |
+| `run-live.sh` 端到端通过（含多轮 tool 场景） | 实时请求脚本 | ⏳ 待 live 环境 |
+| 回滚方案已确认（设 `DS2API_PARSER_V2=off` 恢复） | 操作手册 | ✅ 直接设 env 即可 |
+
+**晋级操作**：设置 `DS2API_PARSER_V2=enforce` 部署生产；发布 CHANGELOG。

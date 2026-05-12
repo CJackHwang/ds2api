@@ -24,11 +24,83 @@
 - 缺失：请求级指标（TTFT / 上游 TTFT / retry / account switch）与解析 / context 编译事件指标。
 - 未对接外部 metrics 系统；先以结构化日志为统一出口即可。
 
-### 1.3 Provider 抽象（长期）
+### 1.3 Provider 抽象（M3 设计稿）
 
-- 现状：`internal/deepseek/client/protocol/transport` 紧耦合 DeepSeek 网页 completion。
-- 长期目标：抽出 Provider interface，让 DeepSeek 网页 / 官方 / 其他上游可替换。
-- 本期不实现，仅做接口预留与目录占位。
+> **状态**：接口已设计（M3 Stage 7），实现留待 M4。目录占位与接口文件已落到
+> `internal/provider/provider.go`。
+
+#### 1.3.1 现状与问题
+
+- `internal/deepseek/client/protocol/transport` 直接调用 DeepSeek 网页 completion
+  端点，HTTP 客户端、重试、账号轮换逻辑混在同一层。
+- Gemini / Claude / OpenAI 官方 路径各自通过独立 handler 内联实现，缺乏统一抽象。
+- Context Engine（`internal/contextengine`）与 Tool Parser 均属于 **协议无关层**，
+  但 completion 触发路径仍绑定具体上游，违反 `AGENTS.md` 的 *Protocol Adapter Boundary*。
+
+#### 1.3.2 目标接口
+
+```go
+// package provider — internal/provider/provider.go
+
+// CompletionRequest 是协议归一化之后的请求载体，
+// 已经过 promptcompat.NormalizeOpenAIMessagesForPrompt 处理。
+type CompletionRequest struct {
+    Prompt          string
+    ToolNames       []string
+    MaxTokens       int
+    Temperature     float64
+    ThinkingEnabled bool
+    TraceID         string
+}
+
+// CompletionChunk 是流式 SSE 中的单个数据块。
+type CompletionChunk struct {
+    Text       string
+    ToolCall   *ToolCallChunk // non-nil if this chunk contains a tool call
+    IsDone     bool
+    UsageTokens int
+}
+
+type ToolCallChunk struct {
+    ID        string
+    Name      string
+    Arguments string // partial or complete JSON arguments
+}
+
+// Provider 是上游 LLM 服务的最小抽象接口。
+// 实现方负责：HTTP 传输、流式 SSE 解析、账号轮换、重试、usage 上报。
+// 实现方不负责：tool call XML 解析、context 编译、prompt 构建、历史裁剪。
+type Provider interface {
+    // Complete 发起流式 completion 请求，通过 ch 持续发送 CompletionChunk，
+    // 发送 IsDone=true 后关闭 ch 并返回。
+    // ctx 取消时应立即停止发送并关闭 ch。
+    Complete(ctx context.Context, req CompletionRequest, ch chan<- CompletionChunk) error
+
+    // Name 返回 Provider 标识符（用于日志 / metrics），例如 "deepseek-web"。
+    Name() string
+}
+```
+
+#### 1.3.3 已知实现候选
+
+| 实现名称 | 对应现有路径 | 优先级 |
+|---|---|---|
+| `deepseek-web` | `internal/deepseek/client/protocol/transport` | M4 P0 |
+| `deepseek-api` | 暂无（官方 API 路径） | M4 P1 |
+| `gemini` | `internal/gemini/` | M4 P1 |
+| `openai` | `internal/openai/` (若存在) | M4 P2 |
+| `claude` | `internal/claude/` (若存在) | M4 P2 |
+
+#### 1.3.4 迁移约束
+
+1. **协议适配器边界不可下沉**：`CompletionRequest.Prompt` 已是最终 prompt 字符串，
+   Provider 不得感知 messages 数组、tool schema、或任何 OpenAI / Claude 协议形状。
+2. **feature flag 三态**：实现切换通过 `DS2API_PROVIDER` 环境变量控制；切换不影响
+   Context Engine / Tool Parser 路径。
+3. **接口变更规则**：接口字段追加必须向后兼容，不得删除或改变语义；
+   重大变更走 `ProviderV2` 命名，旧接口保留一个版本。
+4. **不进入 M3 实现范围**：M3 只交付此设计文档与接口占位；
+   `internal/provider/provider.go` 仅含接口定义，无任何实现代码。
 
 ### 1.4 WebUI / 文档
 

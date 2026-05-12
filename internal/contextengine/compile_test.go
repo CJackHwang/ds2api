@@ -6,17 +6,19 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 // contextFixture mirrors tests/compat/fixtures/context/*.json
 type contextFixture struct {
-	Description     string           `json:"description"`
-	Messages        []map[string]any `json:"messages"`
-	HistoryText     string           `json:"history_text"`
-	FullHistoryLen  int              `json:"full_history_len"`
-	FileRefs        []string         `json:"file_refs"`
-	ExpectedIssues  []string         `json:"expected_issues"`
-	TokenBudgetHint int              `json:"token_budget_hint"`
+	Description             string           `json:"description"`
+	Messages                []map[string]any `json:"messages"`
+	HistoryText             string           `json:"history_text"`
+	FullHistoryLen          int              `json:"full_history_len"`
+	FileRefs                []string         `json:"file_refs"`
+	ExpectedIssues          []string         `json:"expected_issues"`
+	ExpectedWarningsContain []string         `json:"expected_warnings_contain"`
+	TokenBudgetHint         int              `json:"token_budget_hint"`
 }
 
 func loadFixture(t *testing.T, name string) contextFixture {
@@ -137,6 +139,98 @@ func TestCompileOrphanToolCall(t *testing.T) {
 	}
 }
 
+func TestCompileOrphanToolResult(t *testing.T) {
+	fix := loadFixture(t, "orphan_tool_result.json")
+
+	plan, err := Compile(CompileInput{Messages: fix.Messages})
+	if err != nil {
+		t.Fatalf("Compile error: %v", err)
+	}
+
+	if len(plan.Warnings) == 0 {
+		t.Error("expected at least one warning for orphan_tool_result fixture")
+	}
+
+	found := false
+	for _, ts := range plan.SegmentsTrimmed {
+		if ts.Reason == "orphan_tool_result" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("expected a TrimmedSegment with reason 'orphan_tool_result'")
+	}
+
+	for _, seg := range plan.SegmentsIncluded {
+		if seg.Type == SegToolResult {
+			t.Errorf("orphaned SegToolResult should not be in SegmentsIncluded, found id=%s", seg.ID)
+		}
+	}
+}
+
+func TestCompileMultiOrphanTools(t *testing.T) {
+	fix := loadFixture(t, "multi_orphan_tools.json")
+
+	plan, err := Compile(CompileInput{Messages: fix.Messages})
+	if err != nil {
+		t.Fatalf("Compile error: %v", err)
+	}
+
+	reasons := make(map[string]bool)
+	for _, ts := range plan.SegmentsTrimmed {
+		reasons[ts.Reason] = true
+	}
+	for _, issue := range fix.ExpectedIssues {
+		if !reasons[issue] {
+			t.Errorf("expected trimmed reason %q not found; got reasons: %v", issue, reasons)
+		}
+	}
+
+	for _, seg := range plan.SegmentsIncluded {
+		if seg.Type == SegToolCall || seg.Type == SegToolResult {
+			t.Errorf("orphaned tool segment should not be in SegmentsIncluded: id=%s type=%s", seg.ID, seg.Type)
+		}
+	}
+}
+
+func TestCompileMultiCallCountMismatch(t *testing.T) {
+	fix := loadFixture(t, "multi_call_count_mismatch.json")
+
+	plan, err := Compile(CompileInput{Messages: fix.Messages})
+	if err != nil {
+		t.Fatalf("Compile error: %v", err)
+	}
+
+	if len(plan.SegmentsTrimmed) != 0 {
+		t.Errorf("expected no trimmed segments for partial-result fixture (partial results retained), got %d", len(plan.SegmentsTrimmed))
+	}
+
+	for _, wantSubstr := range fix.ExpectedWarningsContain {
+		found := false
+		for _, w := range plan.Warnings {
+			if strings.Contains(w, wantSubstr) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("expected warning containing %q not found in: %v", wantSubstr, plan.Warnings)
+		}
+	}
+
+	types := make(map[SegmentType]int)
+	for _, seg := range plan.SegmentsIncluded {
+		types[seg.Type]++
+	}
+	if types[SegToolCall] == 0 {
+		t.Error("expected SegToolCall to be retained for partial-result scenario")
+	}
+	if types[SegToolResult] == 0 {
+		t.Error("expected SegToolResult to be retained for partial-result scenario")
+	}
+}
+
 func TestCompileLongHistoryTokenBudget(t *testing.T) {
 	fix := loadFixture(t, "long_history_token_budget.json")
 
@@ -158,6 +252,382 @@ func TestCompileLongHistoryTokenBudget(t *testing.T) {
 	// Budget must be propagated from hint.
 	if fix.TokenBudgetHint > 0 && plan.TokenBudget.Budget != fix.TokenBudgetHint {
 		t.Errorf("TokenBudget.Budget = %d, want %d", plan.TokenBudget.Budget, fix.TokenBudgetHint)
+	}
+}
+
+func TestCompileBudgetTrimmingBasic(t *testing.T) {
+	// Build a sequence with enough tokens to trigger trimming:
+	// system + 3 history user/assistant pairs + current user request.
+	// Budget is set to only keep ~system + current user.
+	bigText := strings.Repeat("word ", 200) // ~200 tokens
+
+	messages := []map[string]any{
+		{"role": "system", "content": "You are a helpful assistant."},
+		{"role": "user", "content": bigText + "turn 1"},
+		{"role": "assistant", "content": bigText + "reply 1"},
+		{"role": "user", "content": bigText + "turn 2"},
+		{"role": "assistant", "content": bigText + "reply 2"},
+		{"role": "user", "content": "What is 2+2?"},
+	}
+
+	plan, err := Compile(CompileInput{
+		Messages:        messages,
+		TokenBudgetHint: 50,
+	})
+	if err != nil {
+		t.Fatalf("Compile error: %v", err)
+	}
+
+	// System must survive.
+	hasSystem := false
+	for _, seg := range plan.SegmentsIncluded {
+		if seg.Type == SegSystem {
+			hasSystem = true
+			break
+		}
+	}
+	if !hasSystem {
+		t.Error("system segment must be pinned and survive budget trimming")
+	}
+
+	// Last user message must survive.
+	lastUser := ""
+	for _, seg := range plan.SegmentsIncluded {
+		if seg.Type == SegUser {
+			lastUser = seg.Content
+		}
+	}
+	if !strings.Contains(lastUser, "What is 2+2?") {
+		t.Errorf("last user message must survive trimming, got last user: %q", lastUser)
+	}
+
+	// Some segments must have been trimmed for budget.
+	hasBudgetTrim := false
+	for _, ts := range plan.SegmentsTrimmed {
+		if ts.Reason == "token_budget" {
+			hasBudgetTrim = true
+			break
+		}
+	}
+	if !hasBudgetTrim {
+		t.Error("expected at least one segment trimmed with reason 'token_budget'")
+	}
+
+	// Overflow must be false after trimming (budget should be satisfied).
+	if plan.TokenBudget.Overflow {
+		t.Errorf("expected Overflow=false after trimming, Used=%d Budget=%d",
+			plan.TokenBudget.Used, plan.TokenBudget.Budget)
+	}
+}
+
+func TestCompileBudgetTrimmingPreservesToolPair(t *testing.T) {
+	bigText := strings.Repeat("word ", 200)
+
+	messages := []map[string]any{
+		{"role": "system", "content": "Be helpful."},
+		{"role": "user", "content": bigText + "history q"},
+		{
+			"role":    "assistant",
+			"content": bigText + "calling tool",
+			"tool_calls": []any{
+				map[string]any{
+					"id":   "call_old",
+					"type": "function",
+					"function": map[string]any{
+						"name":      "Read",
+						"arguments": `{"file_path":"/tmp/x.go"}`,
+					},
+				},
+			},
+		},
+		{"role": "tool", "tool_call_id": "call_old", "name": "Read", "content": bigText + "file contents"},
+		{"role": "user", "content": "Short current request."},
+	}
+
+	plan, err := Compile(CompileInput{
+		Messages:        messages,
+		TokenBudgetHint: 50,
+	})
+	if err != nil {
+		t.Fatalf("Compile error: %v", err)
+	}
+
+	// The tool exchange (SegAssistant+SegToolCall+SegToolResult) should be
+	// trimmed as a unit — we must not end up with a lone SegToolCall or
+	// SegToolResult in SegmentsIncluded.
+	for _, seg := range plan.SegmentsIncluded {
+		if seg.Type == SegToolCall || seg.Type == SegToolResult {
+			t.Errorf("tool call/result should have been trimmed as a unit for budget, found id=%s type=%s", seg.ID, seg.Type)
+		}
+	}
+
+	// Last user message must survive.
+	foundCurrentUser := false
+	for _, seg := range plan.SegmentsIncluded {
+		if seg.Type == SegUser && strings.Contains(seg.Content, "Short current request.") {
+			foundCurrentUser = true
+			break
+		}
+	}
+	if !foundCurrentUser {
+		t.Error("current user request must survive budget trimming")
+	}
+}
+
+func TestCompileReasoningSummaryShort(t *testing.T) {
+	messages := []map[string]any{
+		{"role": "user", "content": "hello"},
+		{
+			"role":              "assistant",
+			"content":           "visible answer",
+			"reasoning_content": "short reasoning",
+		},
+	}
+	plan, err := Compile(CompileInput{Messages: messages})
+	if err != nil {
+		t.Fatalf("Compile error: %v", err)
+	}
+
+	hasSummary := false
+	for _, seg := range plan.SegmentsIncluded {
+		if seg.Type == SegReasoningSummary {
+			hasSummary = true
+			if !strings.Contains(seg.Content, "short reasoning") {
+				t.Errorf("short reasoning should be kept verbatim, got: %q", seg.Content)
+			}
+			if v, _ := seg.Metadata["summarized"].(bool); v {
+				t.Error("short reasoning should NOT be marked summarized")
+			}
+		}
+	}
+	if !hasSummary {
+		t.Error("expected SegReasoningSummary for assistant with reasoning_content")
+	}
+}
+
+func TestCompileReasoningSummaryLong(t *testing.T) {
+	longReasoning := strings.Repeat("thinking... ", 200) // > 1000 chars → exceeds threshold
+
+	messages := []map[string]any{
+		{"role": "user", "content": "solve this"},
+		{
+			"role":              "assistant",
+			"content":           "final answer",
+			"reasoning_content": longReasoning,
+		},
+	}
+	plan, err := Compile(CompileInput{Messages: messages})
+	if err != nil {
+		t.Fatalf("Compile error: %v", err)
+	}
+
+	var rseg *ContextSegment
+	for i := range plan.SegmentsIncluded {
+		if plan.SegmentsIncluded[i].Type == SegReasoningSummary {
+			rseg = &plan.SegmentsIncluded[i]
+			break
+		}
+	}
+	if rseg == nil {
+		t.Fatal("expected SegReasoningSummary for long reasoning")
+	}
+	if !strings.Contains(rseg.Content, "chars omitted") {
+		t.Errorf("long reasoning summary should contain 'chars omitted', got: %q", rseg.Content[:min(100, len(rseg.Content))])
+	}
+	if v, _ := rseg.Metadata["summarized"].(bool); !v {
+		t.Error("long reasoning should be marked summarized=true in Metadata")
+	}
+	origLen, _ := rseg.Metadata["original_reasoning_len"].(int)
+	trimmedLen := len(strings.TrimSpace(longReasoning))
+	if origLen != trimmedLen {
+		t.Errorf("original_reasoning_len = %d, want %d (trimmed)", origLen, trimmedLen)
+	}
+	// Visible content should still be present as SegAssistant.
+	hasAssistant := false
+	for _, seg := range plan.SegmentsIncluded {
+		if seg.Type == SegAssistant && strings.Contains(seg.Content, "final answer") {
+			hasAssistant = true
+			break
+		}
+	}
+	if !hasAssistant {
+		t.Error("SegAssistant with visible content must remain after reasoning extraction")
+	}
+}
+
+func TestCompileReasoningSummaryLongUnicode(t *testing.T) {
+	longReasoning := strings.Repeat("推理🙂", 400)
+
+	messages := []map[string]any{
+		{"role": "user", "content": "solve this"},
+		{
+			"role":              "assistant",
+			"content":           "final answer",
+			"reasoning_content": longReasoning,
+		},
+	}
+	plan, err := Compile(CompileInput{Messages: messages})
+	if err != nil {
+		t.Fatalf("Compile error: %v", err)
+	}
+
+	var rseg *ContextSegment
+	for i := range plan.SegmentsIncluded {
+		if plan.SegmentsIncluded[i].Type == SegReasoningSummary {
+			rseg = &plan.SegmentsIncluded[i]
+			break
+		}
+	}
+	if rseg == nil {
+		t.Fatal("expected SegReasoningSummary for long unicode reasoning")
+	}
+	if !utf8.ValidString(rseg.Content) {
+		t.Fatalf("unicode reasoning summary must remain valid UTF-8, got: %q", rseg.Content)
+	}
+	runes := []rune(longReasoning)
+	expectedTail := string(runes[len(runes)-reasoningTailChars:])
+	if !strings.HasSuffix(rseg.Content, expectedTail) {
+		t.Fatalf("unicode reasoning summary should preserve the last 500 runes, got: %q", rseg.Content)
+	}
+	origLen, _ := rseg.Metadata["original_reasoning_len"].(int)
+	if origLen != len([]rune(longReasoning)) {
+		t.Fatalf("original_reasoning_len = %d, want %d runes", origLen, len([]rune(longReasoning)))
+	}
+}
+
+func TestCompileReasoningSummaryFromInlineBlock(t *testing.T) {
+	// Simulate promptcompat-normalized message: reasoning inlined in content.
+	inlineContent := "[reasoning_content]\nmy internal reasoning\n[/reasoning_content]\n\nvisible response text"
+	messages := []map[string]any{
+		{"role": "user", "content": "question"},
+		{"role": "assistant", "content": inlineContent},
+	}
+	plan, err := Compile(CompileInput{Messages: messages})
+	if err != nil {
+		t.Fatalf("Compile error: %v", err)
+	}
+
+	hasSummary := false
+	for _, seg := range plan.SegmentsIncluded {
+		if seg.Type == SegReasoningSummary {
+			hasSummary = true
+			if !strings.Contains(seg.Content, "my internal reasoning") {
+				t.Errorf("inline block reasoning not extracted, got: %q", seg.Content)
+			}
+		}
+	}
+	if !hasSummary {
+		t.Error("expected SegReasoningSummary extracted from inline [reasoning_content] block")
+	}
+
+	hasVisibleAssistant := false
+	for _, seg := range plan.SegmentsIncluded {
+		if seg.Type == SegAssistant && strings.Contains(seg.Content, "visible response text") {
+			hasVisibleAssistant = true
+			break
+		}
+	}
+	if !hasVisibleAssistant {
+		t.Error("SegAssistant must contain visible content after reasoning block is stripped")
+	}
+}
+
+func TestCompilePartiallyParseableToolCallsCountMismatch(t *testing.T) {
+	// 3 tool_calls: 2 parseable (have "function" key), 1 missing "function".
+	// Only 2 tool results arrive. Before the fix, marshalToolCallsWithCount
+	// returned len(parts)=2 so validateToolPairs saw callCount=2 == resultCount=2
+	// and emitted no warning. After the fix it returns len(x)=3, so the
+	// mismatch (expected 3, got 2) is correctly flagged.
+	messages := []map[string]any{
+		{"role": "user", "content": "do something"},
+		{
+			"role":    "assistant",
+			"content": "calling tools",
+			"tool_calls": []any{
+				map[string]any{
+					"id": "call_1", "type": "function",
+					"function": map[string]any{"name": "Read", "arguments": `{}`},
+				},
+				map[string]any{
+					"id": "call_2", "type": "function",
+					"function": map[string]any{"name": "Write", "arguments": `{}`},
+				},
+				map[string]any{
+					"id":   "call_3_malformed",
+					"type": "function",
+					// deliberately missing "function" key
+				},
+			},
+		},
+		{"role": "tool", "tool_call_id": "call_1", "name": "Read", "content": "result 1"},
+		{"role": "tool", "tool_call_id": "call_2", "name": "Write", "content": "result 2"},
+	}
+
+	plan, err := Compile(CompileInput{Messages: messages})
+	if err != nil {
+		t.Fatalf("Compile error: %v", err)
+	}
+
+	// Partial results must not be trimmed.
+	if len(plan.SegmentsTrimmed) != 0 {
+		t.Errorf("expected no trimmed segments for partial-result scenario, got %d", len(plan.SegmentsTrimmed))
+	}
+
+	// A count-mismatch warning must be emitted (3 calls declared, 2 results).
+	found := false
+	for _, w := range plan.Warnings {
+		if strings.Contains(w, "tool_call count mismatch") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected a 'tool_call count mismatch' warning when some items lack parseable 'function' key; got: %v", plan.Warnings)
+	}
+}
+
+func TestCompileReasoningSummaryDualSource(t *testing.T) {
+	// Message carries both a reasoning_content field AND an inline block inside
+	// content. The field should be used as the reasoning source; the inline
+	// block must be stripped from visible content so it does not appear twice.
+	inlineContent := "[reasoning_content]\ninline reasoning\n[/reasoning_content]\n\nvisible text"
+	messages := []map[string]any{
+		{"role": "user", "content": "question"},
+		{
+			"role":              "assistant",
+			"content":           inlineContent,
+			"reasoning_content": "field reasoning",
+		},
+	}
+
+	plan, err := Compile(CompileInput{Messages: messages})
+	if err != nil {
+		t.Fatalf("Compile error: %v", err)
+	}
+
+	var reasoningContent string
+	for _, seg := range plan.SegmentsIncluded {
+		if seg.Type == SegReasoningSummary {
+			reasoningContent = seg.Content
+		}
+	}
+	if !strings.Contains(reasoningContent, "field reasoning") {
+		t.Errorf("reasoning_content field must take priority, got: %q", reasoningContent)
+	}
+	if strings.Contains(reasoningContent, "inline reasoning") {
+		t.Errorf("inline block must not appear in reasoning summary when field is present, got: %q", reasoningContent)
+	}
+
+	// The inline block must be stripped from SegAssistant visible content.
+	for _, seg := range plan.SegmentsIncluded {
+		if seg.Type == SegAssistant {
+			if strings.Contains(seg.Content, "[reasoning_content]") {
+				t.Errorf("inline reasoning block must be stripped from visible SegAssistant content, got: %q", seg.Content)
+			}
+			if !strings.Contains(seg.Content, "visible text") {
+				t.Errorf("visible text must be present in SegAssistant content, got: %q", seg.Content)
+			}
+		}
 	}
 }
 

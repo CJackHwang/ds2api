@@ -62,7 +62,7 @@ npm run build --prefix webui
 ./tests/scripts/check-cross-build.sh
 ```
 
-说明：`plans/stage6-manual-smoke.md` 已移除，阶段 6 手工烟测不再作为当前 CI 或发布门禁。
+说明：`plans/stage6-manual-smoke.md` 是阶段 6 手工烟测记录；`./tests/scripts/check-stage6-manual-smoke.sh` 只应在完成 live smoke 后通过，当前不属于常规 CI 单元门禁。
 
 ### 端到端测试 | End-to-End Tests
 

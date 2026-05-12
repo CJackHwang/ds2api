@@ -212,7 +212,7 @@ assistant 的 reasoning 会变成一个显式标签块：
 
 ### 7.2 历史 tool_calls 保留方式
 
-assistant 历史 `tool_calls` 不会保留成 OpenAI 原生 JSON，而会转成 prompt 可见的 DSML 外壳：
+assistant 历史 `tool_calls` 会转成 prompt 可见的 DSML 外壳：
 
 ```xml
 <｜DSML｜tool_calls>
@@ -222,6 +222,8 @@ assistant 历史 `tool_calls` 不会保留成 OpenAI 原生 JSON，而会转成 
 </｜DSML｜tool_calls>
 ```
 
+同时，归一化后的 message 会保留结构化 `tool_calls` 字段供 Context Engine shadow 编译 tool-pair 不变量使用；最终 prompt 仍只渲染 `content` 中的 DSML 文本，不会把 OpenAI 原生 JSON 作为隐藏 transport 发送给上游。
+
 如果客户端历史里没有结构化 `tool_calls` 字段、却把一个可独立解析的 assistant 工具块放进了普通 `content`，兼容层会在写入后续 prompt 前先按工具调用解析它，再重渲染为规范 DSML 历史外壳。这样可以避免一次 malformed 工具块未被结构化保存后，作为普通 assistant 文本回灌，继续污染后续模型的 few-shot 工具格式。
 
 解析层同时兼容旧式纯 XML 形态：`<tool_calls>` / `<invoke>` / `<parameter>`。两者都会先归一到现有 XML 解析语义；其他旧格式都会作为普通文本保留，不会作为可执行调用语法。
@@ -230,7 +232,8 @@ assistant 历史 `tool_calls` 不会保留成 OpenAI 原生 JSON，而会转成 
 这件事很重要，因为它决定了：
 
 - 历史工具调用在 prompt 中是“可见文本历史”
-- 不是“隐藏结构化元数据”
+- prompt-visible 语义不是“隐藏结构化元数据”
+- 归一化阶段可携带 `tool_calls` 元数据给内部 Context Engine shadow 使用，但该字段不改变最终 prompt 渲染
 
 实现位置：
 [internal/prompt/tool_calls.go](../internal/prompt/tool_calls.go)
@@ -429,10 +432,11 @@ Prior conversation history and tool progress.
 - `go test ./internal/toolstream/...`
 - `./tests/scripts/run-unit-node.sh`
 
-## 14. Context Engine 编译阶段（M2：shadow 模式接入主链路）
+## 14. Context Engine 编译阶段（M3：tool pair / budget / reasoning summary）
 
-`internal/contextengine` 包在 M2 阶段通过三态 feature flag 接入主链路。
-**默认 `off`，不影响任何现有行为。**
+`internal/contextengine` 包通过三态 feature flag 接入主链路。
+M2 接入 shadow hook；M3 完成 tool pair 不变量、token budget 裁剪、reasoning summary。
+**默认 `off`；M3 Stage 8 后切为 `enforce`。**
 
 ### 数据流
 
@@ -445,6 +449,8 @@ promptcompat.NormalizeOpenAIMessagesForPrompt()
 
 `MaybeShadow` 在 `BuildOpenAIPrompt`（`internal/promptcompat/prompt_build.go`）中调用，位于消息归一化之后、tool prompt 注入之前。`shadow` 模式下，函数调用 `Compile` 产出 `ContextPlan` 并以 `[context_engine_shadow]` 结构化日志输出摘要，**不修改最终 prompt**。
 
+为避免正常工具回合在 shadow plan 中被误判为 `orphan_tool_result`，归一化后的 assistant message 会保留结构化 `tool_calls` 字段供 `Compile` 生成 `SegToolCall`；`prompt.MessagesPrepareWithThinking` 仍只读取 `content` 渲染最终 prompt。
+
 ### Feature Flag
 
 | 控制方式 | 值 | 优先级 |
@@ -453,7 +459,7 @@ promptcompat.NormalizeOpenAIMessagesForPrompt()
 | 配置文件 `context_engine.mode` | `off` \| `shadow` \| `enforce` | 低 |
 | 默认值 | `off` | — |
 
-> **M2 阶段只允许使用 `shadow` 模式。`enforce` 字段已定义但保留给 M3，当前行为等同于 `off`。**
+> **M3 阶段目标：`enforce` 默认值在 Stage 8 切换（需 Stage 1–6 全部通过 + E2E 无新增 5xx）。**
 
 ### Shadow 模式日志字段
 
@@ -475,11 +481,43 @@ level=INFO msg="[context_engine_shadow]"
 
 任何时候将 `DS2API_CONTEXT_ENGINE` 设为 `off`（或不设置）即可完全关闭 shadow，主链路行为与 M1 完全一致。
 
-### M1 功能（保留）
+### M3 新增功能
 
-- `Compile(CompileInput) (ContextPlan, error)` — 将归一化 message 序列映射为 `ContextSegment` 列表
-- 孤立 tool_call 检测：assistant 有 `tool_calls` 但后继消息不是 `role=tool` 时，标记为 `orphan_tool_call` 并写入 `SegmentsTrimmed` + `Warnings`
-- Token budget 计算（`TokenBudgetReport.Used`），**不截断**（截断为 M3 任务）
+#### Tool Pair 不变量（Stage 1）
+
+`validateToolPairs()` 实现组群模式配对校验（替换 M1 的序列扫描）：
+
+- `orphan_tool_call`：`SegToolCall` 后无任何 `SegToolResult` → 加入 `SegmentsTrimmed`。
+- `orphan_tool_result`：`SegToolResult` 前无 `SegToolCall`（history 截断中途掉帧）→ 加入 `SegmentsTrimmed`。
+- 多 call 数量不匹配（`call_count > 1` 且实际 result 数不等）→ 软警告，**不裁剪**（部分结果保留）。
+- `SegToolCall.Metadata["call_count"]` 记录原始 call 数量，由 `buildSegments` 通过 `marshalToolCallsWithCount()` 填写。
+
+对抗 fixtures（`tests/compat/fixtures/context/`）：`orphan_tool_result.json`、`multi_orphan_tools.json`、`multi_call_count_mismatch.json`。
+
+#### Token Budget 裁剪（Stage 2）
+
+`applyBudgetTrimming()` 在 `TokenBudgetHint > 0` 且实际 token 超限时执行贪心裁剪：
+
+- **固定不可裁剪**：`SegSystem`（全部）+ 最后一个 `SegUser`（当前用户请求）。
+- **工具交换单元**：`SegAssistant?` + `SegToolCall` + `SegToolResult*` 作为不可分割 unit，整体裁或整体保留，维护 pair 不变量。
+- 裁剪顺序：从序列最早（最旧）的可裁 unit 开始，直到 `Used ≤ Budget`。
+- `TrimmedSegment.Reason = "token_budget"`；裁剪后 `TokenBudgetReport.Overflow = false`。
+
+#### Reasoning Summary（Stage 3）
+
+`buildSegments()` 在处理 `assistant` 消息时自动提取 reasoning 并生成 `SegReasoningSummary`：
+
+- 来源 1：`msg["reasoning_content"]` 字段（fixture / 未归一化消息）。
+- 来源 2：`[reasoning_content]\n{text}\n[/reasoning_content]` 内联块（`promptcompat` 归一化后的格式）。
+- 策略：原文 ≤ 1000 Unicode 字符 → 保留全文；> 1000 Unicode 字符 → `"[N chars omitted]\n{末 500 字符}"`。
+- `SegReasoningSummary.Metadata["summarized"] = true` / `"original_reasoning_len" = N` 在被截断时写入，`N` 按 Unicode 字符计数。
+- 可见文本内容另出 `SegAssistant`；两者均参与 token budget 计算与裁剪。
+
+### M1/M2 功能（保留）
+
+- `Compile(CompileInput) (ContextPlan, error)` — message 序列 → `ContextPlan`
+- `MaybeShadow(mode, messages, logger)` — shadow 编译 hook
+- `GET /admin/context-plan[/{request_id}]` — 只读摘要 API
 
 ### 测试入口
 
@@ -488,8 +526,9 @@ go test ./internal/contextengine/...
 go test ./internal/config/... -run TestContextEngine
 ```
 
-覆盖 M0 四个 fixtures：`plain_multiturn`、`tool_loop_read`、`orphan_tool_call`、`long_history_token_budget`。
-M2 新增：`TestMaybeShadow_*`（4 组）+ `TestContextEngineMode_*`（6 组）+ `TestContextEngineConfig_*`（2 组）。
+M0 fixtures：`plain_multiturn`、`tool_loop_read`、`orphan_tool_call`、`long_history_token_budget`。
+M3 新增 fixtures：`orphan_tool_result`、`multi_orphan_tools`、`multi_call_count_mismatch`。
+M3 新增测试：`TestCompileOrphanToolResult`、`TestCompileMultiOrphanTools`、`TestCompileMultiCallCountMismatch`、`TestCompileBudgetTrimming*`（2 组）、`TestCompileReasoningSummary*`（3 组）。
 
 ---
 
