@@ -173,8 +173,13 @@ func parseSettingsUpdateRequest(req map[string]any) (*config.AdminConfig, *confi
 		cfg := &config.LogConfig{}
 		if v, exists := raw["level"]; exists {
 			level := strings.ToLower(strings.TrimSpace(fmt.Sprintf("%v", v)))
-			if level == "debug" || level == "info" || level == "warn" || level == "error" || level == "" {
+			switch level {
+			case "":
+				cfg.Level = "info"
+			case "debug", "info", "warn", "error":
 				cfg.Level = level
+			default:
+				return nil, nil, nil, nil, nil, nil, nil, nil, nil, fmt.Errorf("log.level must be one of: debug, info, warn, error")
 			}
 		}
 		if v, exists := raw["file"]; exists {

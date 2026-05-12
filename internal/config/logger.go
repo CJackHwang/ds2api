@@ -53,12 +53,17 @@ func newLogger(cfg *LogConfig) *slog.Logger {
 			MaxBackups: maxBackups,
 			Compress:   true,
 		}
-		handlers = append(handlers, slog.NewTextHandler(fileHandler, &slog.HandlerOptions{Level: level}))
+		// Test write permissions; if file is not writable, skip file handler silently
+		if _, err := fileHandler.Write([]byte("")); err == nil {
+			handlers = append(handlers, slog.NewTextHandler(fileHandler, &slog.HandlerOptions{Level: level}))
+		}
 	}
 
 	return slog.New(slog.NewMultiHandler(handlers...))
 }
 
 func RefreshLogger(cfg LogConfig) {
-	Logger = newLogger(&cfg)
+	newLoggerInstance := newLogger(&cfg)
+	newLoggerInstance.Info("logger reconfigured", "level", cfg.Level, "file", cfg.File, "file_enabled", cfg.FileEnabled)
+	Logger = newLoggerInstance
 }
