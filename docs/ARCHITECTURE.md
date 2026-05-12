@@ -60,6 +60,7 @@ ds2api/
 │   ├── prompt/                           # Prompt 组装
 │   ├── promptcompat/                     # API 请求到 DeepSeek 网页纯文本上下文兼容层
 │   ├── rawsample/                        # raw sample 读写与管理
+│   ├── readiness/                        # Release readiness 报告模型与 Markdown 渲染
 │   ├── responsehistory/                  # DeepSeek 上游响应归档与会话快照
 │   ├── server/                           # 路由与中间件装配
 │   │   └── data/                         # 路由/运行时辅助数据
@@ -77,6 +78,7 @@ ds2api/
 ├── pow/                                  # PoW 独立实现与基准
 ├── scripts/                              # 构建/发布/辅助脚本
 ├── static/                               # 构建产物（admin 等静态资源）
+├── testdata/                             # 跨包共享的样例输入与报告样本
 ├── tests/                                # 测试资源与脚本
 │   ├── compat/                           # 兼容性夹具与期望输出
 │   │   ├── expected/                     # 预期结果样本
@@ -213,6 +215,7 @@ flowchart LR
 - `internal/claudeconv`：Claude API 请求到 DeepSeek 格式的协议转换。
 - `internal/compat`：兼容性回归测试套件，用 SSE 夹具验证输出一致性。
 - `internal/rawsample`：上游原始响应的采集、读写与管理。
+- `internal/readiness`：Release Readiness 报告的数据模型和 Markdown 渲染。该包只负责结构化报告表达，不读取历史、不执行诊断规则，也不参与主请求链路。
 - `internal/devcapture`：开发调试抓包，存储 HTTP 请求/响应用于问题排查。
 - `internal/util`：跨包通用工具，含 JSON 写入、类型转换、token 计数、thinking 解析等。
 - `internal/version`：版本号查询与比较，支持构建注入和运行时解析。

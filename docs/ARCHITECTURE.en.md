@@ -58,6 +58,7 @@ ds2api/
 │   ├── prompt/                           # Prompt composition
 │   ├── promptcompat/                     # API request -> DeepSeek web-chat plain-text compatibility
 │   ├── rawsample/                        # Raw sample read/write and management
+│   ├── readiness/                        # Release readiness report model and Markdown rendering
 │   ├── responsehistory/                  # DeepSeek upstream response archive and session snapshots
 │   ├── server/                           # Router and middleware assembly
 │   │   └── data/                         # Router/runtime helper data
@@ -75,6 +76,7 @@ ds2api/
 ├── pow/                                  # PoW standalone implementation + benchmarks
 ├── scripts/                              # Build/release helper scripts
 ├── static/                               # Build artifacts (admin static resources)
+├── testdata/                             # Shared sample inputs and report examples
 ├── tests/                                # Test assets and scripts
 │   ├── compat/                           # Compatibility fixtures + expected outputs
 │   │   ├── expected/                     # Expected output samples
@@ -209,6 +211,7 @@ flowchart LR
 - `internal/claudeconv`: Claude API request to DeepSeek format conversion.
 - `internal/compat`: compatibility regression tests using SSE fixtures to verify output consistency.
 - `internal/rawsample`: upstream raw response capture, read/write, and management.
+- `internal/readiness`: Release Readiness report data model and Markdown renderer. This package only represents structured reports; it does not read history, run diagnostic rules, or participate in the primary request path.
 - `internal/devcapture`: developer debug capture, storing HTTP request/response for troubleshooting.
 - `internal/util`: cross-package utilities including JSON writing, type conversion, token counting, thinking parsing, etc.
 - `internal/version`: version query and comparison, supporting build-time injection and runtime resolution.

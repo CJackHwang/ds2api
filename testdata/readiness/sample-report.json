@@ -1,0 +1,92 @@
+{
+  "version": "m4.0-sample",
+  "branch": "feat/m4-readiness-model",
+  "generated_at": "2026-05-12T00:00:00Z",
+  "scope": "M4.0 readiness baseline",
+  "decision_owner": "release owner",
+  "gates": [
+    {
+      "name": "lint",
+      "result": "pass",
+      "evidence": "./scripts/lint.sh"
+    },
+    {
+      "name": "live",
+      "result": "skip",
+      "evidence": "no credentials",
+      "notes": "not required for documentation-only baseline"
+    }
+  ],
+  "features": [
+    {
+      "feature": "parser_v2",
+      "current_mode": "off",
+      "target_mode": "shadow",
+      "decision": "hold",
+      "reason": "waiting for parser shadow evidence",
+      "missing_evidence": [
+        "parser shadow report",
+        "manual diff review"
+      ]
+    },
+    {
+      "feature": "auto_continue",
+      "current_mode": "off",
+      "target_mode": "off",
+      "decision": "hold",
+      "evidence": [
+        {
+          "source": "release-readiness",
+          "ref": "M4.0",
+          "summary": "baseline only; no detector yet"
+        }
+      ],
+      "missing_evidence": [
+        "shadow detector traces",
+        "non-stream smoke"
+      ]
+    }
+  ],
+  "analyzer": [
+    {
+      "category": "tool",
+      "critical": 0,
+      "high": 0,
+      "warning": 0
+    },
+    {
+      "category": "continue",
+      "critical": 0,
+      "high": 0,
+      "warning": 0,
+      "top_rule": "pending"
+    }
+  ],
+  "shadow": [
+    {
+      "source": "history analyzer",
+      "status": "pending",
+      "samples": 0,
+      "summary": "M4.1 will provide analyzer data"
+    },
+    {
+      "source": "parser shadow",
+      "status": "pending",
+      "samples": 0,
+      "summary": "M4.2 will provide parser shadow data"
+    }
+  ],
+  "decision": {
+    "decision": "GO-WITH-FLAGS-OFF",
+    "reason": "baseline can ship while high-risk features remain off"
+  },
+  "follow_ups": [
+    {
+      "owner": "M4.1",
+      "action": "feed History Analyzer findings into this report"
+    }
+  ],
+  "metadata": {
+    "schema": "readiness/v1"
+  }
+}
