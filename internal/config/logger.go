@@ -102,6 +102,9 @@ func newLogger(cfg *LogConfig) *slog.Logger {
 		if maxSize <= 0 {
 			maxSize = 100
 		}
+		if maxSize > 1024 {
+			maxSize = 1024
+		}
 		maxBackups := cfg.MaxBackups
 		if maxBackups <= 0 {
 			maxBackups = 3

@@ -190,6 +190,9 @@ func parseSettingsUpdateRequest(req map[string]any) (*config.AdminConfig, *confi
 		}
 		if v, exists := raw["max_size_mb"]; exists {
 			n := intFrom(v)
+			if n > 1024 {
+				return nil, nil, nil, nil, nil, nil, nil, nil, nil, fmt.Errorf("log.max_size_mb must be <= 1024")
+			}
 			if n > 0 {
 				cfg.MaxSizeMB = n
 			}
