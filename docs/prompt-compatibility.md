@@ -284,6 +284,7 @@ OpenAI 的文件上传现在不再是“只传文件本体”的通用路径，�
 - `current_input_file` 默认开启；它在统一 completion runtime 入口全局生效，用于把“完整上下文”合并进 `DS2API_HISTORY.txt` 上下文文件。当最新 user turn 的纯文本长度达到 `current_input_file.min_chars`（默认 `0`）时，runtime 会上传一个文件名为 `DS2API_HISTORY.txt` 的上下文文件。文件内容会先经过各协议入口的标准化，再序列化成按轮次编号的 `DS2API_HISTORY.txt` 风格 transcript，带有 `# DS2API_HISTORY.txt` 标题和 `=== N. ROLE ===` 分段；如果当前请求带有可用 tools 且 tool choice 不是 `none`，runtime 还会上传 `DS2API_TOOLS.txt`，只承载本次请求的工具名称、描述和参数 schema。live prompt 中则会给出一个 continuation 语气的 user 消息，引导模型从 `DS2API_HISTORY.txt` 的最新状态继续推进，并直接回答最新请求；如果有 `DS2API_TOOLS.txt`，live prompt 会额外要求模型把该文件视为可调用工具和 schema 的权威来源，避免把任务拉回起点，也避免把大段 schema 再次内联到 prompt。
 - 如果 `current_input_file.enabled=false`，请求会直接透传，不上传任何拆分上下文文件。
 - 即使触发 `current_input_file` 后 live prompt 被缩短，对客户端回包里的上下文 token 统计，仍会沿用**拆分前的完整 prompt 语义**做计数，而不是按缩短后的占位 prompt 计算；否则会把真实上下文显著算小。
+- 如果空输出重试最终需要切换托管账号，runtime 会在新账号下重新上传已生成的 `DS2API_HISTORY.txt` 和可选 `DS2API_TOOLS.txt`，再用新的 generated `file_id` 重建 completion payload；客户端原有文件引用会保留在 generated 文件之后。这样可以避免把旧账号不可见的 generated file_id 带到新账号请求里。
 
 相关实现：
 

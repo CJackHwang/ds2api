@@ -11,6 +11,7 @@ import (
 	"ds2api/internal/auth"
 	"ds2api/internal/config"
 	"ds2api/internal/httpapi/openai/shared"
+	"ds2api/internal/promptcompat"
 )
 
 func TestExecuteStreamWithRetryUsesSharedRetryPayloadAndUsagePrompt(t *testing.T) {
@@ -146,5 +147,119 @@ func TestExecuteStreamWithRetrySwitchesManagedAccountBeforeFinal429(t *testing.T
 	}
 	if prompt, _ := ds.payloads[1]["prompt"].(string); strings.Contains(prompt, shared.EmptyOutputRetrySuffix) {
 		t.Fatalf("expected switched-account prompt without empty-output suffix, got %q", prompt)
+	}
+}
+
+func TestExecuteStreamWithRetryReuploadsCurrentInputFilesAfterAccountSwitch(t *testing.T) {
+	t.Setenv("DS2API_CONFIG_JSON", `{
+		"keys":["managed-key"],
+		"accounts":[
+			{"email":"acc1@test.com","password":"pwd"},
+			{"email":"acc2@test.com","password":"pwd"}
+		]
+	}`)
+	store := config.LoadStore()
+	resolver := auth.NewResolver(store, account.NewPool(store), func(_ context.Context, acc config.Account) (string, error) {
+		return "token-" + acc.Identifier(), nil
+	})
+	req, _ := http.NewRequest(http.MethodPost, "/", nil)
+	req.Header.Set("Authorization", "Bearer managed-key")
+	a, err := resolver.Determine(req)
+	if err != nil {
+		t.Fatalf("determine failed: %v", err)
+	}
+	defer resolver.Release(a)
+
+	ds := &fakeDeepSeekCaller{
+		sessionByAccount: true,
+		responses: []*http.Response{
+			sseHTTPResponse(http.StatusOK, `data: {"response_message_id":12,"p":"response/thinking_content","v":"retry empty"}`),
+			sseHTTPResponse(http.StatusOK, `data: {"response_message_id":21,"p":"response/content","v":"ok from second account"}`),
+		},
+	}
+	initial := sseHTTPResponse(http.StatusOK, `data: {"response_message_id":11,"p":"response/thinking_content","v":"first empty"}`)
+	payload := map[string]any{
+		"prompt":          "current input continuation",
+		"chat_session_id": "session-acc1@test.com",
+		"ref_file_ids":    []any{"file-old-history", "file-old-tools", "file-client"},
+	}
+	stdReq := promptcompat.StandardRequest{
+		Surface:                 "test.stream",
+		RequestedModel:          "deepseek-v4-flash",
+		ResolvedModel:           "deepseek-v4-flash",
+		ResponseModel:           "deepseek-v4-flash",
+		FinalPrompt:             "current input continuation",
+		PromptTokenText:         "# DS2API_HISTORY.txt\n\n# DS2API_TOOLS.txt\n\ncurrent input continuation",
+		CurrentInputFileApplied: true,
+		CurrentInputFileID:      "file-old-history",
+		CurrentToolsFileID:      "file-old-tools",
+		HistoryText:             "# DS2API_HISTORY.txt\nPrior conversation history and tool progress.\n\n=== 1. USER ===\nhello\n",
+		RefFileIDs:              []string{"file-old-history", "file-old-tools", "file-client"},
+		ToolsRaw: []any{map[string]any{
+			"type": "function",
+			"function": map[string]any{
+				"name":        "search",
+				"description": "search docs",
+				"parameters":  map[string]any{"type": "object"},
+			},
+		}},
+	}
+	attemptsSeen := 0
+	retryPrompt := ""
+
+	ExecuteStreamWithRetry(context.Background(), ds, a, initial, payload, "pow", StreamRetryOptions{
+		Surface:          "test.stream",
+		Stream:           true,
+		RetryEnabled:     true,
+		RetryMaxAttempts: 1,
+		UsagePrompt:      stdReq.PromptTokenText,
+		Request:          stdReq,
+		CurrentInputFile: currentInputRuntimeConfig{},
+	}, StreamRetryHooks{
+		ConsumeAttempt: func(resp *http.Response, allowDeferEmpty bool) (bool, bool) {
+			defer func() {
+				if err := resp.Body.Close(); err != nil {
+					t.Fatalf("close failed: %v", err)
+				}
+			}()
+			body, _ := io.ReadAll(resp.Body)
+			attemptsSeen++
+			if strings.Contains(string(body), "ok from second account") {
+				return true, false
+			}
+			if !allowDeferEmpty {
+				t.Fatalf("expected empty attempt %d to be deferred before final 429", attemptsSeen)
+			}
+			return false, true
+		},
+		ParentMessageID: func() int {
+			return 11 + attemptsSeen
+		},
+		OnRetryPrompt: func(prompt string) {
+			retryPrompt = prompt
+		},
+	})
+
+	if attemptsSeen != 3 {
+		t.Fatalf("expected three stream attempts, got %d", attemptsSeen)
+	}
+	if len(ds.uploads) != 2 {
+		t.Fatalf("expected history and tools files reuploaded for switched account, got %d", len(ds.uploads))
+	}
+	if ds.uploads[0].Filename != "DS2API_HISTORY.txt" || ds.uploads[1].Filename != "DS2API_TOOLS.txt" {
+		t.Fatalf("unexpected upload filenames: %#v", ds.uploads)
+	}
+	refIDs, _ := ds.payloads[1]["ref_file_ids"].([]any)
+	wantRefs := []any{"file-runtime-acc2@test.com-history", "file-runtime-acc2@test.com-tools", "file-client"}
+	if len(refIDs) != len(wantRefs) {
+		t.Fatalf("ref_file_ids length mismatch: got %#v want %#v", refIDs, wantRefs)
+	}
+	for i, want := range wantRefs {
+		if refIDs[i] != want {
+			t.Fatalf("ref_file_ids[%d]=%#v want %#v (all=%#v)", i, refIDs[i], want, refIDs)
+		}
+	}
+	if !strings.Contains(retryPrompt, "# DS2API_HISTORY.txt") || !strings.Contains(retryPrompt, "# DS2API_TOOLS.txt") {
+		t.Fatalf("expected switched usage prompt to preserve current-input accounting text, got %q", retryPrompt)
 	}
 }
