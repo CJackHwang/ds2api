@@ -15,6 +15,7 @@ const I18nContext = createContext({
 const getBrowserLang = () => {
     if (typeof navigator === 'undefined') return 'zh'
     const browserLang = navigator.language?.toLowerCase()
+    if (!browserLang) return 'zh'
     if (browserLang.startsWith('zh')) return 'zh'
     if (browserLang.startsWith('vi')) return 'vi'
     return 'en'
