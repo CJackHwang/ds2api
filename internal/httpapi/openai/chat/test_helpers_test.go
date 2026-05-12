@@ -126,12 +126,15 @@ func makeOpenAISSEHTTPResponse(lines ...string) *http.Response {
 }
 
 type inlineUploadDSStub struct {
-	uploadCalls    []dsclient.UploadFileRequest
-	lastCtx        context.Context
-	completionReq  map[string]any
-	createSession  string
-	uploadErr      error
-	completionResp *http.Response
+	uploadCalls      []dsclient.UploadFileRequest
+	lastCtx          context.Context
+	completionReq    map[string]any
+	createSession    string
+	uploadErr        error
+	completionResp   *http.Response
+	deleteCallCount  int
+	deletedToken     string
+	deletedSessionID string
 }
 
 func (m *inlineUploadDSStub) CreateSession(_ context.Context, _ *auth.RequestAuth, _ int) (string, error) {
@@ -171,8 +174,11 @@ func (m *inlineUploadDSStub) CallCompletion(_ context.Context, _ *auth.RequestAu
 	), nil
 }
 
-func (m *inlineUploadDSStub) DeleteSessionForToken(_ context.Context, _ string, _ string) (*dsclient.DeleteSessionResult, error) {
-	return &dsclient.DeleteSessionResult{Success: true}, nil
+func (m *inlineUploadDSStub) DeleteSessionForToken(_ context.Context, token string, sessionID string) (*dsclient.DeleteSessionResult, error) {
+	m.deleteCallCount++
+	m.deletedToken = token
+	m.deletedSessionID = sessionID
+	return &dsclient.DeleteSessionResult{SessionID: sessionID, Success: true}, nil
 }
 
 func (m *inlineUploadDSStub) DeleteAllSessionsForToken(_ context.Context, _ string) error {

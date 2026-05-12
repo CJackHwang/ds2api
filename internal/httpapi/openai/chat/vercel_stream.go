@@ -11,6 +11,7 @@ import (
 
 	"ds2api/internal/auth"
 	"ds2api/internal/config"
+	"ds2api/internal/httpapi/openai/history"
 	"ds2api/internal/promptcompat"
 	"ds2api/internal/util"
 
@@ -96,7 +97,7 @@ func (h *Handler) handleVercelStreamPrepare(w http.ResponseWriter, r *http.Reque
 	}
 
 	payload := stdReq.CompletionPayload(sessionID)
-	leaseID := h.holdStreamLease(a, sessionID)
+	leaseID := h.holdStreamLease(a, sessionID, stdReq)
 	if leaseID == "" {
 		writeOpenAIError(w, http.StatusInternalServerError, "failed to create stream lease")
 		return
@@ -140,13 +141,16 @@ func (h *Handler) handleVercelStreamRelease(w http.ResponseWriter, r *http.Reque
 		writeOpenAIError(w, http.StatusBadRequest, "lease_id is required")
 		return
 	}
-	ok, leaseAuth, sessionID := h.releaseStreamLease(leaseID)
+	ok, leaseAuth, sessionID, pendingCleanups := h.releaseStreamLease(leaseID)
 	if !ok {
 		writeOpenAIError(w, http.StatusNotFound, "stream lease not found")
 		return
 	}
 	if h.Auth != nil && leaseAuth != nil {
 		defer h.Auth.Release(leaseAuth)
+	}
+	for _, cleanup := range pendingCleanups {
+		h.autoDeleteRemoteSession(r.Context(), cleanup.auth(), cleanup.SessionID)
 	}
 	if sessionID != "" && leaseAuth != nil {
 		h.autoDeleteRemoteSession(r.Context(), leaseAuth, sessionID)
@@ -192,6 +196,82 @@ func (h *Handler) handleVercelStreamPow(w http.ResponseWriter, r *http.Request) 
 	})
 }
 
+func (h *Handler) handleVercelStreamSwitch(w http.ResponseWriter, r *http.Request) {
+	if !config.IsVercel() {
+		http.NotFound(w, r)
+		return
+	}
+	h.sweepExpiredStreamLeases()
+	internalSecret := vercelInternalSecret()
+	internalToken := strings.TrimSpace(r.Header.Get("X-Ds2-Internal-Token"))
+	if internalSecret == "" || subtle.ConstantTimeCompare([]byte(internalToken), []byte(internalSecret)) != 1 {
+		writeOpenAIError(w, http.StatusUnauthorized, "unauthorized internal request")
+		return
+	}
+
+	var req map[string]any
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeOpenAIError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	leaseID, _ := req["lease_id"].(string)
+	leaseID = strings.TrimSpace(leaseID)
+	if leaseID == "" {
+		writeOpenAIError(w, http.StatusBadRequest, "lease_id is required")
+		return
+	}
+	lease, ok := h.lookupStreamLease(leaseID)
+	if !ok || lease.Auth == nil {
+		writeOpenAIError(w, http.StatusNotFound, "stream lease not found or expired")
+		return
+	}
+	a := lease.Auth
+	oldCleanup := newStreamLeaseSessionCleanup(a, lease.SessionID)
+	if !a.UseConfigToken || !a.SwitchAccount(r.Context()) {
+		writeOpenAIErrorWithCode(w, http.StatusTooManyRequests, "Upstream account hit a rate limit and returned reasoning without visible output.", "upstream_empty_output")
+		return
+	}
+
+	stdReq := lease.Standard
+	h.updateStreamLeaseAfterSwitch(leaseID, "", stdReq, oldCleanup)
+	var err error
+	if stdReq.CurrentInputFileApplied {
+		stdReq, err = (history.Service{Store: h.Store, DS: h.DS}).ReuploadAppliedCurrentInputFile(r.Context(), a, stdReq)
+		if err != nil {
+			status, message := mapCurrentInputFileError(err)
+			writeOpenAIError(w, status, message)
+			return
+		}
+	}
+	sessionID, err := h.DS.CreateSession(r.Context(), a, 3)
+	if err != nil {
+		writeOpenAIError(w, http.StatusUnauthorized, "Account token is invalid. Please re-login the account in admin.")
+		return
+	}
+	h.updateStreamLeaseAfterSwitch(leaseID, sessionID, stdReq)
+	powHeader, err := h.DS.GetPow(r.Context(), a, 3)
+	if err != nil {
+		writeOpenAIError(w, http.StatusUnauthorized, "Failed to get PoW (invalid token or unknown error).")
+		return
+	}
+	if strings.TrimSpace(a.DeepSeekToken) == "" {
+		writeOpenAIError(w, http.StatusUnauthorized, "Account token is invalid. Please re-login the account in admin.")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"session_id":       sessionID,
+		"lease_id":         leaseID,
+		"model":            stdReq.ResponseModel,
+		"final_prompt":     stdReq.FinalPrompt,
+		"thinking_enabled": stdReq.Thinking,
+		"search_enabled":   stdReq.Search,
+		"tool_names":       stdReq.ToolNames,
+		"deepseek_token":   a.DeepSeekToken,
+		"pow_header":       powHeader,
+		"payload":          stdReq.CompletionPayload(sessionID),
+	})
+}
+
 func isVercelStreamPrepareRequest(r *http.Request) bool {
 	if r == nil {
 		return false
@@ -213,6 +293,13 @@ func isVercelStreamPowRequest(r *http.Request) bool {
 	return strings.TrimSpace(r.URL.Query().Get("__stream_pow")) == "1"
 }
 
+func isVercelStreamSwitchRequest(r *http.Request) bool {
+	if r == nil {
+		return false
+	}
+	return strings.TrimSpace(r.URL.Query().Get("__stream_switch")) == "1"
+}
+
 func vercelInternalSecret() string {
 	if v := strings.TrimSpace(os.Getenv("DS2API_VERCEL_INTERNAL_SECRET")); v != "" {
 		return v
@@ -223,9 +310,13 @@ func vercelInternalSecret() string {
 	return "admin"
 }
 
-func (h *Handler) holdStreamLease(a *auth.RequestAuth, sessionID string) string {
+func (h *Handler) holdStreamLease(a *auth.RequestAuth, sessionID string, standards ...promptcompat.StandardRequest) string {
 	if a == nil {
 		return ""
+	}
+	var stdReq promptcompat.StandardRequest
+	if len(standards) > 0 {
+		stdReq = standards[0]
 	}
 	now := time.Now()
 	ttl := streamLeaseTTL()
@@ -242,6 +333,7 @@ func (h *Handler) holdStreamLease(a *auth.RequestAuth, sessionID string) string 
 	h.streamLeases[leaseID] = streamLease{
 		Auth:      a,
 		SessionID: sessionID,
+		Standard:  stdReq,
 		ExpiresAt: now.Add(ttl),
 	}
 	h.leaseMu.Unlock()
@@ -249,24 +341,53 @@ func (h *Handler) holdStreamLease(a *auth.RequestAuth, sessionID string) string 
 	return leaseID
 }
 
-func (h *Handler) lookupStreamLeaseAuth(leaseID string) *auth.RequestAuth {
+func (h *Handler) lookupStreamLease(leaseID string) (streamLease, bool) {
 	leaseID = strings.TrimSpace(leaseID)
 	if leaseID == "" {
-		return nil
+		return streamLease{}, false
 	}
 	h.leaseMu.Lock()
 	lease, ok := h.streamLeases[leaseID]
 	h.leaseMu.Unlock()
 	if !ok || time.Now().After(lease.ExpiresAt) {
+		return streamLease{}, false
+	}
+	return lease, true
+}
+
+func (h *Handler) lookupStreamLeaseAuth(leaseID string) *auth.RequestAuth {
+	lease, ok := h.lookupStreamLease(leaseID)
+	if !ok {
 		return nil
 	}
 	return lease.Auth
 }
 
-func (h *Handler) releaseStreamLease(leaseID string) (bool, *auth.RequestAuth, string) {
+func (h *Handler) updateStreamLeaseAfterSwitch(leaseID, sessionID string, stdReq promptcompat.StandardRequest, pendingCleanups ...streamLeaseSessionCleanup) {
 	leaseID = strings.TrimSpace(leaseID)
 	if leaseID == "" {
-		return false, nil, ""
+		return
+	}
+	h.leaseMu.Lock()
+	defer h.leaseMu.Unlock()
+	lease, ok := h.streamLeases[leaseID]
+	if !ok {
+		return
+	}
+	lease.SessionID = sessionID
+	lease.Standard = stdReq
+	for _, cleanup := range pendingCleanups {
+		if cleanup.valid() {
+			lease.PendingCleanups = append(lease.PendingCleanups, cleanup)
+		}
+	}
+	h.streamLeases[leaseID] = lease
+}
+
+func (h *Handler) releaseStreamLease(leaseID string) (bool, *auth.RequestAuth, string, []streamLeaseSessionCleanup) {
+	leaseID = strings.TrimSpace(leaseID)
+	if leaseID == "" {
+		return false, nil, "", nil
 	}
 
 	h.leaseMu.Lock()
@@ -279,9 +400,31 @@ func (h *Handler) releaseStreamLease(leaseID string) (bool, *auth.RequestAuth, s
 	h.releaseExpiredAuths(expired)
 
 	if !ok {
-		return false, nil, ""
+		return false, nil, "", nil
 	}
-	return true, lease.Auth, lease.SessionID
+	return true, lease.Auth, lease.SessionID, append([]streamLeaseSessionCleanup(nil), lease.PendingCleanups...)
+}
+
+func newStreamLeaseSessionCleanup(a *auth.RequestAuth, sessionID string) streamLeaseSessionCleanup {
+	if a == nil {
+		return streamLeaseSessionCleanup{}
+	}
+	return streamLeaseSessionCleanup{
+		AccountID:     strings.TrimSpace(a.AccountID),
+		DeepSeekToken: strings.TrimSpace(a.DeepSeekToken),
+		SessionID:     strings.TrimSpace(sessionID),
+	}
+}
+
+func (c streamLeaseSessionCleanup) valid() bool {
+	return c.DeepSeekToken != "" && c.SessionID != ""
+}
+
+func (c streamLeaseSessionCleanup) auth() *auth.RequestAuth {
+	return &auth.RequestAuth{
+		AccountID:     strings.TrimSpace(c.AccountID),
+		DeepSeekToken: strings.TrimSpace(c.DeepSeekToken),
+	}
 }
 
 func (h *Handler) popExpiredLeasesLocked(now time.Time) []*auth.RequestAuth {

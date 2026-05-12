@@ -25,6 +25,7 @@ const {
   isAbortError,
   fetchStreamPrepare,
   fetchStreamPow,
+  fetchStreamSwitch,
   relayPreparedFailure,
   createLeaseReleaser,
 } = require('./http_internal');
@@ -46,11 +47,11 @@ async function handleVercelStream(req, res, rawBody, payload) {
   }
 
   const model = asString(prep.body.model) || asString(payload.model);
-  const sessionID = asString(prep.body.session_id) || `chatcmpl-${Date.now()}`;
+  const responseID = asString(prep.body.session_id) || `chatcmpl-${Date.now()}`;
   const leaseID = asString(prep.body.lease_id);
-  const deepseekToken = asString(prep.body.deepseek_token);
+  let deepseekToken = asString(prep.body.deepseek_token);
   const initialPowHeader = asString(prep.body.pow_header);
-  const completionPayload = prep.body.payload && typeof prep.body.payload === 'object' ? prep.body.payload : null;
+  let completionPayload = prep.body.payload && typeof prep.body.payload === 'object' ? prep.body.payload : null;
   const finalPrompt = asString(prep.body.final_prompt);
   const thinkingEnabled = toBool(prep.body.thinking_enabled);
   const searchEnabled = toBool(prep.body.search_enabled);
@@ -133,13 +134,14 @@ async function handleVercelStream(req, res, rawBody, payload) {
       }
     };
     const fetchCompletion = (bodyPayload) => fetchDeepSeekStream(DEEPSEEK_COMPLETION_URL, bodyPayload, currentPowHeader);
+    let activeDeepSeekSessionID = responseID;
     const fetchContinue = async (messageID) => {
       const powHeader = await refreshPowHeader('continue');
       if (!powHeader) {
         return null;
       }
       return fetchDeepSeekStream(DEEPSEEK_CONTINUE_URL, {
-        chat_session_id: sessionID,
+        chat_session_id: activeDeepSeekSessionID,
         message_id: messageID,
         fallback_to_resume: true,
       }, powHeader);
@@ -185,7 +187,7 @@ async function handleVercelStream(req, res, rawBody, payload) {
     let ended = false;
     const { sendFrame, sendDeltaFrame } = createChatCompletionEmitter({
       res,
-      sessionID,
+      sessionID: responseID,
       created,
       model,
       isClosed: () => clientClosed,
@@ -242,7 +244,7 @@ async function handleVercelStream(req, res, rawBody, payload) {
       }
       ended = true;
       sendFrame({
-        id: sessionID,
+        id: responseID,
         object: 'chat.completion.chunk',
         created,
         model,
@@ -261,7 +263,7 @@ async function handleVercelStream(req, res, rawBody, payload) {
 
     const processStream = async (initialResponse, allowDeferEmpty) => {
       let currentResponse = initialResponse;
-      let continueState = createContinueState(sessionID);
+      let continueState = createContinueState(activeDeepSeekSessionID);
       let continueRounds = 0;
       // eslint-disable-next-line no-constant-condition
       while (true) {
@@ -412,13 +414,39 @@ async function handleVercelStream(req, res, rawBody, payload) {
     };
 
     let retryAttempts = 0;
+    let accountSwitchAttempted = false;
     // eslint-disable-next-line no-constant-condition
     while (true) {
-      const processed = await processStream(completionRes, retryAttempts < EMPTY_OUTPUT_RETRY_MAX_ATTEMPTS);
+      const allowDeferEmpty = retryAttempts < EMPTY_OUTPUT_RETRY_MAX_ATTEMPTS || !accountSwitchAttempted;
+      const processed = await processStream(completionRes, allowDeferEmpty);
       if (processed.terminal) {
         return;
       }
-      if (!processed.retryable || retryAttempts >= EMPTY_OUTPUT_RETRY_MAX_ATTEMPTS) {
+      if (!processed.retryable) {
+        await finish('stop');
+        return;
+      }
+      if (retryAttempts >= EMPTY_OUTPUT_RETRY_MAX_ATTEMPTS) {
+        if (!accountSwitchAttempted) {
+          accountSwitchAttempted = true;
+          const switched = await fetchStreamSwitch(req, leaseID);
+          if (switched.ok && switched.body && switched.body.payload && typeof switched.body.payload === 'object') {
+            completionPayload = switched.body.payload;
+            deepseekToken = asString(switched.body.deepseek_token) || deepseekToken;
+            currentPowHeader = asString(switched.body.pow_header) || currentPowHeader;
+            activeDeepSeekSessionID = asString(switched.body.session_id) || activeDeepSeekSessionID;
+            usagePrompt = finalPrompt;
+            completionRes = await fetchCompletion(completionPayload);
+            if (completionRes === null) {
+              return;
+            }
+            if (!completionRes.ok || !completionRes.body) {
+              await finish('stop');
+              return;
+            }
+            continue;
+          }
+        }
         await finish('stop');
         return;
       }

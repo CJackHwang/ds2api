@@ -78,7 +78,7 @@ func shouldCaptureChatHistory(r *http.Request) bool {
 	if r == nil {
 		return false
 	}
-	if isVercelStreamPrepareRequest(r) || isVercelStreamReleaseRequest(r) {
+	if isVercelStreamPrepareRequest(r) || isVercelStreamReleaseRequest(r) || isVercelStreamSwitchRequest(r) {
 		return false
 	}
 	return true
