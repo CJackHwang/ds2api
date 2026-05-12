@@ -10,6 +10,8 @@ These rules apply to all agent-made changes in this repository.
   - `./tests/scripts/check-refactor-line-gate.sh`
   - `./tests/scripts/run-unit-all.sh`
   - `npm run build --prefix webui`
+- The CI WebUI build runs `npm ci --prefix webui --prefer-offline --no-audit` before the build; run that install step locally when dependencies are missing, stale, or package-lock changed.
+- For high-risk protocol, streaming, release, or real-account path changes, also run `./tests/scripts/run-live.sh` when credentials/config are available. Do not share unredacted artifacts from `artifacts/testsuite/`.
 
 ## Go Lint Rules
 
@@ -34,6 +36,9 @@ These rules apply to all agent-made changes in this repository.
 - When business logic or user-visible behavior changes, update the corresponding documentation in the same change.
 - `docs/prompt-compatibility.md` is the source-of-truth document for the “API -> pure-text web-chat context” compatibility flow.
 - If a change affects message normalization, tool prompt injection, prompt-visible tool history, file/reference handling, history split, or completion payload assembly, update `docs/prompt-compatibility.md` in the same change.
+- If a change affects tool-call parsing, streaming/sieve behavior, prompt-visible tool semantics, or tool-call policy, update `docs/toolcall-semantics.md` in the same change.
+- If a change adds, removes, moves, or materially changes modules, routes, or runtime responsibilities, update `docs/ARCHITECTURE.md` and `docs/ARCHITECTURE.en.md` as appropriate.
+- If a change affects public API behavior, update `API.md` and `API.en.md` as appropriate.
 
 ## Branch Discipline
 
