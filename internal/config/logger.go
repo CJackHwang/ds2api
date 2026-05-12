@@ -1,14 +1,57 @@
 package config
 
 import (
+	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 var Logger = newLogger(nil)
+
+// validateLogPath checks if the log file path is within allowed directories.
+// Allowed paths:
+//   - /var/log/ds2api (or any /var/log/* subdirectory)
+//   - The program's current working directory or its subdirectories
+//   - Relative paths (resolved against current working directory)
+func validateLogPath(path string) error {
+	// Handle relative paths by resolving against current directory
+	resolvedPath := path
+	if !filepath.IsAbs(path) {
+		var err error
+		resolvedPath, err = filepath.Abs(path)
+		if err != nil {
+			return fmt.Errorf("cannot resolve relative path: %w", err)
+		}
+	}
+
+	cleaned := filepath.Clean(resolvedPath)
+
+	// Block parent directory traversal
+	if strings.Contains(cleaned, "..") {
+		return fmt.Errorf("log path cannot contain parent directory reference")
+	}
+
+	// Allowed: /var/log/ds2api or /var/log/*
+	if strings.HasPrefix(cleaned, "/var/log/") {
+		return nil
+	}
+
+	// Allowed: program's working directory and subdirectories
+	cwd, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("cannot determine working directory: %w", err)
+	}
+	cwd = filepath.Clean(cwd)
+	if strings.HasPrefix(cleaned, cwd) {
+		return nil
+	}
+
+	return fmt.Errorf("log path must be under /var/log/ or the program directory (%s)", cwd)
+}
 
 func newLogger(cfg *LogConfig) *slog.Logger {
 	level := new(slog.LevelVar)
@@ -39,6 +82,13 @@ func newLogger(cfg *LogConfig) *slog.Logger {
 	handlers := []slog.Handler{slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: level})}
 
 	if cfg != nil && cfg.FileEnabled && cfg.File != "" {
+		// Validate path security
+		if err := validateLogPath(cfg.File); err != nil {
+			// Cannot use Logger here due to initialization cycle; use slog directly
+			slog.Warn("log file path rejected", "path", cfg.File, "error", err)
+			return slog.New(slog.NewMultiHandler(handlers...))
+		}
+
 		maxSize := cfg.MaxSizeMB
 		if maxSize <= 0 {
 			maxSize = 100
