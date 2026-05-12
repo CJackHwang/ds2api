@@ -70,3 +70,7 @@ CLAUDE.local.md
 data/
 .codex
 .roomodes
+
+# USER CUSTOM FILES
+MY-PROMPT.md
+LHA-*.md
