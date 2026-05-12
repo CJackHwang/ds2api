@@ -437,7 +437,17 @@
         "featureFlagsTitle": "功能标志",
         "parserV2ModeLabel": "工具解析器 v2 模式",
         "parserV2ModeDesc": "只读。通过 config.json parser_v2.mode 或 DS2API_PARSER_V2 环境变量修改。",
-        "envOverride": "环境变量覆盖"
+        "envOverride": "环境变量覆盖",
+        "logTitle": "日志设置",
+        "logLevel": "日志级别",
+        "logLevelDebug": "调试",
+        "logLevelInfo": "信息",
+        "logLevelWarn": "警告",
+        "logLevelError": "错误",
+        "logFile": "日志文件路径",
+        "logFileEnabled": "启用文件日志",
+        "logMaxSize": "单个文件最大 (MB)",
+        "logMaxBackups": "保留备份数"
     },
     "login": {
         "welcome": "欢迎回来",

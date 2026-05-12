@@ -17,7 +17,7 @@ func (h *Handler) updateSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	adminCfg, runtimeCfg, responsesCfg, embeddingsCfg, autoDeleteCfg, currentInputCfg, thinkingInjCfg, aliasMap, err := parseSettingsUpdateRequest(req)
+	adminCfg, runtimeCfg, responsesCfg, embeddingsCfg, autoDeleteCfg, currentInputCfg, thinkingInjCfg, aliasMap, logCfg, err := parseSettingsUpdateRequest(req)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"detail": err.Error()})
 		return
@@ -82,6 +82,9 @@ func (h *Handler) updateSettings(w http.ResponseWriter, r *http.Request) {
 		if aliasMap != nil {
 			c.ModelAliases = aliasMap
 		}
+		if logCfg != nil {
+			c.Log = *logCfg
+		}
 		return nil
 	}); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"detail": err.Error()})
@@ -89,6 +92,9 @@ func (h *Handler) updateSettings(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.applyRuntimeSettings()
+	if logCfg != nil {
+		config.RefreshLogger(*logCfg)
+	}
 	needsSync := config.IsVercel() || h.Store.IsEnvBacked()
 	writeJSON(w, http.StatusOK, map[string]any{
 		"success":             true,

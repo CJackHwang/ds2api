@@ -301,3 +301,9 @@ func (s *Store) CORSAllowOrigins() []string {
 	}
 	return out
 }
+
+func (s *Store) Log() LogConfig {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.cfg.Log
+}

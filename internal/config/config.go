@@ -25,6 +25,7 @@ type Config struct {
 	Auth              AuthConfig              `json:"auth,omitempty"`
 	ContextEngine     ContextEngineConfig     `json:"context_engine,omitempty"`
 	ParserV2          ParserV2Config          `json:"parser_v2,omitempty"`
+	Log               LogConfig               `json:"log,omitempty"`
 	VercelSyncHash    string                  `json:"_vercel_sync_hash,omitempty"`
 	VercelSyncTime    int64                   `json:"_vercel_sync_time,omitempty"`
 	AdditionalFields  map[string]any          `json:"-"`
@@ -234,4 +235,12 @@ func (c *Config) ClearVercelCredentials() {
 		return
 	}
 	c.Vercel = VercelConfig{}
+}
+
+type LogConfig struct {
+	Level       string `json:"level,omitempty"`        // debug/info/warn/error
+	File        string `json:"file,omitempty"`         // 日志文件路径
+	FileEnabled bool   `json:"file_enabled,omitempty"` // 是否启用文件输出
+	MaxSizeMB   int    `json:"max_size_mb,omitempty"`  // 单个日志文件最大 MB
+	MaxBackups  int    `json:"max_backups,omitempty"`  // 保留的备份文件数量
 }
