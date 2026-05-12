@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -22,6 +23,7 @@ func TestValidateLogPath(t *testing.T) {
 		// Valid: program working directory
 		{name: "cwd", path: cwd + "/app.log", wantErr: false},
 		{name: "cwd_subdir", path: cwd + "/logs/app.log", wantErr: false},
+		{name: "cwd_sibling_prefix", path: filepath.Join(filepath.Dir(cwd), filepath.Base(cwd)+"-evil", "app.log"), wantErr: true},
 
 		// Invalid: parent traversal (resolved absolute path still contains ..)
 		{name: "parent_traversal", path: "/var/log/../../../etc/passwd", wantErr: true},
@@ -94,6 +96,28 @@ func TestLogConfigSetters(t *testing.T) {
 	}
 	if cfg.MaxBackups != 5 {
 		t.Errorf("expected max_backups 5, got %d", cfg.MaxBackups)
+	}
+}
+
+func TestConfigCodecPreservesLogConfig(t *testing.T) {
+	var cfg Config
+	if err := json.Unmarshal([]byte(`{"log":{"level":"warn","file":"logs/app.log","file_enabled":true,"max_size_mb":64,"max_backups":7}}`), &cfg); err != nil {
+		t.Fatalf("unmarshal config failed: %v", err)
+	}
+	clone := cfg.Clone()
+	if clone.Log.Level != "warn" || clone.Log.File != "logs/app.log" || !clone.Log.FileEnabled || clone.Log.MaxSizeMB != 64 || clone.Log.MaxBackups != 7 {
+		t.Fatalf("clone lost log config: %#v", clone.Log)
+	}
+	b, err := json.Marshal(clone)
+	if err != nil {
+		t.Fatalf("marshal config failed: %v", err)
+	}
+	var roundTrip Config
+	if err := json.Unmarshal(b, &roundTrip); err != nil {
+		t.Fatalf("round-trip unmarshal config failed: %v", err)
+	}
+	if roundTrip.Log.Level != "warn" || roundTrip.Log.File != "logs/app.log" || !roundTrip.Log.FileEnabled || roundTrip.Log.MaxSizeMB != 64 || roundTrip.Log.MaxBackups != 7 {
+		t.Fatalf("round trip lost log config: %#v", roundTrip.Log)
 	}
 }
 

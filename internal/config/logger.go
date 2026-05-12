@@ -46,11 +46,19 @@ func validateLogPath(path string) error {
 		return fmt.Errorf("cannot determine working directory: %w", err)
 	}
 	cwd = filepath.Clean(cwd)
-	if strings.HasPrefix(cleaned, cwd) {
+	if pathWithinDir(cleaned, cwd) {
 		return nil
 	}
 
 	return fmt.Errorf("log path must be under /var/log/ or the program directory (%s)", cwd)
+}
+
+func pathWithinDir(path, dir string) bool {
+	rel, err := filepath.Rel(filepath.Clean(dir), filepath.Clean(path))
+	if err != nil {
+		return false
+	}
+	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator)) && !filepath.IsAbs(rel))
 }
 
 func newLogger(cfg *LogConfig) *slog.Logger {
