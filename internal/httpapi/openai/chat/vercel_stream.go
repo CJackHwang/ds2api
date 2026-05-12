@@ -96,7 +96,7 @@ func (h *Handler) handleVercelStreamPrepare(w http.ResponseWriter, r *http.Reque
 	}
 
 	payload := stdReq.CompletionPayload(sessionID)
-	leaseID := h.holdStreamLease(a)
+	leaseID := h.holdStreamLease(a, sessionID)
 	if leaseID == "" {
 		writeOpenAIError(w, http.StatusInternalServerError, "failed to create stream lease")
 		return
@@ -140,9 +140,13 @@ func (h *Handler) handleVercelStreamRelease(w http.ResponseWriter, r *http.Reque
 		writeOpenAIError(w, http.StatusBadRequest, "lease_id is required")
 		return
 	}
-	if !h.releaseStreamLease(leaseID) {
+	ok, leaseAuth, sessionID := h.releaseStreamLease(leaseID)
+	if !ok {
 		writeOpenAIError(w, http.StatusNotFound, "stream lease not found")
 		return
+	}
+	if sessionID != "" && leaseAuth != nil {
+		h.autoDeleteRemoteSession(r.Context(), leaseAuth, sessionID)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"success": true})
 }
@@ -216,7 +220,7 @@ func vercelInternalSecret() string {
 	return "admin"
 }
 
-func (h *Handler) holdStreamLease(a *auth.RequestAuth) string {
+func (h *Handler) holdStreamLease(a *auth.RequestAuth, sessionID string) string {
 	if a == nil {
 		return ""
 	}
@@ -234,6 +238,7 @@ func (h *Handler) holdStreamLease(a *auth.RequestAuth) string {
 	leaseID := newLeaseID()
 	h.streamLeases[leaseID] = streamLease{
 		Auth:      a,
+		SessionID: sessionID,
 		ExpiresAt: now.Add(ttl),
 	}
 	h.leaseMu.Unlock()
@@ -255,10 +260,10 @@ func (h *Handler) lookupStreamLeaseAuth(leaseID string) *auth.RequestAuth {
 	return lease.Auth
 }
 
-func (h *Handler) releaseStreamLease(leaseID string) bool {
+func (h *Handler) releaseStreamLease(leaseID string) (bool, *auth.RequestAuth, string) {
 	leaseID = strings.TrimSpace(leaseID)
 	if leaseID == "" {
-		return false
+		return false, nil, ""
 	}
 
 	h.leaseMu.Lock()
@@ -271,12 +276,12 @@ func (h *Handler) releaseStreamLease(leaseID string) bool {
 	h.releaseExpiredAuths(expired)
 
 	if !ok {
-		return false
+		return false, nil, ""
 	}
 	if h.Auth != nil {
 		h.Auth.Release(lease.Auth)
 	}
-	return true
+	return true, lease.Auth, lease.SessionID
 }
 
 func (h *Handler) popExpiredLeasesLocked(now time.Time) []*auth.RequestAuth {
