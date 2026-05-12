@@ -33,6 +33,7 @@ type Handler struct {
 
 type streamLease struct {
 	Auth      *auth.RequestAuth
+	SessionID string
 	ExpiresAt time.Time
 }
 
