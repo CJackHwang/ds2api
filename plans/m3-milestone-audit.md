@@ -16,7 +16,7 @@
 | S3 | Context Engine — reasoning summary + doc sync | `feat/m3-context-reasoning-summary` | `feat(context-engine): M3 Stage 3` + 3 correctness fixes | ✅ |
 | S4 | Tool Parser — fuzz/benchmark smoke | `feat/m3-toolparser-fuzz-bench` | `feat(toolparser): M3 Stage 4` | ✅ |
 | S5 | Tool Parser — shadow diff confidence threshold | `feat/m3-toolparser-shadow-convergence` | `feat(toolparser): M3 Stage 5` | ✅ |
-| S6 | 跨主题 E2E pipeline tests + smoke checklist | `feat/m3-crosstheme-e2e` | `feat(crosstheme): M3 Stage 6` | ✅ |
+| S6 | 跨主题 E2E pipeline tests + smoke checklist | `feat/m3-crosstheme-e2e` | `feat(crosstheme): M3 Stage 6` | automated ✅ / live smoke ⏳ |
 | S7 | Governance — Provider abstraction design doc | `docs/governance-provider-abstraction` | `docs(governance): M3 Stage 7` | ✅ |
 | S8 | 默认值晋级 enforce checklist + DEPLOY.md | `chore/m3-enforce-checklist` | `docs(governance): M3 Stage 8` | ✅ |
 | S9 | 收口审计（本文档） | `chore/m3-milestone-audit` | — | ✅ |
@@ -76,6 +76,7 @@
 
 | 项目 | 说明 | 目标里程碑 |
 |------|------|-----------|
+| Stage 6 live smoke checklist（8 项 live 验证） | `plans/stage6-manual-smoke.md` Status: PENDING | M4 Pre-release |
 | `DS2API_CONTEXT_ENGINE=shadow` staging 部署 + 24h 流量收集 | 发布候选 B1 最后一项 | M4 Pre-release |
 | `DS2API_PARSER_V2=shadow` staging 部署 + 72h diff 数据 | 发布候选 A2 数据门 | M4 Pre-release |
 | `internal/provider/` 具体实现（deepseek-web / gemini 适配器） | Provider 接口落地 | M4 |
