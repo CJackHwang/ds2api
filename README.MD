@@ -14,6 +14,7 @@
 
 [![Deploy on Zeabur](https://zeabur.com/button.svg)](https://zeabur.com/templates/L4CFHP)
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/CJackHwang/ds2api)
+[![Deploy to PandaStack](https://dashboard.pandastack.io/deploy-button.svg)](https://dashboard.pandastack.io/deploy?repo=CJackHwang/ds2api&type=static&buildCmd=npm+run+build&outputDir=dist)
 
 语言 / Language: [中文](README.MD) | [English](README.en.md)
 
