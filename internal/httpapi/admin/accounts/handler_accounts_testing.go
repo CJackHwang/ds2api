@@ -111,10 +111,13 @@ func (h *Handler) testAccount(ctx context.Context, acc config.Account, model, me
 	}
 	defer func() {
 		status := "failed"
+		msg := ""
 		if ok, _ := result["success"].(bool); ok {
 			status = "ok"
+		} else {
+			msg, _ = result["message"].(string)
 		}
-		_ = h.Store.UpdateAccountTestStatus(identifier, status)
+		_ = h.Store.UpdateAccountTestStatusWithMessage(identifier, status, msg)
 	}()
 	token, err := h.DS.Login(ctx, acc)
 	if err != nil {

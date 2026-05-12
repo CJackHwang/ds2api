@@ -1,9 +1,10 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import en from './locales/en.json'
 import zh from './locales/zh.json'
+import vi from './locales/vi.json'
 
 const STORAGE_KEY = 'ds2api_lang'
-const translations = { en, zh }
+const translations = { en, zh, vi }
 
 const I18nContext = createContext({
     lang: 'zh',
@@ -13,7 +14,11 @@ const I18nContext = createContext({
 
 const getBrowserLang = () => {
     if (typeof navigator === 'undefined') return 'zh'
-    return navigator.language?.toLowerCase().startsWith('zh') ? 'zh' : 'en'
+    const browserLang = navigator.language?.toLowerCase()
+    if (!browserLang) return 'zh'
+    if (browserLang.startsWith('zh')) return 'zh'
+    if (browserLang.startsWith('vi')) return 'vi'
+    return 'en'
 }
 
 const getValue = (obj, key) => {

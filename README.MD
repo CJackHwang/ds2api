@@ -15,7 +15,7 @@
 [![Deploy on Zeabur](https://zeabur.com/button.svg)](https://zeabur.com/templates/L4CFHP)
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/CJackHwang/ds2api)
 
-语言 / Language: [中文](README.MD) | [English](README.en.md)
+语言 / Language: [中文](README.MD) | [English](README.en.md) | [Tiếng Việt](README.vi.md)
 
 将 DeepSeek Web 对话能力转换为 OpenAI、Claude 与 Gemini 兼容 API。核心后端以 **Go** 实现，Vercel 流式桥接额外使用少量 Node Runtime，前端为 React WebUI 管理台（源码在 `webui/`，部署时自动构建到 `static/admin`）。
 
@@ -303,6 +303,8 @@ base64 < config.json | tr -d '\n'
 ### 方式四：本地源码运行
 
 **前置要求**：Go 1.26+，Node.js `20.19+` 或 `22.12+`（仅在需要构建 WebUI 时；CI / Docker 构建使用 Node 24）；同时确保 `npm` 可用，建议 `npm 10+`
+
+**Windows 一键启动**：双击仓库根目录的 `start.bat`。它会在缺少 Go 时自动下载安装 Go 1.26.3，首次运行时自动将 `config.example.json` 复制为 `config.json` 并用记事本打开，从 `.env` 读取 `PORT`，然后执行 `go run ./cmd/ds2api`，无需任何手动配置。
 
 ```bash
 # 1. 克隆仓库

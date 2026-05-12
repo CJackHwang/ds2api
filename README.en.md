@@ -14,7 +14,7 @@
 [![Deploy on Zeabur](https://zeabur.com/button.svg)](https://zeabur.com/templates/L4CFHP)
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/CJackHwang/ds2api)
 
-Language: [中文](README.MD) | [English](README.en.md)
+Language: [中文](README.MD) | [English](README.en.md) | [Tiếng Việt](README.vi.md)
 
 DS2API converts DeepSeek Web chat capability into OpenAI-compatible, Claude-compatible, and Gemini-compatible APIs. The core backend is Go-based, with a small Node Runtime bridge used for Vercel streaming, and the React WebUI admin panel lives in `webui/` (build output auto-generated to `static/admin` during deployment).
 
@@ -291,6 +291,8 @@ For detailed deployment instructions, see the [Deployment Guide](docs/DEPLOY.en.
 ### Option 4: Local Run
 
 **Prerequisites**: Go 1.26+, Node.js `20.19+` or `22.12+` (only if building WebUI locally; CI / Docker builds use Node 24), and npm available; npm 10+ is recommended
+
+**Windows one-click launcher**: double-click `start.bat` in the repo root. It auto-installs Go 1.26.3 if missing, copies `config.example.json` to `config.json` on first run (and opens it in Notepad), reads `PORT` from `.env`, then runs `go run ./cmd/ds2api`. No manual setup needed.
 
 ```bash
 # 1. Clone

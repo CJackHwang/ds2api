@@ -2,7 +2,8 @@
     "language": {
         "label": "语言",
         "english": "English",
-        "chinese": "中文"
+        "chinese": "中文",
+        "vietnamese": "越南语"
     },
     "nav": {
         "accounts": {
@@ -109,6 +110,8 @@
         "available": "可用",
         "inUse": "正在使用",
         "totalPool": "账号池总数",
+        "failedPool": "不可用",
+        "failedPoolHint": "刷新 Token 重新验证",
         "accountsUnit": "个账号",
         "threadsUnit": "线程",
         "apiKeysTitle": "API 密钥",
