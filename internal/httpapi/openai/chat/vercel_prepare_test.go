@@ -3,6 +3,7 @@ package chat
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -85,10 +86,10 @@ func TestStreamLeaseLifecycle(t *testing.T) {
 	if leaseID == "" {
 		t.Fatalf("expected non-empty lease id")
 	}
-	if ok, _, _ := h.releaseStreamLease(leaseID); !ok {
+	if ok, _, _, _ := h.releaseStreamLease(leaseID); !ok {
 		t.Fatalf("expected lease release success")
 	}
-	if ok, _, _ := h.releaseStreamLease(leaseID); ok {
+	if ok, _, _, _ := h.releaseStreamLease(leaseID); ok {
 		t.Fatalf("expected duplicate release to fail")
 	}
 }
@@ -471,12 +472,88 @@ func TestHandleVercelStreamSwitchReuploadsCurrentInputFile(t *testing.T) {
 	if !strings.Contains(promptText, "DS2API_TOOLS.txt") {
 		t.Fatalf("expected switched payload prompt to retain tools file reference, got %q", promptText)
 	}
-	ok, _, releasedSessionID := h.releaseStreamLease(leaseID)
+	ok, _, releasedSessionID, pendingCleanups := h.releaseStreamLease(leaseID)
 	if !ok {
 		t.Fatalf("expected lease to remain releasable after switch")
 	}
 	if releasedSessionID != "session-new" {
 		t.Fatalf("expected release to use switched session, got %q", releasedSessionID)
+	}
+	if len(pendingCleanups) != 1 || pendingCleanups[0].SessionID != "session-old" || pendingCleanups[0].DeepSeekToken != "token-acc1@test.com" {
+		t.Fatalf("expected old session cleanup to be retained, got %#v", pendingCleanups)
+	}
+}
+
+func TestHandleVercelStreamSwitchReleaseCleansOldSessionAfterReuploadFailure(t *testing.T) {
+	t.Setenv("VERCEL", "1")
+	t.Setenv("DS2API_VERCEL_INTERNAL_SECRET", "stream-secret")
+	t.Setenv("DS2API_CONFIG_JSON", `{
+		"keys":["managed-key"],
+		"accounts":[
+			{"email":"acc1@test.com","password":"pwd"},
+			{"email":"acc2@test.com","password":"pwd"}
+		]
+	}`)
+	openaihistory.ResetCurrentInputToolsFileCacheForTesting()
+
+	store := config.LoadStore()
+	resolver := auth.NewResolver(store, account.NewPool(store), func(_ context.Context, acc config.Account) (string, error) {
+		return "token-" + acc.Identifier(), nil
+	})
+	authReq := httptest.NewRequest(http.MethodPost, "/", nil)
+	authReq.Header.Set("Authorization", "Bearer managed-key")
+	a, err := resolver.Determine(authReq)
+	if err != nil {
+		t.Fatalf("determine failed: %v", err)
+	}
+
+	ds := &inlineUploadDSStub{uploadErr: errors.New("upload failed")}
+	h := &Handler{
+		Store: mockOpenAIConfig{
+			autoDeleteMode:      "single",
+			currentInputEnabled: true,
+		},
+		Auth: resolver,
+		DS:   ds,
+	}
+	stdReq := promptcompat.StandardRequest{
+		RequestedModel:          "deepseek-v4-flash",
+		ResolvedModel:           "deepseek-v4-flash",
+		ResponseModel:           "deepseek-v4-flash",
+		FinalPrompt:             "Continue from the latest state in the attached DS2API_HISTORY.txt context.",
+		HistoryText:             "# DS2API_HISTORY.txt\n\n=== 1. USER ===\nhello\n",
+		CurrentInputFileApplied: true,
+		CurrentInputFileID:      "file-old",
+		RefFileIDs:              []string{"file-old"},
+	}
+	leaseID := h.holdStreamLease(a, "session-old", stdReq)
+	switchReq := httptest.NewRequest(http.MethodPost, "/v1/chat/completions?__stream_switch=1", strings.NewReader(`{"lease_id":"`+leaseID+`"}`))
+	switchReq.Header.Set("X-Ds2-Internal-Token", "stream-secret")
+	switchRec := httptest.NewRecorder()
+
+	h.handleVercelStreamSwitch(switchRec, switchReq)
+
+	if switchRec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected switch failure, got %d body=%s", switchRec.Code, switchRec.Body.String())
+	}
+
+	releaseReq := httptest.NewRequest(http.MethodPost, "/v1/chat/completions?__stream_release=1", strings.NewReader(`{"lease_id":"`+leaseID+`"}`))
+	releaseReq.Header.Set("X-Ds2-Internal-Token", "stream-secret")
+	releaseRec := httptest.NewRecorder()
+
+	h.handleVercelStreamRelease(releaseRec, releaseReq)
+
+	if releaseRec.Code != http.StatusOK {
+		t.Fatalf("expected release 200, got %d body=%s", releaseRec.Code, releaseRec.Body.String())
+	}
+	if ds.deleteCallCount != 1 {
+		t.Fatalf("expected old session cleanup, got delete count %d", ds.deleteCallCount)
+	}
+	if ds.deletedSessionID != "session-old" {
+		t.Fatalf("expected old session to be deleted, got %q", ds.deletedSessionID)
+	}
+	if ds.deletedToken != "token-acc1@test.com" {
+		t.Fatalf("expected old account token for cleanup, got %q", ds.deletedToken)
 	}
 }
 

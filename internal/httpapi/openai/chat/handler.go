@@ -32,10 +32,17 @@ type Handler struct {
 }
 
 type streamLease struct {
-	Auth      *auth.RequestAuth
-	SessionID string
-	Standard  promptcompat.StandardRequest
-	ExpiresAt time.Time
+	Auth            *auth.RequestAuth
+	SessionID       string
+	Standard        promptcompat.StandardRequest
+	PendingCleanups []streamLeaseSessionCleanup
+	ExpiresAt       time.Time
+}
+
+type streamLeaseSessionCleanup struct {
+	AccountID     string
+	DeepSeekToken string
+	SessionID     string
 }
 
 func stripReferenceMarkersEnabled() bool {

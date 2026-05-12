@@ -141,13 +141,16 @@ func (h *Handler) handleVercelStreamRelease(w http.ResponseWriter, r *http.Reque
 		writeOpenAIError(w, http.StatusBadRequest, "lease_id is required")
 		return
 	}
-	ok, leaseAuth, sessionID := h.releaseStreamLease(leaseID)
+	ok, leaseAuth, sessionID, pendingCleanups := h.releaseStreamLease(leaseID)
 	if !ok {
 		writeOpenAIError(w, http.StatusNotFound, "stream lease not found")
 		return
 	}
 	if h.Auth != nil && leaseAuth != nil {
 		defer h.Auth.Release(leaseAuth)
+	}
+	for _, cleanup := range pendingCleanups {
+		h.autoDeleteRemoteSession(r.Context(), cleanup.auth(), cleanup.SessionID)
 	}
 	if sessionID != "" && leaseAuth != nil {
 		h.autoDeleteRemoteSession(r.Context(), leaseAuth, sessionID)
@@ -223,12 +226,14 @@ func (h *Handler) handleVercelStreamSwitch(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	a := lease.Auth
+	oldCleanup := newStreamLeaseSessionCleanup(a, lease.SessionID)
 	if !a.UseConfigToken || !a.SwitchAccount(r.Context()) {
 		writeOpenAIErrorWithCode(w, http.StatusTooManyRequests, "Upstream account hit a rate limit and returned reasoning without visible output.", "upstream_empty_output")
 		return
 	}
 
 	stdReq := lease.Standard
+	h.updateStreamLeaseAfterSwitch(leaseID, "", stdReq, oldCleanup)
 	var err error
 	if stdReq.CurrentInputFileApplied {
 		stdReq, err = (history.Service{Store: h.Store, DS: h.DS}).ReuploadAppliedCurrentInputFile(r.Context(), a, stdReq)
@@ -243,6 +248,7 @@ func (h *Handler) handleVercelStreamSwitch(w http.ResponseWriter, r *http.Reques
 		writeOpenAIError(w, http.StatusUnauthorized, "Account token is invalid. Please re-login the account in admin.")
 		return
 	}
+	h.updateStreamLeaseAfterSwitch(leaseID, sessionID, stdReq)
 	powHeader, err := h.DS.GetPow(r.Context(), a, 3)
 	if err != nil {
 		writeOpenAIError(w, http.StatusUnauthorized, "Failed to get PoW (invalid token or unknown error).")
@@ -252,7 +258,6 @@ func (h *Handler) handleVercelStreamSwitch(w http.ResponseWriter, r *http.Reques
 		writeOpenAIError(w, http.StatusUnauthorized, "Account token is invalid. Please re-login the account in admin.")
 		return
 	}
-	h.updateStreamLeaseAfterSwitch(leaseID, sessionID, stdReq)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"session_id":       sessionID,
 		"lease_id":         leaseID,
@@ -358,7 +363,7 @@ func (h *Handler) lookupStreamLeaseAuth(leaseID string) *auth.RequestAuth {
 	return lease.Auth
 }
 
-func (h *Handler) updateStreamLeaseAfterSwitch(leaseID, sessionID string, stdReq promptcompat.StandardRequest) {
+func (h *Handler) updateStreamLeaseAfterSwitch(leaseID, sessionID string, stdReq promptcompat.StandardRequest, pendingCleanups ...streamLeaseSessionCleanup) {
 	leaseID = strings.TrimSpace(leaseID)
 	if leaseID == "" {
 		return
@@ -371,13 +376,18 @@ func (h *Handler) updateStreamLeaseAfterSwitch(leaseID, sessionID string, stdReq
 	}
 	lease.SessionID = sessionID
 	lease.Standard = stdReq
+	for _, cleanup := range pendingCleanups {
+		if cleanup.valid() {
+			lease.PendingCleanups = append(lease.PendingCleanups, cleanup)
+		}
+	}
 	h.streamLeases[leaseID] = lease
 }
 
-func (h *Handler) releaseStreamLease(leaseID string) (bool, *auth.RequestAuth, string) {
+func (h *Handler) releaseStreamLease(leaseID string) (bool, *auth.RequestAuth, string, []streamLeaseSessionCleanup) {
 	leaseID = strings.TrimSpace(leaseID)
 	if leaseID == "" {
-		return false, nil, ""
+		return false, nil, "", nil
 	}
 
 	h.leaseMu.Lock()
@@ -390,9 +400,31 @@ func (h *Handler) releaseStreamLease(leaseID string) (bool, *auth.RequestAuth, s
 	h.releaseExpiredAuths(expired)
 
 	if !ok {
-		return false, nil, ""
+		return false, nil, "", nil
 	}
-	return true, lease.Auth, lease.SessionID
+	return true, lease.Auth, lease.SessionID, append([]streamLeaseSessionCleanup(nil), lease.PendingCleanups...)
+}
+
+func newStreamLeaseSessionCleanup(a *auth.RequestAuth, sessionID string) streamLeaseSessionCleanup {
+	if a == nil {
+		return streamLeaseSessionCleanup{}
+	}
+	return streamLeaseSessionCleanup{
+		AccountID:     strings.TrimSpace(a.AccountID),
+		DeepSeekToken: strings.TrimSpace(a.DeepSeekToken),
+		SessionID:     strings.TrimSpace(sessionID),
+	}
+}
+
+func (c streamLeaseSessionCleanup) valid() bool {
+	return c.DeepSeekToken != "" && c.SessionID != ""
+}
+
+func (c streamLeaseSessionCleanup) auth() *auth.RequestAuth {
+	return &auth.RequestAuth{
+		AccountID:     strings.TrimSpace(c.AccountID),
+		DeepSeekToken: strings.TrimSpace(c.DeepSeekToken),
+	}
 }
 
 func (h *Handler) popExpiredLeasesLocked(now time.Time) []*auth.RequestAuth {
