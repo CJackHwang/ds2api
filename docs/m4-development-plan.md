@@ -71,6 +71,15 @@ DoD：
 
 目标：把已有历史、响应归档、抓包和结构化日志变成可执行诊断报告。
 
+Phase 切分：
+
+| Phase | 目标 | PR |
+|---|---|---|
+| M4.1-P1 | 建立 `internal/historyanalyzer` 核心模型、规则接口、规则 ID 元数据、脱敏证据构造 | `feat/m4-history-analyzer-core` |
+| M4.1-P2 | 接入本地历史数据导入与归一化，输出 `AnalysisRecord` | `feat/m4-history-analyzer-ingest` |
+| M4.1-P3 | 实现首批确定性 HA_* 规则和合成样本单测 | `feat/m4-history-analyzer-rules` |
+| M4.1-P4 | 增加离线 CLI、Markdown/JSON 输出和 fixture candidate 清单 | `feat/m4-history-analyzer-cli` |
+
 任务：
 
 - 新建 `internal/historyanalyzer` 规则引擎，规则和报告格式见 [history-analyzer-design.md](./history-analyzer-design.md)。
@@ -197,15 +206,17 @@ main
 | 1 | `docs/m4-readiness-template` | M4.0-P1：完成 release readiness 文档、报告模板、晋级规则和 Phase Closure Review |
 | 2 | `feat/m4-readiness-model` | M4.0-P2：readiness 报告模型、样例、Markdown 渲染 |
 | 3 | `feat/m4-readiness-cli` | M4.0-P3：本地 CLI、脚本、使用文档 |
-| 4 | `feat/m4-history-analyzer-core` | 规则模型、报告结构、脱敏工具复用 |
-| 5 | `feat/m4-history-analyzer-cli` | 离线 CLI、Markdown/JSON 输出 |
-| 6 | `feat/m4-shadow-report` | Parser / Context shadow report 汇总 |
-| 7 | `feat/m4-auto-continue-config` | 配置、flag、shadow detector |
-| 8 | `feat/m4-auto-continue-nonstream` | OpenAI Chat non-stream continuation |
-| 9 | `feat/m4-auto-continue-stream` | OpenAI Chat stream merge |
-| 10 | `feat/m4-capability-router-profile` | capability profile、trace、WebUI matrix |
-| 11 | `feat/m4-webui-diagnostics` | WebUI 诊断页和报告展示 |
-| 12 | `feat/m5-agent-context-shadow` | Agent profile / Task Memory shadow |
+| 4 | `feat/m4-history-analyzer-core` | M4.1-P1：规则模型、报告结构、脱敏证据、规则 ID 元数据 |
+| 5 | `feat/m4-history-analyzer-ingest` | M4.1-P2：本地历史数据导入与归一化 |
+| 6 | `feat/m4-history-analyzer-rules` | M4.1-P3：首批 HA_* 确定性规则和合成样本单测 |
+| 7 | `feat/m4-history-analyzer-cli` | M4.1-P4：离线 CLI、Markdown/JSON 输出、fixtures 候选清单 |
+| 8 | `feat/m4-shadow-report` | Parser / Context shadow report 汇总 |
+| 9 | `feat/m4-auto-continue-config` | 配置、flag、shadow detector |
+| 10 | `feat/m4-auto-continue-nonstream` | OpenAI Chat non-stream continuation |
+| 11 | `feat/m4-auto-continue-stream` | OpenAI Chat stream merge |
+| 12 | `feat/m4-capability-router-profile` | capability profile、trace、WebUI matrix |
+| 13 | `feat/m4-webui-diagnostics` | WebUI 诊断页和报告展示 |
+| 14 | `feat/m5-agent-context-shadow` | Agent profile / Task Memory shadow |
 
 ## 5. 门禁
 

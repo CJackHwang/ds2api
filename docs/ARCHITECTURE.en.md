@@ -38,6 +38,7 @@ ds2api/
 │   ├── format/                           # Response formatting layer
 │   │   ├── claude/                       # Claude output formatting
 │   │   └── openai/                       # OpenAI output formatting
+│   ├── historyanalyzer/                  # Offline history diagnostics report model, rule interfaces, and redacted evidence
 │   ├── httpapi/                          # HTTP surfaces: OpenAI/Claude/Gemini/Admin
 │   │   ├── admin/                        # Admin API root assembly and resource packages
 │   │   ├── claude/                       # Claude HTTP protocol adapter
@@ -203,6 +204,7 @@ flowchart LR
 - `internal/js/chat-stream` + `api/chat-stream.js`: Vercel Node streaming bridge; Go prepare/release owns auth, account lease, and completion payload assembly, while Node relays real-time SSE with Go-aligned finalization and tool sieve semantics.
 - `internal/stream` + `internal/sse`: Go stream parsing and incremental assembly.
 - `internal/toolcall` + `internal/toolstream`: DSML shell compatibility plus canonical XML tool-call parsing and anti-leak sieve; DSML is normalized back to XML at the entrypoint, and internal parsing remains XML-based.
+- `internal/historyanalyzer`: offline History Analyzer core. It defines `AnalysisRecord`, `Finding`, `Report`, rule interfaces, rule ID metadata, and redacted evidence helpers. It does not read history files, execute a CLI, or participate in the primary request path; ingestion and concrete rules are layered in later M4.1 phases.
 - `internal/httpapi/admin/*`: Admin API root assembly plus auth/accounts/config/settings/proxies/rawsamples/vercel/history/devcapture/version resource packages.
 - `internal/chathistory`: server-side conversation history persistence, pagination, detail lookup, and retention policy.
 - `internal/responsehistory`: DeepSeek upstream response archive, saving assistant text, thinking, raw tool-call fragments, and streaming detail before protocol rendering/trimming.

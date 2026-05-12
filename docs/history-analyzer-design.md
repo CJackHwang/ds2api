@@ -44,7 +44,20 @@ History Analyzer 回答五个问题：
 - 不读取未授权的外部日志系统。
 - 不把完整 prompt / token / 账号凭证写入报告。
 
-## 4. 报告模型
+## 4. Phase 切分
+
+M4.1 按 stacked PR 推进：
+
+| Phase | 目标 | 边界 |
+|---|---|---|
+| P1 Core | `internal/historyanalyzer` 核心模型、规则接口、规则 ID 元数据、脱敏证据构造 | 不读取历史文件、不实现具体 HA_* 检测、不提供 CLI |
+| P2 Ingest | 把 `chathistory` / `responsehistory` / dev capture / raw sample 引用归一成 `AnalysisRecord` | 只做数据接入和脱敏摘要，不输出最终报告 |
+| P3 Rules | 实现首批确定性规则和合成样本单测 | 不调用 LLM，不自动修改 fixtures |
+| P4 CLI | 离线 CLI、Markdown/JSON 输出、fixture candidate 清单 | 不接 Admin API，不影响主请求链路 |
+
+每个 Phase 完成后执行偏差检查：是否默认脱敏、是否未改主请求链路、是否没有提前切换 feature flag、是否仍能被 Release Readiness 报告引用。
+
+## 5. 报告模型
 
 ```go
 type Finding struct {
@@ -67,7 +80,14 @@ type Report struct {
 }
 ```
 
-## 5. 规则集
+P1 已将完整报告结构拆为：
+
+- `AnalysisRecord`：规则输入的统一中间记录。
+- `Finding`：单条异常诊断，包含 rule_id、category、severity、request_id、session_id、evidence、suggested_action。
+- `Report`：离线分析报告，包含 generated_at、scope、summary、findings、readiness 和 metadata。
+- `Rule`：确定性规则接口，后续 P3 逐条实现 HA_* 检测。
+
+## 6. 规则集
 
 | Rule ID | Category | 检测内容 | 建议动作 |
 |---|---|---|---|
@@ -82,7 +102,7 @@ type Report struct {
 | `HA_ACCOUNT_RETRY_RECOVERED` | account_runtime | 空输出 / 429 后账号切换恢复 | 记录账号健康但不一定报错 |
 | `HA_ACCOUNT_RETRY_EXHAUSTED` | account_runtime | retry / account switch 后仍失败 | 检查账号池和限流 |
 
-## 6. CLI 形态
+## 7. CLI 形态
 
 建议命令：
 
@@ -100,7 +120,7 @@ go run ./cmd/history-analyzer \
 ./tests/scripts/run-history-analyzer.sh
 ```
 
-## 7. Admin API 与 WebUI
+## 8. Admin API 与 WebUI
 
 第二阶段再接 Admin API：
 
@@ -111,7 +131,7 @@ go run ./cmd/history-analyzer \
 
 WebUI 第一版只展示报告，不负责执行重分析。
 
-## 8. 验收
+## 9. 验收
 
 - 至少覆盖 10 条合成历史样本。
 - 每个 P0 规则都有单元测试。
