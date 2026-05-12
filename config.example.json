@@ -76,5 +76,13 @@
   "context_engine": {
     "_comment": "Context Engine feature flag: off (default, safe) | shadow (log plan) | enforce (use new engine)",
     "mode": "off"
+  },
+  "log": {
+    "_comment": "日志配置：file为空时使用默认路径 logs/ds2api.log",
+    "level": "info",
+    "file": "logs/ds2api.log",
+    "file_enabled": false,
+    "max_size_mb": 100,
+    "max_backups": 3
   }
 }

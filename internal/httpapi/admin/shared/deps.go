@@ -39,6 +39,10 @@ type ConfigStore interface {
 	ThinkingInjectionPrompt() string
 	AutoDeleteSessions() bool
 	ParserV2Mode() string
+	Log() config.LogConfig
+	LogLevel() string
+	LogFile() string
+	LogFileEnabled() bool
 }
 
 type PoolController interface {

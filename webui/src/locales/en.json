@@ -447,7 +447,8 @@
         "logFile": "Log file path",
         "logFileEnabled": "Enable file logging",
         "logMaxSize": "Max size (MB)",
-        "logMaxBackups": "Max backups"
+        "logMaxBackups": "Max backups",
+        "logFileDefault": "Default"
     },
     "login": {
         "welcome": "Welcome back",

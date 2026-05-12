@@ -307,3 +307,32 @@ func (s *Store) Log() LogConfig {
 	defer s.mu.RUnlock()
 	return s.cfg.Log
 }
+
+func (s *Store) LogFile() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.cfg.Log.File != "" {
+		return s.cfg.Log.File
+	}
+	return "logs/ds2api.log" // default
+}
+
+func (s *Store) LogFileEnabled() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.cfg.Log.FileEnabled
+}
+
+func (s *Store) LogLevel() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	level := strings.TrimSpace(s.cfg.Log.Level)
+	if level != "" {
+		return level
+	}
+	// Fallback to LOG_LEVEL env var
+	if envLevel := strings.TrimSpace(os.Getenv("LOG_LEVEL")); envLevel != "" {
+		return strings.ToLower(envLevel)
+	}
+	return "info" // default
+}

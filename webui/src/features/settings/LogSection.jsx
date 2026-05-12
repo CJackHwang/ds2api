@@ -28,9 +28,14 @@ export default function LogSection({ t, form, setForm }) {
                             ...prev,
                             log: { ...prev.log, file: e.target.value },
                         }))}
-                        placeholder="/var/log/ds2api.log"
+                        placeholder="logs/ds2api.log"
                         className="w-full bg-background border border-border rounded-lg px-3 py-2"
                     />
+                    {form.log.file_enabled && !form.log.file && (
+                        <span className="text-xs text-muted-foreground">
+                            {t('settings.logFileDefault')}: logs/ds2api.log
+                        </span>
+                    )}
                 </label>
                 <label className="text-sm space-y-2">
                     <span className="text-muted-foreground">{t('settings.logMaxSize')}</span>

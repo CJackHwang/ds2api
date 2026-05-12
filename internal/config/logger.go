@@ -81,11 +81,20 @@ func newLogger(cfg *LogConfig) *slog.Logger {
 
 	handlers := []slog.Handler{slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: level})}
 
-	if cfg != nil && cfg.FileEnabled && cfg.File != "" {
+	// Apply default log file path if enabled but no path specified
+	filePath := ""
+	if cfg != nil && cfg.FileEnabled {
+		filePath = cfg.File
+		if filePath == "" {
+			filePath = "logs/ds2api.log" // default path
+		}
+	}
+
+	if cfg != nil && cfg.FileEnabled {
 		// Validate path security
-		if err := validateLogPath(cfg.File); err != nil {
+		if err := validateLogPath(filePath); err != nil {
 			// Cannot use Logger here due to initialization cycle; use slog directly
-			slog.Warn("log file path rejected", "path", cfg.File, "error", err)
+			slog.Warn("log file path rejected", "path", filePath, "error", err)
 			return slog.New(slog.NewMultiHandler(handlers...))
 		}
 
@@ -98,7 +107,7 @@ func newLogger(cfg *LogConfig) *slog.Logger {
 			maxBackups = 3
 		}
 		fileHandler := &lumberjack.Logger{
-			Filename:   cfg.File,
+			Filename:   filePath,
 			MaxSize:    maxSize,
 			MaxBackups: maxBackups,
 			Compress:   true,

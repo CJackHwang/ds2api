@@ -447,7 +447,8 @@
         "logFile": "日志文件路径",
         "logFileEnabled": "启用文件日志",
         "logMaxSize": "单个文件最大 (MB)",
-        "logMaxBackups": "保留备份数"
+        "logMaxBackups": "保留备份数",
+        "logFileDefault": "默认路径"
     },
     "login": {
         "welcome": "欢迎回来",
