@@ -256,6 +256,47 @@ func TestUpdateSettingsCurrentInputFilePartialUpdatePreservesMinChars(t *testing
 	}
 }
 
+func TestUpdateSettingsLogPartialUpdatePreservesOmittedFields(t *testing.T) {
+	h := newAdminTestHandler(t, `{
+		"keys":["k1"],
+		"log":{
+			"level":"info",
+			"file":"/tmp/not-allowed.log",
+			"file_enabled":true,
+			"max_size_mb":64,
+			"max_backups":7
+		}
+	}`)
+	payload := map[string]any{
+		"log": map[string]any{
+			"level": "debug",
+		},
+	}
+	b, _ := json.Marshal(payload)
+	req := httptest.NewRequest(http.MethodPut, "/admin/settings", bytes.NewReader(b))
+	rec := httptest.NewRecorder()
+	h.updateSettings(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	snap := h.Store.Snapshot()
+	if snap.Log.Level != "debug" {
+		t.Fatalf("expected log.level=debug, got %#v", snap.Log)
+	}
+	if snap.Log.File != "/tmp/not-allowed.log" {
+		t.Fatalf("expected log.file to be preserved, got %#v", snap.Log)
+	}
+	if !snap.Log.FileEnabled {
+		t.Fatalf("expected log.file_enabled to be preserved, got %#v", snap.Log)
+	}
+	if snap.Log.MaxSizeMB != 64 {
+		t.Fatalf("expected log.max_size_mb to be preserved, got %#v", snap.Log)
+	}
+	if snap.Log.MaxBackups != 7 {
+		t.Fatalf("expected log.max_backups to be preserved, got %#v", snap.Log)
+	}
+}
+
 func TestUpdateSettingsIgnoresHistorySplitPayload(t *testing.T) {
 	h := newAdminTestHandler(t, `{"keys":["k1"]}`)
 	payload := map[string]any{

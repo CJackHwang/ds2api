@@ -47,5 +47,12 @@ func (h *Handler) getSettings(w http.ResponseWriter, _ *http.Request) {
 			"mode":         h.Store.ParserV2Mode(),
 			"env_override": os.Getenv("DS2API_PARSER_V2") != "",
 		},
+		"log": map[string]any{
+			"level":        h.Store.LogLevel(),
+			"file":         h.Store.LogFile(),
+			"file_enabled": h.Store.LogFileEnabled(),
+			"max_size_mb":  snap.Log.MaxSizeMB,
+			"max_backups":  snap.Log.MaxBackups,
+		},
 	})
 }

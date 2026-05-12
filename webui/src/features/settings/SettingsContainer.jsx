@@ -10,6 +10,7 @@ import AutoDeleteSection from './AutoDeleteSection'
 import FeatureFlagsSection from './FeatureFlagsSection'
 import ModelSection from './ModelSection'
 import BackupSection from './BackupSection'
+import LogSection from './LogSection'
 
 export default function SettingsContainer({ onRefresh, onMessage, authFetch, onForceLogout, isVercel = false }) {
     const { t } = useI18n()
@@ -103,6 +104,8 @@ export default function SettingsContainer({ onRefresh, onMessage, authFetch, onF
             <FeatureFlagsSection t={t} form={form} />
 
             <ModelSection t={t} form={form} setForm={setForm} />
+
+            <LogSection t={t} form={form} setForm={setForm} />
 
             <BackupSection
                 t={t}

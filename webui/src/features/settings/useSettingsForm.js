@@ -20,6 +20,7 @@ const DEFAULT_FORM = {
     thinking_injection: { enabled: true, prompt: '', default_prompt: '' },
     model_aliases_text: '{}',
     parser_v2: { mode: 'off', env_override: false },
+    log: { level: 'info', file: '', file_enabled: false, max_size_mb: 100, max_backups: 3 },
 }
 
 function parseJSONMap(raw, fieldName, t) {
@@ -83,6 +84,13 @@ function fromServerForm(data) {
             mode: String(data.parser_v2?.mode || 'off'),
             env_override: Boolean(data.parser_v2?.env_override),
         },
+        log: {
+            level: data.log?.level || 'info',
+            file: data.log?.file || '',
+            file_enabled: Boolean(data.log?.file_enabled),
+            max_size_mb: Number(data.log?.max_size_mb || 100),
+            max_backups: Number(data.log?.max_backups || 3),
+        },
     }
 }
 
@@ -106,6 +114,13 @@ function toServerPayload(form) {
         thinking_injection: {
             enabled: Boolean(form.thinking_injection?.enabled ?? true),
             prompt: String(form.thinking_injection?.prompt || '').trim(),
+        },
+        log: {
+            level: String(form.log?.level || 'info'),
+            file: String(form.log?.file || ''),
+            file_enabled: Boolean(form.log?.file_enabled),
+            max_size_mb: Number(form.log?.max_size_mb || 100),
+            max_backups: Number(form.log?.max_backups || 3),
         },
     }
 }

@@ -17,7 +17,7 @@ func (h *Handler) updateSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	adminCfg, runtimeCfg, responsesCfg, embeddingsCfg, autoDeleteCfg, currentInputCfg, thinkingInjCfg, aliasMap, err := parseSettingsUpdateRequest(req)
+	adminCfg, runtimeCfg, responsesCfg, embeddingsCfg, autoDeleteCfg, currentInputCfg, thinkingInjCfg, aliasMap, logCfg, err := parseSettingsUpdateRequest(req)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"detail": err.Error()})
 		return
@@ -32,6 +32,12 @@ func (h *Handler) updateSettings(w http.ResponseWriter, r *http.Request) {
 	currentInputMinCharsSet := hasNestedSettingsKey(req, "current_input_file", "min_chars")
 	thinkingInjectionEnabledSet := hasNestedSettingsKey(req, "thinking_injection", "enabled")
 	thinkingInjectionPromptSet := hasNestedSettingsKey(req, "thinking_injection", "prompt")
+	logLevelSet := hasNestedSettingsKey(req, "log", "level")
+	logFileSet := hasNestedSettingsKey(req, "log", "file")
+	logFileEnabledSet := hasNestedSettingsKey(req, "log", "file_enabled")
+	logMaxSizeMBSet := hasNestedSettingsKey(req, "log", "max_size_mb")
+	logMaxBackupsSet := hasNestedSettingsKey(req, "log", "max_backups")
+	var refreshedLogCfg config.LogConfig
 
 	if err := h.Store.Update(func(c *config.Config) error {
 		if adminCfg != nil {
@@ -82,6 +88,24 @@ func (h *Handler) updateSettings(w http.ResponseWriter, r *http.Request) {
 		if aliasMap != nil {
 			c.ModelAliases = aliasMap
 		}
+		if logCfg != nil {
+			if logLevelSet {
+				c.Log.Level = logCfg.Level
+			}
+			if logFileSet {
+				c.Log.File = logCfg.File
+			}
+			if logFileEnabledSet {
+				c.Log.FileEnabled = logCfg.FileEnabled
+			}
+			if logMaxSizeMBSet {
+				c.Log.MaxSizeMB = logCfg.MaxSizeMB
+			}
+			if logMaxBackupsSet {
+				c.Log.MaxBackups = logCfg.MaxBackups
+			}
+			refreshedLogCfg = c.Log
+		}
 		return nil
 	}); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"detail": err.Error()})
@@ -89,6 +113,9 @@ func (h *Handler) updateSettings(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.applyRuntimeSettings()
+	if logCfg != nil {
+		config.RefreshLogger(refreshedLogCfg)
+	}
 	needsSync := config.IsVercel() || h.Store.IsEnvBacked()
 	writeJSON(w, http.StatusOK, map[string]any{
 		"success":             true,

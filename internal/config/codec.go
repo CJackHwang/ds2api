@@ -63,6 +63,9 @@ func (c Config) MarshalJSON() ([]byte, error) {
 	if strings.TrimSpace(c.ParserV2.Mode) != "" {
 		m["parser_v2"] = c.ParserV2
 	}
+	if strings.TrimSpace(c.Log.Level) != "" || strings.TrimSpace(c.Log.File) != "" || c.Log.FileEnabled || c.Log.MaxSizeMB > 0 || c.Log.MaxBackups > 0 {
+		m["log"] = c.Log
+	}
 	if c.VercelSyncHash != "" {
 		m["_vercel_sync_hash"] = c.VercelSyncHash
 	}
@@ -156,6 +159,10 @@ func (c *Config) UnmarshalJSON(b []byte) error {
 			if err := json.Unmarshal(v, &c.ParserV2); err != nil {
 				return fmt.Errorf("invalid field %q: %w", k, err)
 			}
+		case "log":
+			if err := json.Unmarshal(v, &c.Log); err != nil {
+				return fmt.Errorf("invalid field %q: %w", k, err)
+			}
 		case "vercel":
 			if err := json.Unmarshal(v, &c.Vercel); err != nil {
 				return fmt.Errorf("invalid field %q: %w", k, err)
@@ -209,6 +216,7 @@ func (c Config) Clone() Config {
 		Auth:             AuthConfig{AllowGeminiQueryKey: cloneBoolPtr(c.Auth.AllowGeminiQueryKey)},
 		ContextEngine:    c.ContextEngine,
 		ParserV2:         c.ParserV2,
+		Log:              c.Log,
 		VercelSyncHash:   c.VercelSyncHash,
 		VercelSyncTime:   c.VercelSyncTime,
 		AdditionalFields: map[string]any{},

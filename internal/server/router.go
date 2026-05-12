@@ -48,6 +48,7 @@ func NewApp() (*App, error) {
 	if err != nil {
 		return nil, fmt.Errorf("load config: %w", err)
 	}
+	config.RefreshLogger(store.Log())
 	pool := account.NewPool(store)
 	var dsClient *dsclient.Client
 	resolver := auth.NewResolver(store, pool, func(ctx context.Context, acc config.Account) (string, error) {

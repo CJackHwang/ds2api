@@ -21,7 +21,6 @@ func main() {
 	if err := config.LoadDotEnv(); err != nil {
 		config.Logger.Warn("[dotenv] load failed", "error", err)
 	}
-	config.RefreshLogger()
 	webui.EnsureBuiltOnStartup()
 	_ = auth.AdminKey()
 	app, err := server.NewApp()

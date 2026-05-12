@@ -437,7 +437,18 @@
         "featureFlagsTitle": "Feature Flags",
         "parserV2ModeLabel": "Tool parser v2 mode",
         "parserV2ModeDesc": "Read-only. Change via config.json parser_v2.mode or DS2API_PARSER_V2 env var.",
-        "envOverride": "env override"
+        "envOverride": "env override",
+        "logTitle": "Logging",
+        "logLevel": "Log level",
+        "logLevelDebug": "Debug",
+        "logLevelInfo": "Info",
+        "logLevelWarn": "Warn",
+        "logLevelError": "Error",
+        "logFile": "Log file path",
+        "logFileEnabled": "Enable file logging",
+        "logMaxSize": "Max size (MB)",
+        "logMaxBackups": "Max backups",
+        "logFileDefault": "Default"
     },
     "login": {
         "welcome": "Welcome back",
