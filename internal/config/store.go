@@ -311,14 +311,56 @@ func mergeRawWithComments(raw, cfg map[string]any) map[string]any {
 	if raw == nil {
 		return cfg
 	}
-	result := make(map[string]any)
-	for k, v := range raw {
-		result[k] = v
+	result := deepMergeComments(raw, cfg)
+	return result
+}
+
+func deepMergeComments(raw, cfg map[string]any) map[string]any {
+	if raw == nil {
+		return cfg
 	}
+	result := make(map[string]any)
 	for k, v := range cfg {
-		result[k] = v
+		if rawV, ok := raw[k]; ok {
+			result[k] = deepMergeValue(rawV, v)
+		} else {
+			result[k] = v
+		}
+	}
+	for k, v := range raw {
+		if _, exists := cfg[k]; !exists {
+			if isCommentKey(k) {
+				result[k] = v
+			}
+		}
 	}
 	return result
+}
+
+func deepMergeValue(rawVal, cfgVal any) any {
+	rawMap, rawOK := rawVal.(map[string]any)
+	cfgMap, cfgOK := cfgVal.(map[string]any)
+	if rawOK && cfgOK {
+		return deepMergeComments(rawMap, cfgMap)
+	}
+	rawArr, rawArrOK := rawVal.([]any)
+	cfgArr, cfgArrOK := cfgVal.([]any)
+	if rawArrOK && cfgArrOK {
+		result := make([]any, len(cfgArr))
+		for i, cfgItem := range cfgArr {
+			if i < len(rawArr) {
+				result[i] = deepMergeValue(rawArr[i], cfgItem)
+			} else {
+				result[i] = cfgItem
+			}
+		}
+		return result
+	}
+	return cfgVal
+}
+
+func isCommentKey(key string) bool {
+	return key == "_comment" || key == "_doc"
 }
 
 func (s *Store) IsEnvBacked() bool {
