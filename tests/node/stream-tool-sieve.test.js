@@ -57,6 +57,38 @@ test('parseToolCalls parses DSML shell as XML-compatible tool call', () => {
   assert.deepEqual(calls[0].input, { path: 'README.MD' });
 });
 
+test('parseToolCalls tolerates fullwidth closing slash in DSML wrapper', () => {
+  const payload = '<｜DSML｜tool_calls><｜DSML｜invoke name="execute_code"><｜DSML｜parameter name="code"><![CDATA[print("hi")]]></｜DSML｜parameter></｜DSML｜invoke><／DSML｜tool_calls>';
+  const calls = parseToolCalls(payload, ['execute_code']);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].name, 'execute_code');
+  assert.deepEqual(calls[0].input, { code: 'print("hi")' });
+});
+
+test('parseToolCalls tolerates sentencepiece separator and fullwidth terminator', () => {
+  const payload = '<｜DSML▁tool_calls｜><｜DSML▁invoke▁name="execute_code"><｜DSML▁parameter▁name="code"><![CDATA[print("hi")]]></｜DSML▁parameter></｜DSML▁invoke></｜DSML▁tool_calls＞';
+  const calls = parseToolCalls(payload, ['execute_code']);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].name, 'execute_code');
+  assert.deepEqual(calls[0].input, { code: 'print("hi")' });
+});
+
+test('parseToolCalls tolerates fullwidth opening delimiter and Unicode attribute confusables', () => {
+  const payload = '＜｜DSML　tool_calls＞＜｜DSML　invoke　name＝“execute_code”＞＜｜DSML　parameter　name＝“code”＞<![CDATA[print("hi")]]>＜／DSML｜parameter＞＜／DSML｜invoke＞＜／DSML｜tool_calls＞';
+  const calls = parseToolCalls(payload, ['execute_code']);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].name, 'execute_code');
+  assert.deepEqual(calls[0].input, { code: 'print("hi")' });
+});
+
+test('parseToolCalls canonicalizes confusable candidate shell only', () => {
+  const payload = '<|\u200b\uff24\u0405\u039cL|to\u03bfl\uff3fcalls><|\ufeffDSML|inv\u03bfk\u0435 n\u0430me\uff1d\u201cexecute_code\u201d><|\u200bDSML|par\u0430meter n\u0430me\uff1d\u201ccode\u201d><![\ufeff\u0421D\u0410T\u0410[print("hi")]]></|\u200bDSML|par\u0430meter></|\u200bDSML|inv\u03bfk\u0435></|\u200b\uff24\u0405\u039cL|to\u03bfl\uff3fcalls>';
+  const calls = parseToolCalls(payload, ['execute_code']);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].name, 'execute_code');
+  assert.deepEqual(calls[0].input, { code: 'print("hi")' });
+});
+
 test('parseToolCalls parses hyphenated DSML shell with here-doc CDATA', () => {
   const payload = `<dsml-tool-calls>
 <dsml-invoke name="Bash">
@@ -344,6 +376,12 @@ test('parseToolCalls ignores collapsed DSML lookalike tag names', () => {
   assert.equal(calls.length, 0);
 });
 
+test('parseToolCalls rejects confusable near-miss tag names', () => {
+  const payload = '<tool_calls><inv\u03bfker name="execute_code"><parameter name="code">pwd</parameter></inv\u03bfker></tool_calls>';
+  const calls = parseToolCalls(payload, ['execute_code']);
+  assert.equal(calls.length, 0);
+});
+
 test('parseToolCalls keeps canonical XML examples inside DSML CDATA', () => {
   const content = '<tool_calls><invoke name="demo"><parameter name="value">x</parameter></invoke></tool_calls>';
   const payload = `<|DSML|tool_calls><|DSML|invoke name="write_file"><|DSML|parameter name="path">notes.md</|DSML|parameter><|DSML|parameter name="content"><![CDATA[${content}]]></|DSML|parameter></|DSML|invoke></|DSML|tool_calls>`;
@@ -358,6 +396,14 @@ test('parseToolCalls preserves simple inline markup inside CDATA as text', () =>
   const calls = parseToolCalls(payload, ['Write']);
   assert.equal(calls.length, 1);
   assert.equal(calls[0].input.description, '<b>urgent</b>');
+});
+
+test('parseToolCalls keeps confusable markup examples inside CDATA as text', () => {
+  const value = '<inv\u03bfke>literal</inv\u03bfke>';
+  const payload = `<tool_calls><invoke name="Write"><parameter name="description"><![\u200b\u0421D\u0410T\u0410[${value}]]></parameter></invoke></tool_calls>`;
+  const calls = parseToolCalls(payload, ['Write']);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].input.description, value);
 });
 
 test('parseToolCalls recovers when CDATA never closes inside a valid wrapper', () => {
@@ -522,6 +568,19 @@ test('parseToolCalls skips prose mention of same wrapper variant', () => {
   assert.equal(calls[0].input.command, 'git status');
 });
 
+test('parseToolCalls ignores inline markdown tool example', () => {
+  const payload = '示例：`<tool_calls><invoke name="read_file"><parameter name="path">README.md</parameter></invoke></tool_calls>`';
+  const calls = parseToolCalls(payload, ['read_file']);
+  assert.equal(calls.length, 0);
+});
+
+test('parseToolCalls preserves backticks inside tool parameters', () => {
+  const payload = '<tool_calls><invoke name="Bash"><parameter name="command">echo `date`</parameter></invoke></tool_calls>';
+  const calls = parseToolCalls(payload, ['Bash']);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].input.command, 'echo `date`');
+});
+
 test('sieve emits tool_calls after prose mentions same wrapper variant', () => {
   const events = runSieve([
     'Summary: support canonical <tool_calls> and DSML <|DSML|tool_calls> wrappers.\n\n',
@@ -536,6 +595,74 @@ test('sieve emits tool_calls after prose mentions same wrapper variant', () => {
   assert.equal(finalCalls[0].name, 'Bash');
   assert.equal(finalCalls[0].input.command, 'git status');
   assert.equal(collectText(events).includes('Summary:'), true);
+});
+
+test('sieve ignores markdown documentation examples', () => {
+  const events = runSieve([
+    '解析器支持多种工具调用格式。\n\n',
+    '入口函数 `ParseToolCalls(text, availableToolNames)` 会返回调用列表。\n\n',
+    '核心流程会解析 XML 格式的 `<tool_calls>` / `<invoke>` 标记。\n\n',
+    '### 标准 XML 结构\n',
+    '```xml\n',
+    '<tool_calls>\n',
+    '  <invoke name="read_file">\n',
+    '    <parameter name="path">config.json</parameter>\n',
+    '  </invoke>\n',
+    '</tool_calls>\n',
+    '```\n\n',
+    'DSML 风格形如 `<invoke name="tool">...</invoke>`，也可能提到 `<tool_calls>` 包裹。\n',
+  ], ['read_file']);
+  const finalCalls = events.filter((evt) => evt.type === 'tool_calls').flatMap((evt) => evt.calls || []);
+  const text = collectText(events);
+  assert.equal(finalCalls.length, 0);
+  assert.equal(text.includes('标准 XML 结构'), true);
+  assert.equal(text.includes('DSML 风格'), true);
+});
+
+test('sieve ignores inline markdown tool example split across chunks', () => {
+  const events = runSieve([
+    '示例：`',
+    '<tool_calls><invoke name="read_file"><parameter name="path">README.md</parameter></invoke></tool_calls>',
+    '` 完毕。',
+  ], ['read_file']);
+  const finalCalls = events.filter((evt) => evt.type === 'tool_calls').flatMap((evt) => evt.calls || []);
+  const text = collectText(events);
+  assert.equal(finalCalls.length, 0);
+  assert.equal(text.includes('<tool_calls>'), true);
+  assert.equal(text.includes('完毕'), true);
+});
+
+test('sieve emits real tool after unclosed inline markdown in same chunk', () => {
+  const events = runSieve([
+    'note with stray ` before real call <tool_calls><invoke name="read_file"><parameter name="path">real.md</parameter></invoke></tool_calls>',
+  ], ['read_file']);
+  const text = collectText(events);
+  const finalCalls = events.filter((evt) => evt.type === 'tool_calls').flatMap((evt) => evt.calls || []);
+  assert.equal(finalCalls.length, 1);
+  assert.equal(finalCalls[0].input.path, 'real.md');
+  assert.equal(text.includes('stray ` before real call'), true);
+});
+
+test('sieve emits real tool after unclosed inline markdown across chunks', () => {
+  const events = runSieve([
+    'note with stray ` before real call ',
+    '<tool_calls><invoke name="read_file"><parameter name="path">real.md</parameter></invoke></tool_calls>',
+  ], ['read_file']);
+  const finalCalls = events.filter((evt) => evt.type === 'tool_calls').flatMap((evt) => evt.calls || []);
+  assert.equal(finalCalls.length, 1);
+  assert.equal(finalCalls[0].input.path, 'real.md');
+});
+
+test('sieve emits real tool after split inline markdown tool example closes', () => {
+  const events = runSieve([
+    '示例：`',
+    '<tool_calls><invoke name="read_file"><parameter name="path">README.md</parameter></invoke></tool_calls>',
+    '` ',
+    '<tool_calls><invoke name="read_file"><parameter name="path">real.md</parameter></invoke></tool_calls>',
+  ], ['read_file']);
+  const finalCalls = events.filter((evt) => evt.type === 'tool_calls').flatMap((evt) => evt.calls || []);
+  assert.equal(finalCalls.length, 1);
+  assert.equal(finalCalls[0].input.path, 'real.md');
 });
 
 test('sieve emits tool_calls for DSML space-separator typo', () => {
@@ -554,6 +681,65 @@ test('sieve emits tool_calls for DSML space-separator typo', () => {
   assert.equal(finalCalls[0].input.file_path, '/tmp/input.txt');
   assert.equal(text.includes('准备读取文件'), true);
   assert.equal(text.includes('<|DSML invoke'), false);
+});
+
+test('sieve emits tool_calls for fullwidth closing slash and preserves suffix text', () => {
+  const input = '<｜DSML｜tool_calls><｜DSML｜invoke name="execute_code"><｜DSML｜parameter name="code"><![CDATA[print("hi")]]></｜DSML｜parameter></｜DSML｜invoke><／DSML｜tool_calls> sao cụm này lại đc trả là 1 message';
+  const events = runSieve([input], ['execute_code']);
+  const text = collectText(events);
+  const finalCalls = events.filter((evt) => evt.type === 'tool_calls').flatMap((evt) => evt.calls || []);
+  assert.equal(finalCalls.length, 1);
+  assert.equal(finalCalls[0].name, 'execute_code');
+  assert.deepEqual(finalCalls[0].input, { code: 'print("hi")' });
+  assert.equal(text, ' sao cụm này lại đc trả là 1 message');
+});
+
+test('sieve emits tool_calls for sentencepiece separator and fullwidth terminator', () => {
+  const input = '<｜DSML▁tool_calls｜><｜DSML▁invoke▁name="execute_code"><｜DSML▁parameter▁name="code"><![CDATA[print("hi")]]></｜DSML▁parameter></｜DSML▁invoke></｜DSML▁tool_calls＞ suffix';
+  const events = runSieve([input], ['execute_code']);
+  const text = collectText(events);
+  const finalCalls = events.filter((evt) => evt.type === 'tool_calls').flatMap((evt) => evt.calls || []);
+  assert.equal(finalCalls.length, 1);
+  assert.equal(finalCalls[0].name, 'execute_code');
+  assert.deepEqual(finalCalls[0].input, { code: 'print("hi")' });
+  assert.equal(text, ' suffix');
+});
+
+test('sieve emits tool_calls for fullwidth opening delimiter and Unicode attribute confusables', () => {
+  const input = '＜｜DSML　tool_calls＞＜｜DSML　invoke　name＝“execute_code”＞＜｜DSML　parameter　name＝“code”＞<![CDATA[print("hi")]]>＜／DSML｜parameter＞＜／DSML｜invoke＞＜／DSML｜tool_calls＞ suffix';
+  const events = runSieve([input], ['execute_code']);
+  const text = collectText(events);
+  const finalCalls = events.filter((evt) => evt.type === 'tool_calls').flatMap((evt) => evt.calls || []);
+  assert.equal(finalCalls.length, 1);
+  assert.equal(finalCalls[0].name, 'execute_code');
+  assert.deepEqual(finalCalls[0].input, { code: 'print("hi")' });
+  assert.equal(text, ' suffix');
+});
+
+test('sieve emits tool_calls for confusable candidate shell and preserves suffix text', () => {
+  const input = '<|\u200b\uff24\u0405\u039cL|to\u03bfl\uff3fcalls><|\ufeffDSML|inv\u03bfk\u0435 n\u0430me\uff1d\u201cexecute_code\u201d><|\u200bDSML|par\u0430meter n\u0430me\uff1d\u201ccode\u201d><![\ufeff\u0421D\u0410T\u0410[print("hi")]]></|\u200bDSML|par\u0430meter></|\u200bDSML|inv\u03bfk\u0435></|\u200b\uff24\u0405\u039cL|to\u03bfl\uff3fcalls> suffix';
+  const events = runSieve([input], ['execute_code']);
+  const text = collectText(events);
+  const finalCalls = events.filter((evt) => evt.type === 'tool_calls').flatMap((evt) => evt.calls || []);
+  assert.equal(finalCalls.length, 1);
+  assert.equal(finalCalls[0].name, 'execute_code');
+  assert.deepEqual(finalCalls[0].input, { code: 'print("hi")' });
+  assert.equal(text, ' suffix');
+});
+
+test('sieve repairs confusable missing opening wrapper and preserves suffix text', () => {
+  const events = runSieve([
+    '<inv\u03bfk\u0435 n\u0430me="read_file">\n',
+    '  <par\u0430meter n\u0430me="path"><![\u200b\u0421D\u0410T\u0410[README.md]]></par\u0430meter>\n',
+    '</inv\u03bfk\u0435>\n',
+    '</to\u03bfl_calls> trailing prose',
+  ], ['read_file']);
+  const text = collectText(events);
+  const finalCalls = events.filter((evt) => evt.type === 'tool_calls').flatMap((evt) => evt.calls || []);
+  assert.equal(finalCalls.length, 1);
+  assert.equal(finalCalls[0].name, 'read_file');
+  assert.deepEqual(finalCalls[0].input, { path: 'README.md' });
+  assert.equal(text, ' trailing prose');
 });
 
 test('sieve emits tool_calls for DSML trailing pipe tag terminator', () => {
@@ -737,6 +923,14 @@ test('sieve emits tool_calls for collapsed DSML tag names and preserves prefix t
 test('sieve keeps collapsed DSML lookalike tag names as text', () => {
   const input = '<DSMLtool_calls_extra><DSMLinvoke name="update_todo_list"><DSMLparameter name="todos">x</DSMLparameter></DSMLinvoke></DSMLtool_calls_extra>';
   const events = runSieve([input], ['update_todo_list']);
+  const finalCalls = events.filter((evt) => evt.type === 'tool_calls').flatMap((evt) => evt.calls || []);
+  assert.equal(finalCalls.length, 0);
+  assert.equal(collectText(events), input);
+});
+
+test('sieve keeps confusable near-miss wrappers as text', () => {
+  const input = '<to\u03bfl_callz><inv\u03bfke name="read_file"><parameter name="path">README.md</parameter></inv\u03bfke></to\u03bfl_callz>';
+  const events = runSieve([input], ['read_file']);
   const finalCalls = events.filter((evt) => evt.type === 'tool_calls').flatMap((evt) => evt.calls || []);
   assert.equal(finalCalls.length, 0);
   assert.equal(collectText(events), input);

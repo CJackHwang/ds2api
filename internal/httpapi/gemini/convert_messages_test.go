@@ -89,7 +89,7 @@ func TestGeminiMessagesFromRequestPreservesThoughtOnFunctionCallHistory(t *testi
 	if !strings.Contains(prompt, "[reasoning_content]\nneed current state before answering\n[/reasoning_content]") {
 		t.Fatalf("expected thought in prompt history, got %q", prompt)
 	}
-	if !strings.Contains(prompt, `<｜DSML｜invoke name="search_web">`) {
+	if !strings.Contains(prompt, `<|DSML|invoke name="search_web">`) {
 		t.Fatalf("expected tool call in prompt history, got %q", prompt)
 	}
 }

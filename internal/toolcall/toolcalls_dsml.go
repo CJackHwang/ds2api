@@ -2,18 +2,18 @@ package toolcall
 
 import (
 	"strings"
-	"unicode/utf8"
 )
 
 func normalizeDSMLToolCallMarkup(text string) (string, bool) {
 	if text == "" {
 		return "", true
 	}
-	hasAliasLikeMarkup, _ := ContainsToolMarkupSyntaxOutsideIgnored(text)
-	if !hasAliasLikeMarkup {
-		return text, true
+	canonicalized := canonicalizeToolCallCandidateSpans(text)
+	hasDSMLLikeMarkup, hasCanonicalMarkup := ContainsToolMarkupSyntaxOutsideIgnored(canonicalized)
+	if !hasDSMLLikeMarkup && !hasCanonicalMarkup {
+		return canonicalized, true
 	}
-	return rewriteDSMLToolMarkupOutsideIgnored(text), true
+	return rewriteDSMLToolMarkupOutsideIgnored(canonicalized), true
 }
 
 func rewriteDSMLToolMarkupOutsideIgnored(text string) string {
@@ -33,82 +33,30 @@ func rewriteDSMLToolMarkupOutsideIgnored(text string) string {
 			i = next
 			continue
 		}
+		if end, ok := markdownCodeSpanEnd(text, i); ok {
+			b.WriteString(text[i:end])
+			i = end
+			continue
+		}
 		tag, ok := scanToolMarkupTagAt(text, i)
 		if !ok {
 			b.WriteByte(text[i])
 			i++
 			continue
 		}
-		if tag.DSMLLike {
-			b.WriteByte('<')
-			if tag.Closing {
-				b.WriteByte('/')
-			}
-			b.WriteString(tag.Name)
-			tail := normalizeToolMarkupTagTailForXML(text[tag.NameEnd : tag.End+1])
-			b.WriteString(tail)
-			if !strings.HasSuffix(tail, ">") {
-				b.WriteByte('>')
-			}
-			i = tag.End + 1
-			continue
+		b.WriteByte('<')
+		if tag.Closing {
+			b.WriteByte('/')
 		}
-		b.WriteString(text[tag.Start : tag.End+1])
+		b.WriteString(tag.Name)
+		if delimLen := xmlTagEndDelimiterLenEndingAt(text, tag.End); delimLen > 0 {
+			b.WriteString(text[tag.NameEnd : tag.End+1-delimLen])
+			b.WriteByte('>')
+		} else {
+			b.WriteString(text[tag.NameEnd : tag.End+1])
+			b.WriteByte('>')
+		}
 		i = tag.End + 1
-	}
-	return b.String()
-}
-
-func normalizeToolMarkupTagTailForXML(tail string) string {
-	if tail == "" {
-		return ""
-	}
-	var b strings.Builder
-	b.Grow(len(tail))
-	quote := rune(0)
-	for i := 0; i < len(tail); {
-		r, size := utf8.DecodeRuneInString(tail[i:])
-		if r == utf8.RuneError && size == 1 {
-			b.WriteByte(tail[i])
-			i++
-			continue
-		}
-		ch := normalizeFullwidthASCII(r)
-		if quote != 0 {
-			b.WriteRune(ch)
-			if ch == quote {
-				quote = 0
-			}
-			i += size
-			continue
-		}
-		switch ch {
-		case '"', '\'':
-			quote = ch
-			b.WriteRune(ch)
-		case '|', '!':
-			j := i + size
-			for j < len(tail) {
-				next, nextSize := utf8.DecodeRuneInString(tail[j:])
-				if nextSize <= 0 {
-					break
-				}
-				if next == ' ' || next == '\t' || next == '\r' || next == '\n' {
-					j += nextSize
-					continue
-				}
-				break
-			}
-			next, _ := normalizedASCIIAt(tail, j)
-			if next != '>' {
-				b.WriteRune(ch)
-			}
-		case '>', '/', '=':
-			b.WriteRune(ch)
-		default:
-			b.WriteString(tail[i : i+size])
-		}
-		i += size
 	}
 	return b.String()
 }

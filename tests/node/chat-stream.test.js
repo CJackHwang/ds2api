@@ -643,6 +643,16 @@ test('parseChunkForContent strips citation and reference markers from fragment c
   assert.deepEqual(parsed.parts, [{ text: '广州天气   多云', type: 'text' }]);
 });
 
+test('parseChunkForContent strips leaked thought control markers from content', () => {
+  const chunk = {
+    p: 'response/content',
+    v: '<｜▁of▁thought｜>A<| of_thought |>B<| end_of_thought |>C',
+  };
+  const parsed = parseChunkForContent(chunk, false, 'text');
+  assert.equal(parsed.finished, false);
+  assert.deepEqual(parsed.parts, [{ text: 'ABC', type: 'text' }]);
+});
+
 test('parseChunkForContent detects content_filter status and ignores upstream output tokens', () => {
   const chunk = {
     p: 'response',

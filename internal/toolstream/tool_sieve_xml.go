@@ -141,6 +141,9 @@ func shouldKeepBareInvokeCapture(captured string) bool {
 	if invokeCloseTag, ok := findFirstToolMarkupTagByNameFrom(captured, startEnd+1, "invoke", true); ok {
 		return strings.TrimSpace(captured[invokeCloseTag.End+1:]) == ""
 	}
+	if paramTag, ok := findFirstToolMarkupTagByName(body, 0, "parameter"); ok && strings.TrimSpace(body[:paramTag.Start]) == "" {
+		return true
+	}
 
 	trimmedLower := strings.ToLower(trimmedBody)
 	return strings.HasPrefix(trimmedLower, "<parameter") ||
@@ -149,18 +152,27 @@ func shouldKeepBareInvokeCapture(captured string) bool {
 }
 
 func findPartialXMLToolTagStart(s string) int {
-	lastLT := strings.LastIndex(s, "<")
+	lastLT := lastToolMarkupStartDelimiterIndex(s)
 	if lastLT < 0 {
 		return -1
 	}
 	start := includeDuplicateLeadingLessThan(s, lastLT)
 	tail := s[start:]
-	// If there's a '>' in the tail, the tag is closed — not partial.
-	if strings.Contains(tail, ">") {
+	// If there's a tag terminator in the tail, the tag is closed — not partial.
+	if strings.Contains(tail, ">") || strings.Contains(tail, "＞") {
 		return -1
 	}
 	if toolcall.IsPartialToolMarkupTagPrefix(tail) {
 		return start
 	}
 	return -1
+}
+
+func lastToolMarkupStartDelimiterIndex(s string) int {
+	asciiIdx := strings.LastIndex(s, "<")
+	fullwidthIdx := strings.LastIndex(s, "＜")
+	if asciiIdx > fullwidthIdx {
+		return asciiIdx
+	}
+	return fullwidthIdx
 }

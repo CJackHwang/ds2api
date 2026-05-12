@@ -84,7 +84,7 @@ func TestBuildOpenAICurrentInputContextTranscriptUsesNumberedHistorySections(t *
 		"latest user turn",
 		"[reasoning_content]",
 		"hidden reasoning",
-		"<｜DSML｜tool_calls>",
+		"<|DSML|tool_calls>",
 	} {
 		if !strings.Contains(transcript, want) {
 			t.Fatalf("expected transcript to contain %q, got %q", want, transcript)

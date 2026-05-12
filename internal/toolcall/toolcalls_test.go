@@ -1201,3 +1201,108 @@ func TestFindMatchingToolMarkupCloseBoundaryConditions(t *testing.T) {
 		})
 	}
 }
+
+func TestParseToolCallsSupportsDSMLShellWithFullwidthClosingSlash(t *testing.T) {
+	text := `<｜DSML｜tool_calls><｜DSML｜invoke name="execute_code"><｜DSML｜parameter name="code"><![CDATA[print("hi")]]></｜DSML｜parameter></｜DSML｜invoke><／DSML｜tool_calls>`
+	calls := ParseToolCalls(text, []string{"execute_code"})
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 DSML call with fullwidth closing slash, got %#v", calls)
+	}
+	if calls[0].Name != "execute_code" || calls[0].Input["code"] != `print("hi")` {
+		t.Fatalf("unexpected fullwidth-closing-slash DSML parse result: %#v", calls[0])
+	}
+}
+
+func TestParseToolCallsSupportsDSMLShellWithSentencePieceSeparatorAndFullwidthGT(t *testing.T) {
+	text := `<｜DSML▁tool_calls｜><｜DSML▁invoke▁name="execute_code"><｜DSML▁parameter▁name="code"><![CDATA[print("hi")]]></｜DSML▁parameter></｜DSML▁invoke></｜DSML▁tool_calls＞`
+	calls := ParseToolCalls(text, []string{"execute_code"})
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 DSML call with sentencepiece separator and fullwidth terminator, got %#v", calls)
+	}
+	if calls[0].Name != "execute_code" || calls[0].Input["code"] != `print("hi")` {
+		t.Fatalf("unexpected sentencepiece/fullwidth-terminator DSML parse result: %#v", calls[0])
+	}
+}
+
+func TestParseToolCallsSupportsDSMLShellWithFullwidthLTUnicodeSpaceAndFullwidthAttributes(t *testing.T) {
+	text := `＜｜DSML　tool_calls＞＜｜DSML　invoke　name＝“execute_code”＞＜｜DSML　parameter　name＝“code”＞<![CDATA[print("hi")]]>＜／DSML｜parameter＞＜／DSML｜invoke＞＜／DSML｜tool_calls＞`
+	calls := ParseToolCalls(text, []string{"execute_code"})
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 DSML call with fullwidth opening delimiter and Unicode attribute confusables, got %#v", calls)
+	}
+	if calls[0].Name != "execute_code" || calls[0].Input["code"] != `print("hi")` {
+		t.Fatalf("unexpected fullwidth-opening/Unicode-attr DSML parse result: %#v", calls[0])
+	}
+}
+
+func TestParseToolCallsCanonicalizesConfusableCandidateShellOnly(t *testing.T) {
+	text := "<|\u200b\uff24\u0405\u039cL|to\u03bfl\uff3fcalls>" +
+		"<|\ufeffDSML|inv\u03bfk\u0435 n\u0430me\uff1d\u201cexecute_code\u201d>" +
+		"<|\u200bDSML|par\u0430meter n\u0430me\uff1d\u201ccode\u201d><![\ufeff\u0421D\u0410T\u0410[print(\"hi\")]]>" +
+		"</|\u200bDSML|par\u0430meter></|\u200bDSML|inv\u03bfk\u0435></|\u200b\uff24\u0405\u039cL|to\u03bfl\uff3fcalls>"
+	calls := ParseToolCalls(text, []string{"execute_code"})
+	if len(calls) != 1 {
+		t.Fatalf("expected one confusable-shell call, got %#v", calls)
+	}
+	if calls[0].Name != "execute_code" || calls[0].Input["code"] != `print("hi")` {
+		t.Fatalf("unexpected confusable-shell parse result: %#v", calls[0])
+	}
+}
+
+func TestParseToolCallsKeepsConfusableMarkupInsideCDATAAsText(t *testing.T) {
+	value := "<inv\u03bfke>literal</inv\u03bfke>"
+	text := "<tool_calls><invoke name=\"Write\"><parameter name=\"description\"><![\u200b\u0421D\u0410T\u0410[" + value + "]]></parameter></invoke></tool_calls>"
+	calls := ParseToolCalls(text, []string{"Write"})
+	if len(calls) != 1 {
+		t.Fatalf("expected one Write call, got %#v", calls)
+	}
+	if got, _ := calls[0].Input["description"].(string); got != value {
+		t.Fatalf("expected confusable markup example inside CDATA to stay raw, got %q", got)
+	}
+}
+
+func TestParseToolCallsRepairsMissingOpeningWrapperWithConfusableShell(t *testing.T) {
+	text := "Before tool call\n" +
+		"<inv\u03bfk\u0435 n\u0430me=\"read_file\"><par\u0430meter n\u0430me=\"path\"><![\u200b\u0421D\u0410T\u0410[README.md]]></par\u0430meter></inv\u03bfk\u0435>\n" +
+		"</to\u03bfl_calls>\n" +
+		"after"
+	res := ParseToolCallsDetailed(text, []string{"read_file"})
+	if len(res.Calls) != 1 {
+		t.Fatalf("expected repaired confusable wrapper to parse one call, got %#v", res)
+	}
+	if got, _ := res.Calls[0].Input["path"].(string); got != "README.md" {
+		t.Fatalf("expected repaired confusable wrapper to preserve args, got %#v", res.Calls[0].Input)
+	}
+	if !res.SawToolCallSyntax {
+		t.Fatalf("expected repaired confusable wrapper to mark tool syntax seen, got %#v", res)
+	}
+}
+
+func TestParseToolCallsDoesNotAcceptConfusableNearMissTagName(t *testing.T) {
+	text := "<tool_calls><inv\u03bfker name=\"execute_code\"><parameter name=\"code\">pwd</parameter></inv\u03bfker></tool_calls>"
+	calls := ParseToolCalls(text, []string{"execute_code"})
+	if len(calls) != 0 {
+		t.Fatalf("expected confusable near-miss tag name to remain non-executable, got %#v", calls)
+	}
+}
+
+func TestFindMatchingToolMarkupCloseBoundaryConditionsSupportsConfusableDelimiters(t *testing.T) {
+	tests := []struct {
+		name   string
+		text   string
+		open   ToolMarkupTag
+		wantOk bool
+	}{
+		{"valid_fullwidth_closing_slash", "<tool_calls><／tool_calls>", ToolMarkupTag{Name: "tool_calls", End: 11}, true},
+		{"valid_fullwidth_opening_delimiter", "＜tool_calls＞＜／tool_calls＞", ToolMarkupTag{Name: "tool_calls", End: len("＜tool_calls＞") - 1}, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, ok := FindMatchingToolMarkupClose(tt.text, tt.open)
+			if ok != tt.wantOk {
+				t.Errorf("FindMatchingToolMarkupClose(%q, %+v) ok = %v, want %v", tt.text, tt.open, ok, tt.wantOk)
+			}
+		})
+	}
+}

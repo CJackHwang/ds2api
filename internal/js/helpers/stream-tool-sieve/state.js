@@ -9,6 +9,7 @@ function createToolSieveState() {
     codeFencePendingTicks: 0,
     codeFencePendingTildes: 0,
     codeFenceLineStart: true,
+    markdownCodeSpanTicks: 0,
     pendingToolRaw: '',
     pendingToolCalls: [],
     disableDeltas: false,
@@ -35,6 +36,7 @@ function noteText(state, text) {
   if (!state || !hasMeaningfulText(text)) {
     return;
   }
+  updateMarkdownCodeSpanState(state, text);
   updateCodeFenceState(state, text);
 }
 
@@ -62,6 +64,68 @@ function insideCodeFenceWithState(state, text) {
     text,
   );
   return simulated.stack.length > 0;
+}
+
+function insideMarkdownCodeSpanWithState(state, text) {
+  if (!state) {
+    return simulateMarkdownCodeSpanTicks(null, 0, text) > 0;
+  }
+  const ticks = Number.isInteger(state.markdownCodeSpanTicks) ? state.markdownCodeSpanTicks : 0;
+  return simulateMarkdownCodeSpanTicks(state, ticks, text) > 0;
+}
+
+function updateMarkdownCodeSpanState(state, text) {
+  if (!state || !hasMeaningfulText(text)) {
+    return;
+  }
+  const ticks = Number.isInteger(state.markdownCodeSpanTicks) ? state.markdownCodeSpanTicks : 0;
+  state.markdownCodeSpanTicks = simulateMarkdownCodeSpanTicks(state, ticks, text);
+}
+
+function simulateMarkdownCodeSpanTicks(state, initialTicks, text) {
+  const raw = typeof text === 'string' ? text : '';
+  let ticks = Number.isInteger(initialTicks) ? initialTicks : 0;
+  for (let i = 0; i < raw.length;) {
+    if (raw[i] !== '`') {
+      i += 1;
+      continue;
+    }
+    const run = countBacktickRun(raw, i);
+    if (ticks === 0) {
+      if (run >= 3 && atMarkdownFenceLineStart(raw, i)) {
+        i += run;
+        continue;
+      }
+      if (state && insideCodeFenceWithState(state, raw.slice(0, i))) {
+        i += run;
+        continue;
+      }
+      ticks = run;
+    } else if (run === ticks) {
+      ticks = 0;
+    }
+    i += run;
+  }
+  return ticks;
+}
+
+function countBacktickRun(text, start) {
+  let count = 0;
+  while (start + count < text.length && text[start + count] === '`') {
+    count += 1;
+  }
+  return count;
+}
+
+function atMarkdownFenceLineStart(text, idx) {
+  for (let i = idx - 1; i >= 0; i -= 1) {
+    const ch = text[i];
+    if (ch === ' ' || ch === '\t') {
+      continue;
+    }
+    return ch === '\n' || ch === '\r';
+  }
+  return true;
 }
 
 function updateCodeFenceState(state, text) {
@@ -188,7 +252,9 @@ module.exports = {
   looksLikeToolExampleContext,
   insideCodeFence,
   insideCodeFenceWithState,
+  insideMarkdownCodeSpanWithState,
   updateCodeFenceState,
+  updateMarkdownCodeSpanState,
   hasMeaningfulText,
   toStringSafe,
 };

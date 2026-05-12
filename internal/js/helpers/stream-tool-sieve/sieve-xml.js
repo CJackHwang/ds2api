@@ -114,6 +114,39 @@ function hasOpenXMLToolTag(captured) {
   return false;
 }
 
+function shouldKeepBareInvokeCapture(captured) {
+  const invokeTag = findFirstToolTag(captured, 0, 'invoke', false);
+  if (!invokeTag) {
+    return false;
+  }
+  const wrapperOpen = findFirstToolTag(captured, 0, 'tool_calls', false);
+  if (wrapperOpen && wrapperOpen.start <= invokeTag.start) {
+    return false;
+  }
+  const closeTag = findFirstToolTag(captured, invokeTag.start + 1, 'tool_calls', true);
+  if (closeTag && closeTag.start > invokeTag.start) {
+    return true;
+  }
+  const startEnd = invokeTag.end;
+  if (startEnd < 0) {
+    return true;
+  }
+  const body = captured.slice(startEnd + 1);
+  const trimmedBody = body.replace(/^[ \t\r\n]+/, '');
+  if (!trimmedBody) {
+    return true;
+  }
+  const invokeCloseTag = findFirstToolTag(captured, startEnd + 1, 'invoke', true);
+  if (invokeCloseTag) {
+    return captured.slice(invokeCloseTag.end + 1).trim() === '';
+  }
+  const paramTag = findFirstToolTag(body, 0, 'parameter', false);
+  if (paramTag && body.slice(0, paramTag.start).trim() === '') {
+    return true;
+  }
+  return trimmedBody.startsWith('{') || trimmedBody.startsWith('[');
+}
+
 function findFirstToolTag(text, from, name, closing) {
   for (let pos = Math.max(0, from || 0); pos < text.length;) {
     const tag = findToolMarkupTagOutsideIgnored(text, pos);
@@ -131,5 +164,6 @@ function findFirstToolTag(text, from, name, closing) {
 module.exports = {
   consumeXMLToolCapture,
   hasOpenXMLToolTag,
+  shouldKeepBareInvokeCapture,
   findPartialXMLToolTagStart: findPartialToolMarkupStart,
 };

@@ -10,16 +10,14 @@ import (
 )
 
 var xmlAttrPattern = regexp.MustCompile(`(?is)\b([a-z0-9_:-]+)\s*=\s*("([^"]*)"|'([^']*)')`)
-var xmlToolCallsClosePattern = regexp.MustCompile(`(?is)</tool_calls>`)
-var xmlInvokeStartPattern = regexp.MustCompile(`(?is)<invoke\b[^>]*\bname\s*=\s*("([^"]*)"|'([^']*)')`)
 var cdataBRSeparatorPattern = regexp.MustCompile(`(?i)<br\s*/?>`)
 
 func parseXMLToolCalls(text string) []ParsedToolCall {
-	wrappers := findXMLElementBlocks(text, "tool_calls")
+	wrappers := findToolCallElementBlocksOutsideIgnored(text)
 	if len(wrappers) == 0 {
 		repaired := repairMissingXMLToolCallsOpeningWrapper(text)
 		if repaired != text {
-			wrappers = findXMLElementBlocks(repaired, "tool_calls")
+			wrappers = findToolCallElementBlocksOutsideIgnored(repaired)
 		}
 	}
 	if len(wrappers) == 0 {
@@ -41,26 +39,89 @@ func parseXMLToolCalls(text string) []ParsedToolCall {
 	return out
 }
 
+func findToolCallElementBlocksOutsideIgnored(text string) []xmlElementBlock {
+	if text == "" {
+		return nil
+	}
+	var out []xmlElementBlock
+	for searchFrom := 0; searchFrom < len(text); {
+		tag, ok := FindToolMarkupTagOutsideIgnored(text, searchFrom)
+		if !ok {
+			break
+		}
+		if tag.Closing || tag.Name != "tool_calls" {
+			searchFrom = tag.End + 1
+			continue
+		}
+		closeTag, ok := FindMatchingToolMarkupClose(text, tag)
+		if !ok {
+			searchFrom = tag.End + 1
+			continue
+		}
+		attrsEnd := tag.End + 1
+		if delimLen := xmlTagEndDelimiterLenEndingAt(text, tag.End); delimLen > 0 {
+			attrsEnd = tag.End + 1 - delimLen
+		}
+		out = append(out, xmlElementBlock{
+			Attrs: text[tag.NameEnd:attrsEnd],
+			Body:  text[tag.End+1 : closeTag.Start],
+			Start: tag.Start,
+			End:   closeTag.End + 1,
+		})
+		searchFrom = closeTag.End + 1
+	}
+	return out
+}
+
 func repairMissingXMLToolCallsOpeningWrapper(text string) string {
-	lower := strings.ToLower(text)
-	if strings.Contains(lower, "<tool_calls") {
+	if _, ok := firstToolMarkupTagByName(text, "tool_calls", false); ok {
 		return text
 	}
 
-	closeMatches := xmlToolCallsClosePattern.FindAllStringIndex(text, -1)
-	if len(closeMatches) == 0 {
+	invokeTag, ok := firstToolMarkupTagByName(text, "invoke", false)
+	if !ok {
 		return text
 	}
-	invokeLoc := xmlInvokeStartPattern.FindStringIndex(text)
-	if invokeLoc == nil {
-		return text
-	}
-	closeLoc := closeMatches[len(closeMatches)-1]
-	if invokeLoc[0] >= closeLoc[0] {
+	closeTag, ok := lastToolMarkupTagByName(text, "tool_calls", true)
+	if !ok || invokeTag.Start >= closeTag.Start {
 		return text
 	}
 
-	return text[:invokeLoc[0]] + "<tool_calls>" + text[invokeLoc[0]:closeLoc[0]] + "</tool_calls>" + text[closeLoc[1]:]
+	return text[:invokeTag.Start] + "<tool_calls>" + text[invokeTag.Start:closeTag.Start] + "</tool_calls>" + text[closeTag.End+1:]
+}
+
+func firstToolMarkupTagByName(text, name string, closing bool) (ToolMarkupTag, bool) {
+	for searchFrom := 0; searchFrom < len(text); {
+		tag, ok := FindToolMarkupTagOutsideIgnored(text, searchFrom)
+		if !ok {
+			break
+		}
+		if tag.Name == name && tag.Closing == closing {
+			return tag, true
+		}
+		searchFrom = tag.End + 1
+	}
+	return ToolMarkupTag{}, false
+}
+
+func lastToolMarkupTagByName(text, name string, closing bool) (ToolMarkupTag, bool) {
+	var last ToolMarkupTag
+	found := false
+	for searchFrom := 0; searchFrom < len(text); {
+		tag, ok := FindToolMarkupTagOutsideIgnored(text, searchFrom)
+		if !ok {
+			break
+		}
+		if tag.Name == name && tag.Closing == closing {
+			last = tag
+			found = true
+		}
+		searchFrom = tag.End + 1
+	}
+	if !found {
+		return ToolMarkupTag{}, false
+	}
+	return last, true
 }
 
 func parseSingleXMLToolCall(block xmlElementBlock) (ParsedToolCall, bool) {
@@ -229,25 +290,11 @@ func skipXMLIgnoredSection(text string, i int) (next int, advanced bool, blocked
 }
 
 func matchToolCDATAOpenAt(text string, start int) (int, bool) {
-	i, ok := consumeToolMarkupLessThan(text, start)
-	if !ok {
-		return start, false
-	}
-	for skipped := 0; skipped <= 4 && i < len(text); skipped++ {
-		if cdataLen, ok := matchASCIIPrefixFoldAt(text, i, "[cdata["); ok {
-			return i + cdataLen, true
-		}
-		r, size := utf8.DecodeRuneInString(text[i:])
-		if size <= 0 || !isToolCDATAOpenSeparator(r) {
-			break
-		}
-		i += size
+	openLen := toolCDATAOpenLenAt(text, start)
+	if openLen > 0 {
+		return start + openLen, true
 	}
 	return start, false
-}
-
-func isToolCDATAOpenSeparator(r rune) bool {
-	return isToolMarkupSeparator(r)
 }
 
 func hasASCIIPrefixFoldAt(text string, start int, prefix string) bool {
@@ -278,23 +325,6 @@ func asciiLower(b byte) byte {
 		return b + ('a' - 'A')
 	}
 	return b
-}
-
-// indexASCIIFold returns the absolute byte position in s where substr (ASCII-only) is
-// found case-insensitively, scanning forward from start. Returns -1 if not found.
-// Unlike strings.Index on a lowercased copy, this does not allocate or risk byte-length
-// mismatch when non-ASCII runes change width under case folding.
-func indexASCIIFold(s string, start int, substr string) int {
-	if start < 0 || len(s)-start < len(substr) {
-		return -1
-	}
-	end := len(s) - len(substr) + 1
-	for i := start; i < end; i++ {
-		if hasASCIIPrefixFoldAt(s, i, substr) {
-			return i
-		}
-	}
-	return -1
 }
 
 func findToolCDATAEnd(text string, from int) int {
@@ -342,13 +372,19 @@ func indexToolCDATAClose(text string, from int) int {
 }
 
 func toolCDATACloseLenAt(text string, idx int) int {
+	if idx < 0 || idx >= len(text) {
+		return 0
+	}
 	if strings.HasPrefix(text[idx:], "]]〉") {
 		return len("]]〉")
 	}
 	if strings.HasPrefix(text[idx:], "]]＞") {
 		return len("]]＞")
 	}
-	return len("]]>")
+	if strings.HasPrefix(text[idx:], "]]>") {
+		return len("]]>")
+	}
+	return 0
 }
 
 func cdataEndLooksStructural(text string, after int) bool {

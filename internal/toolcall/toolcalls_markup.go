@@ -105,30 +105,16 @@ func extractRawTagValue(inner string) string {
 
 func extractStandaloneCDATA(inner string) (string, bool) {
 	trimmed := strings.TrimSpace(inner)
-	if bodyStart, ok := matchToolCDATAOpenAt(trimmed, 0); ok {
-		end := findStandaloneCDATAEnd(trimmed, bodyStart)
-		if end < 0 {
-			return trimmed[bodyStart:], true
+	if openLen := toolCDATAOpenLenAt(trimmed, 0); openLen > 0 {
+		if closeStart := findTrailingToolCDATACloseStart(trimmed); closeStart >= openLen {
+			return trimmed[openLen:closeStart], true
 		}
-		return trimmed[bodyStart:end], true
+		if end := findToolCDATAEnd(trimmed, openLen); end >= 0 {
+			return trimmed[openLen:end], true
+		}
+		return trimmed[openLen:], true
 	}
 	return "", false
-}
-
-func findStandaloneCDATAEnd(text string, from int) int {
-	end := -1
-	for searchFrom := from; searchFrom < len(text); {
-		next := indexToolCDATAClose(text, searchFrom)
-		if next < 0 {
-			break
-		}
-		closeEnd := next + toolCDATACloseLenAt(text, next)
-		if strings.TrimSpace(text[closeEnd:]) == "" {
-			end = next
-		}
-		searchFrom = closeEnd
-	}
-	return end
 }
 
 func parseJSONLiteralValue(raw string) (any, bool) {
@@ -159,24 +145,22 @@ func SanitizeLooseCDATA(text string) string {
 		return ""
 	}
 
-	const openMarker = "<![cdata["
-	const closeMarker = "]]>"
-
 	var b strings.Builder
 	b.Grow(len(text))
 	changed := false
 	pos := 0
 	for pos < len(text) {
-		start := indexASCIIFold(text, pos, openMarker)
+		start := indexToolCDATAOpen(text, pos)
 		if start < 0 {
 			b.WriteString(text[pos:])
 			break
 		}
-		contentStart := start + len(openMarker)
+		openLen := toolCDATAOpenLenAt(text, start)
+		contentStart := start + openLen
 		b.WriteString(text[pos:start])
 
-		if endRel := indexASCIIFold(text, contentStart, closeMarker); endRel >= 0 {
-			end := endRel + len(closeMarker)
+		if endRel := findToolCDATAEnd(text, contentStart); endRel >= 0 {
+			end := endRel + toolCDATACloseLenAt(text, endRel)
 			b.WriteString(text[start:end])
 			pos = end
 			continue

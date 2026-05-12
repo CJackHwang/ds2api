@@ -34,6 +34,14 @@ func TestSanitizeLeakedOutputRemovesThinkAndBosMarkers(t *testing.T) {
 	}
 }
 
+func TestSanitizeLeakedOutputRemovesThoughtMarkers(t *testing.T) {
+	raw := "A<｜▁of▁thought｜>B<| of_thought |>C<| begin_of_thought |>D<| end_of_thought |>E"
+	got := sanitizeLeakedOutput(raw)
+	if got != "ABCDE" {
+		t.Fatalf("unexpected sanitize result for leaked thought markers: %q", got)
+	}
+}
+
 func TestSanitizeLeakedOutputRemovesDanglingThinkBlock(t *testing.T) {
 	raw := "Answer prefix<think>internal reasoning that never closes"
 	got := sanitizeLeakedOutput(raw)
