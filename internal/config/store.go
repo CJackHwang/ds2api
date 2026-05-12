@@ -301,21 +301,21 @@ func (s *Store) saveLocked() error {
 
 func writeConfigBytesWithComments(path string, configJSON []byte, rawJSON map[string]any) ([]byte, error) {
 	if rawJSON == nil {
-		err := os.WriteFile(path, configJSON, 0o644)
+		err := writeConfigBytes(path, configJSON)
 		return nil, err
 	}
 	var cfg map[string]any
 	if err := json.Unmarshal(configJSON, &cfg); err != nil {
-		err := os.WriteFile(path, configJSON, 0o644)
+		err := writeConfigBytes(path, configJSON)
 		return nil, err
 	}
 	merged := mergeRawWithComments(rawJSON, cfg)
 	mergedJSON, err := json.MarshalIndent(merged, "", "  ")
 	if err != nil {
-		err := os.WriteFile(path, configJSON, 0o644)
+		err := writeConfigBytes(path, configJSON)
 		return nil, err
 	}
-	err = os.WriteFile(path, mergedJSON, 0o644)
+	err = writeConfigBytes(path, mergedJSON)
 	if err != nil {
 		return nil, err
 	}

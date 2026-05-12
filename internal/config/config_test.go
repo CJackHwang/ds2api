@@ -183,6 +183,31 @@ func TestExplicitMissingConfigPathBootstrapsEmptyFileBackedStore(t *testing.T) {
 	}
 }
 
+func TestExplicitMissingConfigPathCreatesParentDirectoryOnFirstSave(t *testing.T) {
+	path := t.TempDir() + "/nested/config/config.json"
+
+	t.Setenv("DS2API_CONFIG_JSON", "")
+	t.Setenv("DS2API_CONFIG_PATH", path)
+
+	store, err := LoadStoreWithError()
+	if err != nil {
+		t.Fatalf("expected missing explicit config path to bootstrap, got: %v", err)
+	}
+	if err := store.Update(func(c *Config) error {
+		c.Keys = []string{"first-key"}
+		return nil
+	}); err != nil {
+		t.Fatalf("update should create config parent directories: %v", err)
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("expected first update to write config: %v", err)
+	}
+	if !strings.Contains(string(content), "first-key") {
+		t.Fatalf("expected saved config to contain first key, got: %s", content)
+	}
+}
+
 func TestEnvBackedStoreWritebackBootstrapsMissingConfigFile(t *testing.T) {
 	tmp, err := os.CreateTemp(t.TempDir(), "config-*.json")
 	if err != nil {
