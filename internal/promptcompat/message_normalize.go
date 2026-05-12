@@ -65,10 +65,14 @@ func buildAssistantContentForPrompt(msg map[string]any) string {
 	reasoning := strings.TrimSpace(normalizeOpenAIReasoningContentForPrompt(msg["reasoning_content"]))
 	if reasoning == "" {
 		reasoning = strings.TrimSpace(extractOpenAIReasoningContentFromMessage(msg["content"]))
+	} else {
+		content = stripPromptLabeledBlocks(content, assistantReasoningLabel)
 	}
 	toolHistory := prompt.FormatToolCallsForPrompt(msg["tool_calls"])
 	if toolHistory == "" {
 		content = normalizeAssistantToolMarkupContentForPrompt(content)
+	} else {
+		content = stripAssistantToolMarkupBlocks(content)
 	}
 	parts := make([]string, 0, 3)
 	if reasoning != "" {
@@ -110,6 +114,72 @@ func normalizeAssistantToolMarkupContentForPrompt(content string) string {
 		return formatted
 	}
 	return content
+}
+
+func stripPromptLabeledBlocks(content, label string) string {
+	label = strings.TrimSpace(label)
+	if strings.TrimSpace(content) == "" || label == "" {
+		return content
+	}
+	openTag := "[" + label + "]\n"
+	closeTag := "\n[/" + label + "]"
+	var b strings.Builder
+	pos := 0
+	for {
+		start := strings.Index(content[pos:], openTag)
+		if start == -1 {
+			b.WriteString(content[pos:])
+			break
+		}
+		start += pos
+		afterOpen := start + len(openTag)
+		end := strings.Index(content[afterOpen:], closeTag)
+		if end == -1 {
+			b.WriteString(content[pos:])
+			break
+		}
+		end += afterOpen
+		b.WriteString(content[pos:start])
+		pos = end + len(closeTag)
+		if strings.HasPrefix(content[pos:], "\n\n") {
+			pos += 2
+		}
+	}
+	return strings.TrimSpace(b.String())
+}
+
+func stripAssistantToolMarkupBlocks(content string) string {
+	if strings.TrimSpace(content) == "" {
+		return content
+	}
+	var b strings.Builder
+	pos := 0
+	for pos < len(content) {
+		tag, ok := toolcall.FindToolMarkupTagOutsideIgnored(content, pos)
+		if !ok {
+			b.WriteString(content[pos:])
+			break
+		}
+		if tag.Start > pos {
+			b.WriteString(content[pos:tag.Start])
+		}
+		if tag.Closing || tag.Name != "tool_calls" {
+			b.WriteString(content[tag.Start : tag.End+1])
+			pos = tag.End + 1
+			continue
+		}
+		closeTag, ok := toolcall.FindMatchingToolMarkupClose(content, tag)
+		if !ok {
+			b.WriteString(content[tag.Start : tag.End+1])
+			pos = tag.End + 1
+			continue
+		}
+		pos = closeTag.End + 1
+		if strings.HasPrefix(content[pos:], "\n\n") {
+			pos += 2
+		}
+	}
+	return strings.TrimSpace(b.String())
 }
 
 func isStandaloneAssistantToolMarkupBlock(trimmed string) bool {

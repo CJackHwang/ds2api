@@ -1,7 +1,7 @@
 package claude
 
-import "ds2api/internal/prompt"
+import "ds2api/internal/promptcompat"
 
 func buildClaudePromptTokenText(messages []any, thinkingEnabled bool) string {
-	return prompt.MessagesPrepareWithThinking(toMessageMaps(messages), thinkingEnabled)
+	return promptcompat.BuildOpenAIMessagesOnlyPrompt(messages, "", thinkingEnabled, "off")
 }

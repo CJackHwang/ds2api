@@ -360,3 +360,59 @@ func TestNormalizeOpenAIMessagesForPrompt_AssistantReasoningContentPreserved(t *
 		t.Fatalf("expected reasoning block before visible answer, got %q", content)
 	}
 }
+
+func TestNormalizeOpenAIMessagesForPrompt_DedupesStructuredReasoningAndToolCalls(t *testing.T) {
+	toolCalls := []any{
+		map[string]any{
+			"id":   "call_branch",
+			"type": "function",
+			"function": map[string]any{
+				"name":      "Bash",
+				"arguments": `{"command":"git branch --show-current","description":"Get current branch"}`,
+			},
+		},
+	}
+	raw := []any{
+		map[string]any{
+			"role": "assistant",
+			"content": strings.Join([]string{
+				"[reasoning_content]",
+				"check branch first",
+				"[/reasoning_content]",
+				"",
+				"I will inspect the branch.",
+				"",
+				"<|DSML|tool_calls>",
+				"  <|DSML|invoke name=\"Bash\">",
+				"    <|DSML|parameter name=\"command\"><![CDATA[git branch --show-current]]></|DSML|parameter>",
+				"  </|DSML|invoke>",
+				"</|DSML|tool_calls>",
+			}, "\n"),
+			"reasoning_content": "check branch first",
+			"tool_calls":        toolCalls,
+		},
+	}
+
+	normalized := NormalizeOpenAIMessagesForPrompt(raw, "")
+	if len(normalized) != 1 {
+		t.Fatalf("expected one normalized assistant message, got %#v", normalized)
+	}
+	content, _ := normalized[0]["content"].(string)
+	if got := strings.Count(content, "[reasoning_content]"); got != 1 {
+		t.Fatalf("expected one reasoning block, got %d in %q", got, content)
+	}
+	if got := strings.Count(content, "<|DSML|tool_calls>"); got != 1 {
+		t.Fatalf("expected one tool call block, got %d in %q", got, content)
+	}
+	if !strings.Contains(content, "I will inspect the branch.") {
+		t.Fatalf("expected visible assistant text preserved, got %q", content)
+	}
+
+	history := BuildOpenAICurrentInputContextTranscript(raw)
+	if got := strings.Count(history, "[reasoning_content]"); got != 1 {
+		t.Fatalf("expected history transcript to include one reasoning block, got %d in %q", got, history)
+	}
+	if got := strings.Count(history, "<|DSML|tool_calls>"); got != 1 {
+		t.Fatalf("expected history transcript to include one tool call block, got %d in %q", got, history)
+	}
+}

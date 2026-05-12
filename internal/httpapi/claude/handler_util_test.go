@@ -3,6 +3,8 @@ package claude
 import (
 	"strings"
 	"testing"
+
+	"ds2api/internal/promptcompat"
 )
 
 // ─── normalizeClaudeMessages ─────────────────────────────────────────
@@ -92,12 +94,15 @@ func TestNormalizeClaudeMessagesToolUseToAssistantToolCalls(t *testing.T) {
 	if call["id"] != "call_1" {
 		t.Fatalf("expected call id preserved, got %#v", call)
 	}
-	content, _ := m["content"].(string)
-	if !containsStr(content, "<|DSML|tool_calls>") || !containsStr(content, `<|DSML|invoke name="search_web">`) {
-		t.Fatalf("expected assistant content to include DSML tool call history, got %q", content)
+	if content, _ := m["content"].(string); strings.TrimSpace(content) != "" {
+		t.Fatalf("expected normalized tool call content to stay empty, got %q", content)
 	}
-	if !containsStr(content, `<|DSML|parameter name="query"><![CDATA[latest]]></|DSML|parameter>`) {
-		t.Fatalf("expected assistant content to include serialized parameters, got %q", content)
+	prompt := buildClaudePromptTokenText(got, false)
+	if !containsStr(prompt, "<|DSML|tool_calls>") || !containsStr(prompt, `<|DSML|invoke name="search_web">`) {
+		t.Fatalf("expected prompt history to include DSML tool call, got %q", prompt)
+	}
+	if !containsStr(prompt, `<|DSML|parameter name="query"><![CDATA[latest]]></|DSML|parameter>`) {
+		t.Fatalf("expected prompt history to include serialized parameters, got %q", prompt)
 	}
 }
 
@@ -129,12 +134,22 @@ func TestNormalizeClaudeMessagesPreservesThinkingOnToolUseHistory(t *testing.T) 
 	if len(tc) != 1 {
 		t.Fatalf("expected one tool call, got %#v", m["tool_calls"])
 	}
+	if content, _ := m["content"].(string); strings.Contains(content, "[reasoning_content]") || strings.Contains(content, "DSML") {
+		t.Fatalf("expected normalized content not to inline structured reasoning/tool calls, got %q", content)
+	}
 	prompt := buildClaudePromptTokenText(got, true)
 	if !containsStr(prompt, "[reasoning_content]\nneed live search before answering\n[/reasoning_content]") {
 		t.Fatalf("expected thinking in prompt history, got %q", prompt)
 	}
 	if !containsStr(prompt, `<|DSML|invoke name="search_web">`) {
 		t.Fatalf("expected tool call in prompt history, got %q", prompt)
+	}
+	history := promptcompat.BuildOpenAICurrentInputContextTranscript(got)
+	if got := strings.Count(history, "[reasoning_content]"); got != 1 {
+		t.Fatalf("expected one reasoning block in history transcript, got %d in %q", got, history)
+	}
+	if got := strings.Count(history, "<|DSML|tool_calls>"); got != 1 {
+		t.Fatalf("expected one tool call block in history transcript, got %d in %q", got, history)
 	}
 }
 

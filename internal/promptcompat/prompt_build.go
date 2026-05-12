@@ -18,6 +18,11 @@ func BuildOpenAIPromptWithToolInstructionsOnly(messagesRaw []any, toolsRaw any, 
 	return buildOpenAIPrompt(messagesRaw, toolsRaw, traceID, toolPolicy, thinkingEnabled, mode, false)
 }
 
+func BuildOpenAIMessagesOnlyPrompt(messagesRaw []any, traceID string, thinkingEnabled bool, mode string) string {
+	finalPrompt, _ := buildOpenAIPrompt(messagesRaw, nil, traceID, DefaultToolChoicePolicy(), thinkingEnabled, mode, false)
+	return finalPrompt
+}
+
 func buildOpenAIPrompt(messagesRaw []any, toolsRaw any, traceID string, toolPolicy ToolChoicePolicy, thinkingEnabled bool, mode string, includeToolDescriptions bool) (string, []string) {
 	messages := NormalizeOpenAIMessagesForPrompt(messagesRaw, traceID)
 	contextengine.MaybeShadow(mode, messages, config.Logger)

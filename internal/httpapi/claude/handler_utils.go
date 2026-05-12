@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-
-	"ds2api/internal/prompt"
 )
 
 func normalizeClaudeMessages(messages []any) []any {
@@ -36,7 +34,6 @@ func normalizeClaudeMessages(messages []any) []any {
 				}
 				if role == "assistant" && strings.TrimSpace(pendingThinking) != "" {
 					message["reasoning_content"] = pendingThinking
-					message["content"] = prependClaudeReasoningForPrompt(pendingThinking, safeStringValue(message["content"]))
 					pendingThinking = ""
 				}
 				out = append(out, message)
@@ -73,7 +70,6 @@ func normalizeClaudeMessages(messages []any) []any {
 						if toolMsg := normalizeClaudeToolUseToAssistant(b, state); toolMsg != nil {
 							if strings.TrimSpace(pendingThinking) != "" {
 								toolMsg["reasoning_content"] = pendingThinking
-								toolMsg["content"] = prependClaudeReasoningForPrompt(pendingThinking, safeStringValue(toolMsg["content"]))
 								pendingThinking = ""
 							}
 							out = append(out, toolMsg)
@@ -99,7 +95,6 @@ func normalizeClaudeMessages(messages []any) []any {
 				out = append(out, map[string]any{
 					"role":              "assistant",
 					"reasoning_content": pendingThinking,
-					"content":           formatClaudeReasoningForPrompt(pendingThinking),
 				})
 			}
 		default:
@@ -108,27 +103,6 @@ func normalizeClaudeMessages(messages []any) []any {
 		}
 	}
 	return out
-}
-
-func prependClaudeReasoningForPrompt(reasoning, content string) string {
-	reasoning = strings.TrimSpace(reasoning)
-	content = strings.TrimSpace(content)
-	if reasoning == "" {
-		return content
-	}
-	block := formatClaudeReasoningForPrompt(reasoning)
-	if content == "" {
-		return block
-	}
-	return block + "\n\n" + content
-}
-
-func formatClaudeReasoningForPrompt(reasoning string) string {
-	reasoning = strings.TrimSpace(reasoning)
-	if reasoning == "" {
-		return ""
-	}
-	return "[reasoning_content]\n" + reasoning + "\n[/reasoning_content]"
 }
 
 func extractClaudeThinkingBlockText(block map[string]any) string {
@@ -228,7 +202,6 @@ func normalizeClaudeToolUseToAssistant(block map[string]any, state *claudeToolCa
 	}
 	return map[string]any{
 		"role":       "assistant",
-		"content":    prompt.FormatToolCallsForPrompt(toolCalls),
 		"tool_calls": toolCalls,
 	}
 }

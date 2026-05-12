@@ -210,6 +210,8 @@ assistant 的 reasoning 会变成一个显式标签块：
 
 对进入后续 prompt / `DS2API_HISTORY.txt` 的历史轮次，兼容层也会把同一轮工具调用前的 reasoning 绑定到 assistant tool call 历史上。OpenAI Chat 原生 `reasoning_content + tool_calls` 会直接保留；OpenAI Responses 若以 `reasoning` message item 后接 `function_call` item 的形式回放历史，会在归一化时合并为同一个 assistant 历史块；Claude 的 `thinking` block 会绑定到后续 `tool_use`；Gemini 的 `thought: true` part 会绑定到后续 `functionCall`。最终 prompt 中的顺序固定为 `[reasoning_content]...[/reasoning_content]`，再接 DSML tool call 外壳。
 
+标准化后的 assistant 消息必须避免“双源”表达：`content` 表示可见正文，`reasoning_content` / `tool_calls` 表示结构化 reasoning 和工具调用。Prompt / `DS2API_HISTORY.txt` 渲染边界会把结构化字段物化为 `[reasoning_content]` 和 DSML 外壳；如果上游或旧日志同时在 `content` 中内联了同一类标签块，兼容层会在渲染前剥离这些内联块，避免同一轮 assistant reasoning 或 tool call 在历史中连续重复。既有 chat history 文件不会被迁移重写，修复点在后续请求的归一化与渲染路径上生效。
+
 ### 7.2 历史 tool_calls 保留方式
 
 assistant 历史 `tool_calls` 会转成 prompt 可见的 DSML 外壳：
@@ -222,7 +224,7 @@ assistant 历史 `tool_calls` 会转成 prompt 可见的 DSML 外壳：
 </|DSML|tool_calls>
 ```
 
-同时，归一化后的 message 会保留结构化 `tool_calls` 字段供 Context Engine shadow 编译 tool-pair 不变量使用；最终 prompt 仍只渲染 `content` 中的 DSML 文本，不会把 OpenAI 原生 JSON 作为隐藏 transport 发送给上游。
+同时，归一化后的 message 会保留结构化 `tool_calls` 字段供 Context Engine shadow 编译 tool-pair 不变量使用；最终 prompt 会在渲染边界把该结构化字段转成 DSML 文本，不会把 OpenAI 原生 JSON 作为隐藏 transport 发送给上游。
 
 如果客户端历史里没有结构化 `tool_calls` 字段、却把一个可独立解析的 assistant 工具块放进了普通 `content`，兼容层会在写入后续 prompt 前先按工具调用解析它，再重渲染为规范 DSML 历史外壳。这样可以避免一次 malformed 工具块未被结构化保存后，作为普通 assistant 文本回灌，继续污染后续模型的 few-shot 工具格式。
 
@@ -357,6 +359,7 @@ Parameters: {"type":"object",...}
 
 - top-level `system` 优先作为系统提示
 - `tool_use` / `tool_result` 会被转换成统一的 assistant/tool 历史语义
+- `thinking` 和 `tool_use` 会分别落在结构化 `reasoning_content` / `tool_calls` 字段，普通 `content` 不再内联 `[reasoning_content]` 或 DSML 副本；最终 prompt 和 `DS2API_HISTORY.txt` 由统一渲染层生成一次可见标签块
 - `tools` 同样会被并进 system prompt
 - 常规执行通过 `internal/httpapi/claude/handler_messages.go` 转到 OpenAI chat 路径，模型 alias 会先解析成 DeepSeek 原生模型
 - 当前代码里没有像 OpenAI 那样完整的 `ref_file_ids` 附件链路
@@ -473,7 +476,7 @@ promptcompat.NormalizeOpenAIMessagesForPrompt()
 
 `MaybeShadow` 在 `BuildOpenAIPrompt`（`internal/promptcompat/prompt_build.go`）中调用，位于消息归一化之后、tool prompt 注入之前。`shadow` 模式下，函数调用 `Compile` 产出 `ContextPlan` 并以 `[context_engine_shadow]` 结构化日志输出摘要，**不修改最终 prompt**。
 
-为避免正常工具回合在 shadow plan 中被误判为 `orphan_tool_result`，归一化后的 assistant message 会保留结构化 `tool_calls` 字段供 `Compile` 生成 `SegToolCall`；`prompt.MessagesPrepareWithThinking` 仍只读取 `content` 渲染最终 prompt。
+为避免正常工具回合在 shadow plan 中被误判为 `orphan_tool_result`，归一化后的 assistant message 会保留结构化 `tool_calls` 字段供 `Compile` 生成 `SegToolCall`；promptcompat 会先把结构化 reasoning/tool call 历史物化进 prompt-visible `content`，再交给 `prompt.MessagesPrepareWithThinking` 渲染最终 prompt。
 
 ### Feature Flag
 
