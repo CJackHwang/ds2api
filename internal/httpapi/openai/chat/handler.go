@@ -34,6 +34,7 @@ type Handler struct {
 type streamLease struct {
 	Auth      *auth.RequestAuth
 	SessionID string
+	Standard  promptcompat.StandardRequest
 	ExpiresAt time.Time
 }
 
