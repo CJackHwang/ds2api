@@ -74,3 +74,4 @@ data/
 # USER CUSTOM FILES
 MY-PROMPT.md
 LHA-*.md
+tests/chat_history.*/
