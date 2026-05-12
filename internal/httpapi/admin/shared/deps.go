@@ -17,7 +17,9 @@ type ConfigStore interface {
 	FindAccount(identifier string) (config.Account, bool)
 	UpdateAccountToken(identifier, token string) error
 	UpdateAccountTestStatus(identifier, status string) error
+	UpdateAccountTestStatusWithMessage(identifier, status, message string) error
 	AccountTestStatus(identifier string) (string, bool)
+	AccountTestMessage(identifier string) string
 	Update(mutator func(*config.Config) error) error
 	ExportJSONAndBase64() (string, string, error)
 	IsEnvBacked() bool

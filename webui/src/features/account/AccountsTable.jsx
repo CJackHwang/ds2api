@@ -135,6 +135,11 @@ export default function AccountsTable({
                                         )}
                                         <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
                                             <span>{acc.test_status === 'failed' ? t('accountManager.testStatusFailed') : isActive ? t('accountManager.sessionActive') : runtimeUnknown ? t('accountManager.runtimeStatusUnknown') : t('accountManager.reauthRequired')}</span>
+                                            {acc.test_status === 'failed' && acc.error_message && (
+                                                <span className="font-mono bg-destructive/10 text-destructive px-1.5 py-0.5 rounded text-[10px] max-w-[260px] truncate" title={acc.error_message}>
+                                                    {acc.error_message}
+                                                </span>
+                                            )}
                                             {acc.token_preview && (
                                                 <span className="font-mono bg-muted px-1.5 py-0.5 rounded text-[10px]">
                                                     {acc.token_preview}

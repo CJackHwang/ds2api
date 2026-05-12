@@ -2,7 +2,8 @@
     "language": {
         "label": "Language",
         "english": "English",
-        "chinese": "中文"
+        "chinese": "中文",
+        "vietnamese": "Vietnamese"
     },
     "nav": {
         "accounts": {
@@ -109,6 +110,8 @@
         "available": "Available",
         "inUse": "In use",
         "totalPool": "Total pool",
+        "failedPool": "Unavailable",
+        "failedPoolHint": "Refresh token to re-verify",
         "accountsUnit": "accounts",
         "threadsUnit": "threads",
         "apiKeysTitle": "API Keys",

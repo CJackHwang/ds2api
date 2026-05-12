@@ -117,12 +117,32 @@ func (p *Pool) Status() map[string]any {
 		}
 	}
 	sort.Strings(inUseAccounts)
+
+	// Count failed accounts via test status if store is available
+	failedCount := 0
+	failedAccounts := make([]string, 0)
+	if p.store != nil {
+		for _, acc := range p.store.Accounts() {
+			id := acc.Identifier()
+			if id == "" {
+				continue
+			}
+			if status, ok := p.store.AccountTestStatus(id); ok && status == "failed" {
+				failedCount++
+				failedAccounts = append(failedAccounts, id)
+			}
+		}
+		sort.Strings(failedAccounts)
+	}
+
 	return map[string]any{
 		"available":                len(available),
 		"in_use":                   inUseSlots,
 		"total":                    len(p.store.Accounts()),
+		"failed":                   failedCount,
 		"available_accounts":       available,
 		"in_use_accounts":          inUseAccounts,
+		"failed_accounts":          failedAccounts,
 		"max_inflight_per_account": p.maxInflightPerAccount,
 		"global_max_inflight":      p.globalMaxInflight,
 		"recommended_concurrency":  p.recommendedConcurrency,

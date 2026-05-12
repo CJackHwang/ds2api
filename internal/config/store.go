@@ -11,13 +11,14 @@ import (
 )
 
 type Store struct {
-	mu      sync.RWMutex
-	cfg     Config
-	path    string
-	fromEnv bool
-	keyMap  map[string]struct{} // O(1) API key lookup index
-	accMap  map[string]int      // O(1) account lookup: identifier -> slice index
-	accTest map[string]string   // runtime-only account test status cache
+	mu         sync.RWMutex
+	cfg        Config
+	path       string
+	fromEnv    bool
+	keyMap     map[string]struct{} // O(1) API key lookup index
+	accMap     map[string]int      // O(1) account lookup: identifier -> slice index
+	accTest    map[string]string   // runtime-only account test status cache
+	accTestMsg map[string]string   // runtime-only account test error message cache
 }
 
 func LoadStore() *Store {
@@ -173,6 +174,10 @@ func (s *Store) FindAccount(identifier string) (Account, bool) {
 }
 
 func (s *Store) UpdateAccountTestStatus(identifier, status string) error {
+	return s.UpdateAccountTestStatusWithMessage(identifier, status, "")
+}
+
+func (s *Store) UpdateAccountTestStatusWithMessage(identifier, status, message string) error {
 	identifier = strings.TrimSpace(identifier)
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -181,6 +186,15 @@ func (s *Store) UpdateAccountTestStatus(identifier, status string) error {
 		return errors.New("account not found")
 	}
 	s.setAccountTestStatusLocked(s.cfg.Accounts[idx], status, identifier)
+	// store error message for failed accounts
+	if s.accTestMsg == nil {
+		s.accTestMsg = make(map[string]string)
+	}
+	if strings.TrimSpace(message) != "" {
+		s.accTestMsg[identifier] = strings.TrimSpace(message)
+	} else {
+		delete(s.accTestMsg, identifier)
+	}
 	return nil
 }
 
@@ -193,6 +207,16 @@ func (s *Store) AccountTestStatus(identifier string) (string, bool) {
 	defer s.mu.RUnlock()
 	status, ok := s.accTest[identifier]
 	return status, ok
+}
+
+func (s *Store) AccountTestMessage(identifier string) string {
+	identifier = strings.TrimSpace(identifier)
+	if identifier == "" {
+		return ""
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.accTestMsg[identifier]
 }
 
 func (s *Store) UpdateAccountToken(identifier, token string) error {
