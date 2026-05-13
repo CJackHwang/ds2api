@@ -94,7 +94,10 @@ func normalizeClientConstants(in clientConstants) clientConstants {
 		in.Name = "DeepSeek"
 	}
 	if in.Platform == "" {
-		in.Platform = "web"
+		in.Platform = "android"
+	}
+	if in.AndroidAPILevel == "" {
+		in.AndroidAPILevel = "35"
 	}
 	if in.Locale == "" {
 		in.Locale = "zh_CN"
@@ -110,11 +113,18 @@ func buildBaseHeaders(client clientConstants, overrides map[string]string) map[s
 		}
 		out[k] = v
 	}
-	if client.Version != "" {
-		out["x-client-version"] = client.Version
+	if client.Name != "" && client.Version != "" {
+		userAgent := client.Name + "/" + client.Version
+		if client.Platform == "android" && client.AndroidAPILevel != "" {
+			userAgent += " Android/" + client.AndroidAPILevel
+		}
+		out["User-Agent"] = userAgent
 	}
 	if client.Platform != "" {
 		out["x-client-platform"] = client.Platform
+	}
+	if client.Version != "" {
+		out["x-client-version"] = client.Version
 	}
 	if client.Locale != "" {
 		out["x-client-locale"] = client.Locale
