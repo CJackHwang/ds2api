@@ -4,7 +4,6 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
-	"math/rand"
 )
 
 const (
@@ -95,30 +94,12 @@ func normalizeClientConstants(in clientConstants) clientConstants {
 		in.Name = "DeepSeek"
 	}
 	if in.Platform == "" {
-		in.Platform = "android"
-	}
-	if in.AndroidAPILevel == "" {
-		in.AndroidAPILevel = "35"
+		in.Platform = "web"
 	}
 	if in.Locale == "" {
 		in.Locale = "zh_CN"
 	}
 	return in
-}
-
-func randomizeVersion(version string) string {
-	// Randomize patch version (2.0.x) within reasonable range
-	major, minor, patch := 2, 0, 4
-	fmt.Sscanf(version, "%d.%d.%d", &major, &minor, &patch)
-	// Randomize patch between 1-9
-	patch = rand.Intn(9) + 1
-	return fmt.Sprintf("%d.%d.%d", major, minor, patch)
-}
-
-func randomizeAndroidAPI() string {
-	// Randomize Android API level between 30-35 (Android 11-15)
-	apiLevel := rand.Intn(6) + 30
-	return fmt.Sprintf("%d", apiLevel)
 }
 
 func buildBaseHeaders(client clientConstants, overrides map[string]string) map[string]string {
@@ -129,15 +110,8 @@ func buildBaseHeaders(client clientConstants, overrides map[string]string) map[s
 		}
 		out[k] = v
 	}
-	if client.Name != "" && client.Version != "" {
-		randomizedVersion := randomizeVersion(client.Version)
-		userAgent := client.Name + "/" + randomizedVersion
-		if client.Platform == "android" {
-			randomizedAPI := randomizeAndroidAPI()
-			userAgent += " Android/" + randomizedAPI
-		}
-		out["User-Agent"] = userAgent
-		out["x-client-version"] = randomizedVersion
+	if client.Version != "" {
+		out["x-client-version"] = client.Version
 	}
 	if client.Platform != "" {
 		out["x-client-platform"] = client.Platform
