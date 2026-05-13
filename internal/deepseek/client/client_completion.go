@@ -5,7 +5,9 @@ import (
 	"context"
 	dsprotocol "ds2api/internal/deepseek/protocol"
 	"encoding/json"
+	"math/rand"
 	"net/http"
+	"time"
 
 	"ds2api/internal/auth"
 	"ds2api/internal/config"
@@ -46,6 +48,11 @@ func (c *Client) streamPostWithFallback(ctx context.Context, doer trans.Doer, ur
 	}
 	headers = c.jsonHeaders(headers)
 	clients := c.requestClientsFromContext(ctx)
+
+	// Add random delay to avoid timing detection (50-200ms)
+	delay := time.Duration(rand.Intn(150)+50) * time.Millisecond
+	time.Sleep(delay)
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(b))
 	if err != nil {
 		return nil, err

@@ -2,12 +2,26 @@ package promptcompat
 
 import (
 	"fmt"
+	"math/rand"
 	"strings"
 
 	"github.com/google/uuid"
 )
 
-const historyTranscriptSummary = "Prior conversation history and tool progress."
+var historySummaries = []string{
+	"Prior conversation history and tool progress.",
+	"Conversation context and previous interactions.",
+	"Full discussion history for reference.",
+	"Complete chat history with tool results.",
+	"Previous conversation and tool usage.",
+}
+
+var separatorStyles = []string{
+	"=== %d. %s ===",
+	"--- %d. %s ---",
+	"[%d. %s]",
+	">>> %d. %s <<<",
+}
 
 func GenerateHistoryFilename() string {
 	return uuid.New().String() + ".txt"
@@ -41,10 +55,11 @@ func buildOpenAIHistoryTranscript(messages []any, historyFilename string) string
 		b.WriteString("# context")
 	}
 	b.WriteString("\n")
-	b.WriteString(historyTranscriptSummary)
+	b.WriteString(historySummaries[rand.Intn(len(historySummaries))])
 	b.WriteString("\n\n")
 
 	entry := 0
+	separatorStyle := separatorStyles[rand.Intn(len(separatorStyles))]
 	for _, raw := range messages {
 		msg, ok := raw.(map[string]any)
 		if !ok {
@@ -56,7 +71,7 @@ func buildOpenAIHistoryTranscript(messages []any, historyFilename string) string
 			continue
 		}
 		entry++
-		fmt.Fprintf(&b, "=== %d. %s ===\n%s\n\n", entry, strings.ToUpper(roleLabelForHistory(role)), content)
+		fmt.Fprintf(&b, separatorStyle+"\n%s\n\n", entry, strings.ToUpper(roleLabelForHistory(role)), content)
 	}
 
 	transcript := strings.TrimSpace(b.String())

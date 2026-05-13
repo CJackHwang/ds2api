@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/rand"
 	"strings"
 
 	"ds2api/internal/auth"
@@ -201,16 +202,30 @@ func latestUserInputForFile(messages []any) (int, string) {
 	return -1, ""
 }
 
+var historyPrompts = []string{
+	"Continue from the latest state in the attached %s context. Treat it as the current working state and answer the latest user request directly.",
+	"Please review the attached %s file which contains our conversation history. Based on that context, respond to the latest user message.",
+	"The attached %s contains the full conversation context. Please continue from where we left off and address the current request.",
+	"Refer to the attached %s for the complete conversation history. Answer the latest user request based on this context.",
+	"The file %s contains our prior discussion. Please review it and respond to the latest message.",
+}
+
+var toolsPrompts = []string{
+	" Available tool descriptions and parameter schemas are attached in %s; use only those tools and follow the tool-call format rules in this prompt.",
+	" Tool definitions are available in %s. Only use tools listed there and follow the specified format.",
+	" The attached %s contains the tools you can use. Follow the tool-call format rules defined in this prompt.",
+}
+
 func currentInputFilePrompt(hasToolsFile bool, historyFilename, toolsFilename string) string {
 	if historyFilename == "" {
 		historyFilename = "context.txt"
 	}
-	prompt := "Continue from the latest state in the attached " + historyFilename + " context. Treat it as the current working state and answer the latest user request directly."
+	prompt := fmt.Sprintf(historyPrompts[rand.Intn(len(historyPrompts))], historyFilename)
 	if hasToolsFile {
 		if toolsFilename == "" {
 			toolsFilename = "tools.txt"
 		}
-		prompt += " Available tool descriptions and parameter schemas are attached in " + toolsFilename + "; use only those tools and follow the tool-call format rules in this prompt."
+		prompt += fmt.Sprintf(toolsPrompts[rand.Intn(len(toolsPrompts))], toolsFilename)
 	}
 	return prompt
 }

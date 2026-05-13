@@ -7,12 +7,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/rand"
 	"mime/multipart"
 	"net/http"
 	"net/textproto"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"ds2api/internal/auth"
 	"ds2api/internal/config"
@@ -99,6 +101,11 @@ func (c *Client) UploadFile(ctx context.Context, a *auth.RequestAuth, req Upload
 		headers["x-ds-pow-response"] = powHeader
 		headers["x-file-size"] = strconv.Itoa(len(req.Data))
 		headers["x-thinking-enabled"] = "1"
+
+		// Add random delay to avoid timing detection (30-150ms)
+		delay := time.Duration(rand.Intn(120)+30) * time.Millisecond
+		time.Sleep(delay)
+
 		resp, err := c.doUpload(ctx, clients.regular, clients.fallback, dsprotocol.DeepSeekUploadFileURL, headers, body)
 		if err != nil {
 			config.Logger.Warn("[upload_file] request error", "error", err, "account", a.AccountID, "filename", filename)
