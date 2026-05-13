@@ -137,7 +137,7 @@ func (h *Handler) handleGeminiDirectStream(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	streamReq := start.Request
-	h.handleStreamGenerateContent(w, r, start.Response, streamReq.ResponseModel, streamReq.PromptTokenText, streamReq.Thinking, streamReq.Search, streamReq.ToolNames, streamReq.ToolsRaw, historySession)
+	h.handleStreamGenerateContentWithRetry(w, r, a, start.Response, start.Payload, start.Pow, streamReq, streamReq.ResponseModel, streamReq.PromptTokenText, streamReq.Thinking, streamReq.Search, streamReq.ToolNames, streamReq.ToolsRaw, historySession)
 }
 
 func (h *Handler) proxyViaOpenAI(w http.ResponseWriter, r *http.Request, stream bool) bool {

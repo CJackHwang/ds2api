@@ -81,7 +81,7 @@ Tool call 问题优先跑：
 
 ```bash
 go test -v ./internal/toolcall ./internal/toolstream -count=1
-node --test tests/node/stream-tool-sieve.test.js tests/node/chat-stream.test.js
+./tests/scripts/run-unit-node.sh
 ```
 
 ## 5. 测试选择

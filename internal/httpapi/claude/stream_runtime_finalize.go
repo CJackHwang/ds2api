@@ -63,13 +63,10 @@ func (s *claudeStreamRuntime) sendToolUseBlock(idx int, tc toolcall.ParsedToolCa
 	})
 }
 
-func (s *claudeStreamRuntime) finalize(stopReason string) {
+func (s *claudeStreamRuntime) finalize(stopReason string, deferEmptyOutput bool) bool {
 	if s.ended {
-		return
+		return true
 	}
-	s.ended = true
-
-	s.closeThinkingBlock()
 
 	if s.bufferToolContent {
 		for _, evt := range toolstream.Flush(&s.sieve, s.toolNames) {
@@ -123,6 +120,7 @@ func (s *claudeStreamRuntime) finalize(stopReason string) {
 		RawThinking:           s.rawThinking.String(),
 		VisibleThinking:       s.thinking.String(),
 		DetectionThinking:     s.toolDetectionThinking.String(),
+		ResponseMessageID:     s.responseMessageID,
 		AlreadyEmittedCalls:   s.toolCallsDetected,
 		AlreadyEmittedToolRaw: s.toolCallsDetected,
 	}, assistantturn.BuildOptions{
@@ -137,6 +135,22 @@ func (s *claudeStreamRuntime) finalize(stopReason string) {
 	outcome := assistantturn.FinalizeTurn(turn, assistantturn.FinalizeOptions{
 		AlreadyEmittedToolCalls: s.toolCallsDetected,
 	})
+	if outcome.ShouldFail {
+		if deferEmptyOutput {
+			return false
+		}
+		s.ended = true
+		s.closeThinkingBlock()
+		s.closeTextBlock()
+		if s.history != nil {
+			s.history.Error(outcome.Error.Status, outcome.Error.Message, outcome.Error.Code, responsehistory.ThinkingForArchive(turn.RawThinking, turn.DetectionThinking, turn.Thinking), responsehistory.TextForArchive(turn.RawText, turn.Text))
+		}
+		s.sendErrorWithCode(outcome.Error.Status, outcome.Error.Message, outcome.Error.Code)
+		return true
+	}
+
+	s.ended = true
+	s.closeThinkingBlock()
 
 	if s.bufferToolContent && !s.toolCallsDetected {
 		if len(turn.ToolCalls) > 0 {
@@ -197,6 +211,7 @@ func (s *claudeStreamRuntime) finalize(stopReason string) {
 		},
 	})
 	s.send("message_stop", map[string]any{"type": "message_stop"})
+	return true
 }
 
 func (s *claudeStreamRuntime) onFinalize(reason streamengine.StopReason, scannerErr error) {
@@ -214,5 +229,5 @@ func (s *claudeStreamRuntime) onFinalize(reason streamengine.StopReason, scanner
 		s.sendError(scannerErr.Error())
 		return
 	}
-	s.finalize("end_turn")
+	s.finalize("end_turn", false)
 }

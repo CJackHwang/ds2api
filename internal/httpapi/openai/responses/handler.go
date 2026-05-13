@@ -103,14 +103,6 @@ func emptyOutputRetryMaxAttempts() int {
 	return shared.EmptyOutputRetryMaxAttempts()
 }
 
-func clonePayloadForEmptyOutputRetry(payload map[string]any, parentMessageID int) map[string]any {
-	return shared.ClonePayloadForEmptyOutputRetry(payload, parentMessageID)
-}
-
-func usagePromptWithEmptyOutputRetry(originalPrompt string, retryAttempts int) string {
-	return shared.UsagePromptWithEmptyOutputRetry(originalPrompt, retryAttempts)
-}
-
 func filterIncrementalToolCallDeltasByAllowed(deltas []toolstream.ToolCallDelta, seenNames map[int]string) []toolstream.ToolCallDelta {
 	return shared.FilterIncrementalToolCallDeltasByAllowed(deltas, seenNames)
 }

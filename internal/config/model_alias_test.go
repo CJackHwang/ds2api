@@ -75,24 +75,17 @@ func TestResolveExpandedHistoricalAliases(t *testing.T) {
 	}
 }
 
-func TestResolveModelHeuristicReasoner(t *testing.T) {
-	got, ok := ResolveModel(nil, "o3-super")
-	if !ok || got != "deepseek-v4-pro" {
-		t.Fatalf("expected heuristic reasoner, got ok=%v model=%q", ok, got)
-	}
-}
-
-func TestResolveModelHeuristicReasonerNoThinking(t *testing.T) {
-	got, ok := ResolveModel(nil, "o3-super-nothinking")
-	if !ok || got != "deepseek-v4-pro-nothinking" {
-		t.Fatalf("expected heuristic reasoner nothinking, got ok=%v model=%q", ok, got)
-	}
-}
-
 func TestResolveModelUnknown(t *testing.T) {
 	_, ok := ResolveModel(nil, "totally-custom-model")
 	if ok {
 		t.Fatal("expected unknown model to fail resolve")
+	}
+}
+
+func TestResolveModelUnknownKnownFamilyName(t *testing.T) {
+	_, ok := ResolveModel(nil, "gpt-5.5-pro-search")
+	if ok {
+		t.Fatal("expected unknown known-family model to fail resolve without alias")
 	}
 }
 
@@ -148,13 +141,6 @@ func TestResolveModelCustomAliasToVision(t *testing.T) {
 	}, "my-vision-model")
 	if !ok || got != "deepseek-v4-vision" {
 		t.Fatalf("expected alias -> deepseek-v4-vision, got ok=%v model=%q", ok, got)
-	}
-}
-
-func TestResolveModelHeuristicVisionIgnoresSearchSuffix(t *testing.T) {
-	got, ok := ResolveModel(nil, "gemini-vision-search")
-	if !ok || got != "deepseek-v4-vision" {
-		t.Fatalf("expected heuristic vision alias to resolve without search variant, got ok=%v model=%q", ok, got)
 	}
 }
 

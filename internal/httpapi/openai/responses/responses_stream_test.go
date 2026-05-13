@@ -397,7 +397,7 @@ func TestHandleResponsesNonStreamRequiredToolChoiceIgnoresThinkingToolPayloadWhe
 	}
 }
 
-func TestHandleResponsesNonStreamReturns429WhenUpstreamOutputEmpty(t *testing.T) {
+func TestHandleResponsesNonStreamSingleAttemptReturns503WhenUpstreamOutputEmpty(t *testing.T) {
 	h := &Handler{}
 	rec := httptest.NewRecorder()
 	resp := &http.Response{
@@ -409,17 +409,17 @@ func TestHandleResponsesNonStreamReturns429WhenUpstreamOutputEmpty(t *testing.T)
 	}
 
 	h.handleResponsesNonStream(rec, resp, "owner-a", "resp_test", "deepseek-v4-flash", "prompt", 0, false, false, nil, nil, promptcompat.DefaultToolChoicePolicy(), "")
-	if rec.Code != http.StatusTooManyRequests {
-		t.Fatalf("expected 429 for empty upstream output, got %d body=%s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 for empty upstream output, got %d body=%s", rec.Code, rec.Body.String())
 	}
 	out := decodeJSONBody(t, rec.Body.String())
 	errObj, _ := out["error"].(map[string]any)
-	if asString(errObj["code"]) != "upstream_empty_output" {
-		t.Fatalf("expected code=upstream_empty_output, got %#v", out)
+	if asString(errObj["code"]) != "upstream_unavailable" {
+		t.Fatalf("expected code=upstream_unavailable, got %#v", out)
 	}
 }
 
-func TestHandleResponsesNonStreamReturnsContentFilterErrorWhenUpstreamFilteredWithoutOutput(t *testing.T) {
+func TestHandleResponsesNonStreamSingleAttemptReturnsContentFilterErrorWhenUpstreamFilteredWithoutOutput(t *testing.T) {
 	h := &Handler{}
 	rec := httptest.NewRecorder()
 	resp := &http.Response{
@@ -441,7 +441,7 @@ func TestHandleResponsesNonStreamReturnsContentFilterErrorWhenUpstreamFilteredWi
 	}
 }
 
-func TestHandleResponsesNonStreamReturns429WhenUpstreamHasOnlyThinking(t *testing.T) {
+func TestHandleResponsesNonStreamSingleAttemptReturns429WhenUpstreamHasOnlyThinking(t *testing.T) {
 	h := &Handler{}
 	rec := httptest.NewRecorder()
 	resp := &http.Response{

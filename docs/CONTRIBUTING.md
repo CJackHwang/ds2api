@@ -9,8 +9,8 @@
 ### 前置要求
 
 - Go 1.26+
-- Node.js `20.19+` 或 `22.12+`（WebUI 开发时）
-- npm（随 Node.js 提供）
+- Node.js `20.19+` 或 `22.12+`（WebUI 开发时；CI / Docker 构建使用 Node 24）
+- npm（随 Node.js 提供，建议 10+）
 
 ### 后端开发
 

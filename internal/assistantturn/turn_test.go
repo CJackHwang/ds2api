@@ -1,6 +1,7 @@
 package assistantturn
 
 import (
+	"net/http"
 	"testing"
 
 	"ds2api/internal/promptcompat"
@@ -67,6 +68,13 @@ func TestBuildTurnFromCollectedThinkingOnlyIsEmptyOutput(t *testing.T) {
 	turn := BuildTurnFromCollected(sse.CollectResult{Thinking: "hidden"}, BuildOptions{})
 	if turn.Error == nil || turn.Error.Code != "upstream_empty_output" {
 		t.Fatalf("expected empty output error, got %#v", turn.Error)
+	}
+}
+
+func TestBuildTurnFromCollectedPureEmptyOutputIsUpstreamUnavailable(t *testing.T) {
+	turn := BuildTurnFromCollected(sse.CollectResult{}, BuildOptions{})
+	if turn.Error == nil || turn.Error.Status != http.StatusServiceUnavailable || turn.Error.Code != "upstream_unavailable" {
+		t.Fatalf("expected upstream unavailable error, got %#v", turn.Error)
 	}
 }
 

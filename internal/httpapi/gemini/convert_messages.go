@@ -44,14 +44,20 @@ func geminiMessagesFromRequest(req map[string]any) []any {
 		}
 
 		textParts := make([]string, 0, len(parts))
+		pendingThinking := ""
 		flushText := func() {
 			if len(textParts) == 0 {
 				return
 			}
-			out = append(out, map[string]any{
+			msg := map[string]any{
 				"role":    role,
 				"content": strings.Join(textParts, "\n"),
-			})
+			}
+			if role == "assistant" && strings.TrimSpace(pendingThinking) != "" {
+				msg["reasoning_content"] = pendingThinking
+				pendingThinking = ""
+			}
+			out = append(out, msg)
 			textParts = textParts[:0]
 		}
 
@@ -61,6 +67,14 @@ func geminiMessagesFromRequest(req map[string]any) []any {
 				continue
 			}
 			if text := strings.TrimSpace(asString(part["text"])); text != "" {
+				if role == "assistant" && isGeminiThoughtPart(part) {
+					if pendingThinking == "" {
+						pendingThinking = text
+					} else {
+						pendingThinking += "\n" + text
+					}
+					continue
+				}
 				textParts = append(textParts, text)
 				continue
 			}
@@ -75,7 +89,7 @@ func geminiMessagesFromRequest(req map[string]any) []any {
 						}
 					}
 					lastToolCallIDByName[strings.ToLower(name)] = callID
-					out = append(out, map[string]any{
+					msg := map[string]any{
 						"role": "assistant",
 						"tool_calls": []any{
 							map[string]any{
@@ -87,7 +101,12 @@ func geminiMessagesFromRequest(req map[string]any) []any {
 								},
 							},
 						},
-					})
+					}
+					if strings.TrimSpace(pendingThinking) != "" {
+						msg["reasoning_content"] = pendingThinking
+						pendingThinking = ""
+					}
+					out = append(out, msg)
 				}
 				continue
 			}
@@ -132,8 +151,27 @@ func geminiMessagesFromRequest(req map[string]any) []any {
 			}
 		}
 		flushText()
+		if role == "assistant" && strings.TrimSpace(pendingThinking) != "" {
+			out = append(out, map[string]any{
+				"role":              "assistant",
+				"reasoning_content": pendingThinking,
+			})
+		}
 	}
 	return out
+}
+
+func isGeminiThoughtPart(part map[string]any) bool {
+	if part == nil {
+		return false
+	}
+	if v, ok := part["thought"].(bool); ok {
+		return v
+	}
+	if v, ok := part["thoughtSignature"].(string); ok && strings.TrimSpace(v) != "" {
+		return true
+	}
+	return false
 }
 
 func normalizeGeminiSystemInstruction(raw any) string {

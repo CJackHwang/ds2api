@@ -52,7 +52,7 @@ func normalizeClaudeRequest(store ConfigReader, req map[string]any) (claudeNorma
 			RequestedModel:  strings.TrimSpace(model),
 			ResolvedModel:   dsModel,
 			ResponseModel:   strings.TrimSpace(model),
-			Messages:        payload["messages"].([]any),
+			Messages:        normalizedMessages,
 			PromptTokenText: finalPrompt,
 			ToolsRaw:        toolsRequested,
 			FinalPrompt:     finalPrompt,

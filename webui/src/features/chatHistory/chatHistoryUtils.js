@@ -3,14 +3,14 @@ export const DISABLED_LIMIT = 0
 export const MESSAGE_COLLAPSE_AT = 700
 export const VIEW_MODE_KEY = 'ds2api_chat_history_view_mode'
 
-const BEGIN_SENTENCE_MARKER = '<｜begin▁of▁sentence｜>'
-const SYSTEM_MARKER = '<｜System｜>'
-const USER_MARKER = '<｜User｜>'
-const ASSISTANT_MARKER = '<｜Assistant｜>'
-const TOOL_MARKER = '<｜Tool｜>'
-const END_INSTRUCTIONS_MARKER = '<｜end▁of▁instructions｜>'
-const END_SENTENCE_MARKER = '<｜end▁of▁sentence｜>'
-const END_TOOL_RESULTS_MARKER = '<｜end▁of▁toolresults｜>'
+const BEGIN_SENTENCE_MARKER = '<|begin▁of▁sentence|>'
+const SYSTEM_MARKER = '<|System|>'
+const USER_MARKER = '<|User|>'
+const ASSISTANT_MARKER = '<|Assistant|>'
+const TOOL_MARKER = '<|Tool|>'
+const END_INSTRUCTIONS_MARKER = '<|end▁of▁instructions|>'
+const END_SENTENCE_MARKER = '<|end▁of▁sentence|>'
+const END_TOOL_RESULTS_MARKER = '<|end▁of▁toolresults|>'
 const CURRENT_INPUT_FILE_PROMPT = 'Continue from the latest state in the attached DS2API_HISTORY.txt context. Treat it as the current working state and answer the latest user request directly.'
 const LEGACY_CURRENT_INPUT_FILE_PROMPTS = new Set([
     'The current request and prior conversation context have already been provided. Answer the latest user request directly.',

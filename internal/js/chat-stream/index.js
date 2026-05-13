@@ -88,7 +88,7 @@ function isVercelRuntime() {
 
 function isNodeStreamSupportedPath(rawURL) {
   const path = extractPathname(rawURL);
-  return path === '/v1/chat/completions';
+  return path === '/v1/chat/completions' || path === '/chat/completions';
 }
 
 function extractPathname(rawURL) {

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"ds2api/internal/auth"
+	"ds2api/internal/completionruntime"
 	"ds2api/internal/config"
 	dsprotocol "ds2api/internal/deepseek/protocol"
 	"ds2api/internal/promptcompat"
@@ -14,46 +15,41 @@ import (
 	streamengine "ds2api/internal/stream"
 )
 
-func (h *Handler) handleResponsesStreamWithRetry(w http.ResponseWriter, r *http.Request, a *auth.RequestAuth, resp *http.Response, payload map[string]any, pow, owner, responseID, model, finalPrompt string, refFileTokens int, thinkingEnabled, searchEnabled bool, toolNames []string, toolsRaw any, toolChoice promptcompat.ToolChoicePolicy, traceID string, historySession *responsehistory.Session) {
+func (h *Handler) handleResponsesStreamWithRetry(w http.ResponseWriter, r *http.Request, a *auth.RequestAuth, resp *http.Response, payload map[string]any, pow, owner, responseID string, stdReq promptcompat.StandardRequest, model, finalPrompt string, refFileTokens int, thinkingEnabled, searchEnabled bool, toolNames []string, toolsRaw any, toolChoice promptcompat.ToolChoicePolicy, traceID string, historySession *responsehistory.Session) {
 	streamRuntime, initialType, ok := h.prepareResponsesStreamRuntime(w, resp, owner, responseID, model, finalPrompt, refFileTokens, thinkingEnabled, searchEnabled, toolNames, toolsRaw, toolChoice, traceID, historySession)
 	if !ok {
 		return
 	}
-	attempts := 0
-	currentResp := resp
-	for {
-		terminalWritten, retryable := h.consumeResponsesStreamAttempt(r, currentResp, streamRuntime, initialType, thinkingEnabled, attempts < emptyOutputRetryMaxAttempts())
-		if terminalWritten {
-			logResponsesStreamTerminal(streamRuntime, attempts)
-			return
-		}
-		if !retryable || !emptyOutputRetryEnabled() || attempts >= emptyOutputRetryMaxAttempts() {
+	completionruntime.ExecuteStreamWithRetry(r.Context(), h.DS, a, resp, payload, pow, completionruntime.StreamRetryOptions{
+		Surface:          "responses",
+		Stream:           true,
+		RetryEnabled:     emptyOutputRetryEnabled(),
+		RetryMaxAttempts: emptyOutputRetryMaxAttempts(),
+		MaxAttempts:      3,
+		UsagePrompt:      finalPrompt,
+		Request:          stdReq,
+		CurrentInputFile: h.Store,
+	}, completionruntime.StreamRetryHooks{
+		ConsumeAttempt: func(currentResp *http.Response, allowDeferEmpty bool) (bool, bool) {
+			return h.consumeResponsesStreamAttempt(r, currentResp, streamRuntime, initialType, thinkingEnabled, allowDeferEmpty)
+		},
+		Finalize: func(attempts int) {
 			streamRuntime.finalize("stop", false)
 			config.Logger.Info("[openai_empty_retry] terminal empty output", "surface", "responses", "stream", true, "retry_attempts", attempts, "success_source", "none", "error_code", streamRuntime.finalErrorCode)
-			return
-		}
-		attempts++
-		config.Logger.Info("[openai_empty_retry] attempting synthetic retry", "surface", "responses", "stream", true, "retry_attempt", attempts, "parent_message_id", streamRuntime.responseMessageID)
-		retryPow, powErr := h.DS.GetPow(r.Context(), a, 3)
-		if powErr != nil {
-			config.Logger.Warn("[openai_empty_retry] retry PoW fetch failed, falling back to original PoW", "surface", "responses", "stream", true, "retry_attempt", attempts, "error", powErr)
-			retryPow = pow
-		}
-		nextResp, err := h.DS.CallCompletion(r.Context(), a, clonePayloadForEmptyOutputRetry(payload, streamRuntime.responseMessageID), retryPow, 3)
-		if err != nil {
-			streamRuntime.failResponse(http.StatusInternalServerError, "Failed to get completion.", "error")
-			config.Logger.Warn("[openai_empty_retry] retry request failed", "surface", "responses", "stream", true, "retry_attempt", attempts, "error", err)
-			return
-		}
-		if nextResp.StatusCode != http.StatusOK {
-			defer func() { _ = nextResp.Body.Close() }()
-			body, _ := io.ReadAll(nextResp.Body)
-			streamRuntime.failResponse(nextResp.StatusCode, strings.TrimSpace(string(body)), "error")
-			return
-		}
-		streamRuntime.finalPrompt = usagePromptWithEmptyOutputRetry(finalPrompt, attempts)
-		currentResp = nextResp
-	}
+		},
+		ParentMessageID: func() int {
+			return streamRuntime.responseMessageID
+		},
+		OnRetryPrompt: func(prompt string) {
+			streamRuntime.finalPrompt = prompt
+		},
+		OnRetryFailure: func(status int, message, code string) {
+			streamRuntime.failResponse(status, strings.TrimSpace(message), code)
+		},
+		OnTerminal: func(attempts int) {
+			logResponsesStreamTerminal(streamRuntime, attempts)
+		},
+	})
 }
 
 func (h *Handler) prepareResponsesStreamRuntime(w http.ResponseWriter, resp *http.Response, owner, responseID, model, finalPrompt string, refFileTokens int, thinkingEnabled, searchEnabled bool, toolNames []string, toolsRaw any, toolChoice promptcompat.ToolChoicePolicy, traceID string, historySession *responsehistory.Session) (*responsesStreamRuntime, string, bool) {

@@ -28,6 +28,7 @@ type RequestAuth struct {
 	DeepSeekToken  string
 	CallerID       string
 	AccountID      string
+	TargetAccount  string
 	Account        config.Account
 	TriedAccounts  map[string]bool
 	resolver       *Resolver
@@ -99,6 +100,7 @@ func (r *Resolver) acquireManagedRequestAuth(ctx context.Context, callerID, targ
 			UseConfigToken: true,
 			CallerID:       callerID,
 			AccountID:      acc.Identifier(),
+			TargetAccount:  target,
 			Account:        acc,
 			TriedAccounts:  tried,
 			resolver:       r,
@@ -185,6 +187,9 @@ func (r *Resolver) SwitchAccount(ctx context.Context, a *RequestAuth) bool {
 	if !a.UseConfigToken {
 		return false
 	}
+	if strings.TrimSpace(a.TargetAccount) != "" {
+		return false
+	}
 	if a.TriedAccounts == nil {
 		a.TriedAccounts = map[string]bool{}
 	}
@@ -206,6 +211,13 @@ func (r *Resolver) SwitchAccount(ctx context.Context, a *RequestAuth) bool {
 		}
 		return true
 	}
+}
+
+func (a *RequestAuth) SwitchAccount(ctx context.Context) bool {
+	if a == nil || a.resolver == nil {
+		return false
+	}
+	return a.resolver.SwitchAccount(ctx, a)
 }
 
 func (r *Resolver) Release(a *RequestAuth) {

@@ -81,6 +81,22 @@ func (s *responsesStreamRuntime) buildCompletedResponseObject(finalThinking, fin
 				},
 			},
 		})
+	} else if len(calls) > 0 && strings.TrimSpace(finalThinking) != "" {
+		indexed = append(indexed, indexedItem{
+			index: s.ensureMessageOutputIndex(),
+			item: map[string]any{
+				"id":     s.ensureMessageItemID(),
+				"type":   "message",
+				"role":   "assistant",
+				"status": "completed",
+				"content": []map[string]any{
+					{
+						"type": "reasoning",
+						"text": finalThinking,
+					},
+				},
+			},
+		})
 	} else if len(calls) == 0 {
 		content := make([]map[string]any, 0, 2)
 		if finalThinking != "" {

@@ -103,7 +103,7 @@ func TestNormalizeOpenAIResponsesRequestAlwaysAcceptsWideInput(t *testing.T) {
 	if out.Surface != "openai_responses" {
 		t.Fatalf("unexpected surface: %q", out.Surface)
 	}
-	if !strings.Contains(out.FinalPrompt, "<｜User｜>hi") {
+	if !strings.Contains(out.FinalPrompt, "<|User|>hi") {
 		t.Fatalf("unexpected final prompt: %q", out.FinalPrompt)
 	}
 }

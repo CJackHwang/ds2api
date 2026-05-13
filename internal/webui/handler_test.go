@@ -78,6 +78,52 @@ func TestServeFromDiskPinsContentType(t *testing.T) {
 	}
 }
 
+func TestServeFromDiskRejectsSiblingDirectoryWithSharedPrefix(t *testing.T) {
+	parent := t.TempDir()
+	staticDir := filepath.Join(parent, "admin")
+	siblingDir := filepath.Join(parent, "admin-leak")
+	if err := os.MkdirAll(staticDir, 0o755); err != nil {
+		t.Fatalf("mkdir static dir: %v", err)
+	}
+	if err := os.MkdirAll(siblingDir, 0o755); err != nil {
+		t.Fatalf("mkdir sibling dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(siblingDir, "secret.txt"), []byte("secret"), 0o644); err != nil {
+		t.Fatalf("write sibling secret: %v", err)
+	}
+
+	h := &Handler{StaticDir: staticDir}
+	req := httptest.NewRequest(http.MethodGet, "/admin/../admin-leak/secret.txt", nil)
+	rec := httptest.NewRecorder()
+	h.serveFromDisk(rec, req, staticDir)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", rec.Code)
+	}
+	if body := rec.Body.String(); strings.Contains(body, "secret") {
+		t.Fatal("served content from sibling directory")
+	}
+}
+
+func TestIsPathInsideRootAllowsFilesystemRootChildren(t *testing.T) {
+	root := filepath.VolumeName(os.TempDir()) + string(os.PathSeparator)
+	child := filepath.Join(root, "assets", "index.css")
+
+	if !isPathInsideRoot(child, root) {
+		t.Fatalf("expected filesystem-root child %q inside %q", child, root)
+	}
+}
+
+func TestIsPathInsideRootRejectsSharedPrefixSibling(t *testing.T) {
+	parent := t.TempDir()
+	root := filepath.Join(parent, "admin")
+	sibling := filepath.Join(parent, "admin-leak", "secret.txt")
+
+	if isPathInsideRoot(sibling, root) {
+		t.Fatalf("expected shared-prefix sibling %q outside %q", sibling, root)
+	}
+}
+
 // TestSetStaticContentTypeUnknownExtensionFallsThrough verifies that unknown
 // extensions leave the Content-Type header unset, so http.ServeFile can apply
 // its own detection (sniffing or mime.TypeByExtension) for cases the pinned

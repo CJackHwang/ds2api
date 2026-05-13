@@ -13,6 +13,7 @@ type State struct {
 	codeFencePendingTicks  int
 	codeFencePendingTildes int
 	codeFenceNotLineStart  bool // inverted: zero-value false means "at line start"
+	markdownCodeSpanTicks  int
 	pendingToolRaw         string
 	pendingToolCalls       []toolcall.ParsedToolCall
 	disableDeltas          bool
@@ -50,6 +51,7 @@ func (s *State) noteText(content string) {
 	if !hasMeaningfulText(content) {
 		return
 	}
+	updateMarkdownCodeSpanState(s, content)
 	updateCodeFenceState(s, content)
 }
 
@@ -76,6 +78,61 @@ func insideCodeFence(text string) bool {
 		return false
 	}
 	return len(simulateCodeFenceState(nil, 0, 0, true, text).stack) > 0
+}
+
+func updateMarkdownCodeSpanState(state *State, text string) {
+	if state == nil || !hasMeaningfulText(text) {
+		return
+	}
+	state.markdownCodeSpanTicks = simulateMarkdownCodeSpanTicks(state, state.markdownCodeSpanTicks, text)
+}
+
+func simulateMarkdownCodeSpanTicks(state *State, initialTicks int, text string) int {
+	ticks := initialTicks
+	for i := 0; i < len(text); {
+		if text[i] != '`' {
+			i++
+			continue
+		}
+		run := countBacktickRun(text, i)
+		if ticks == 0 {
+			if run >= 3 && atMarkdownFenceLineStart(text, i) {
+				i += run
+				continue
+			}
+			if state != nil && insideCodeFenceWithState(state, text[:i]) {
+				i += run
+				continue
+			}
+			ticks = run
+		} else if run == ticks {
+			ticks = 0
+		}
+		i += run
+	}
+	return ticks
+}
+
+func countBacktickRun(text string, start int) int {
+	count := 0
+	for start+count < len(text) && text[start+count] == '`' {
+		count++
+	}
+	return count
+}
+
+func atMarkdownFenceLineStart(text string, idx int) bool {
+	for i := idx - 1; i >= 0; i-- {
+		switch text[i] {
+		case ' ', '\t':
+			continue
+		case '\n', '\r':
+			return true
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 func updateCodeFenceState(state *State, text string) {

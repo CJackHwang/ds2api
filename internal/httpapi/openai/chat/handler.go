@@ -33,6 +33,8 @@ type Handler struct {
 
 type streamLease struct {
 	Auth      *auth.RequestAuth
+	Standard  promptcompat.StandardRequest
+	SessionID string
 	ExpiresAt time.Time
 }
 
@@ -106,24 +108,12 @@ func cleanVisibleOutput(text string, stripReferenceMarkers bool) string {
 	return shared.CleanVisibleOutput(text, stripReferenceMarkers)
 }
 
-func upstreamEmptyOutputDetail(contentFilter bool, text, thinking string) (int, string, string) {
-	return shared.UpstreamEmptyOutputDetail(contentFilter, text, thinking)
-}
-
 func emptyOutputRetryEnabled() bool {
 	return shared.EmptyOutputRetryEnabled()
 }
 
 func emptyOutputRetryMaxAttempts() int {
 	return shared.EmptyOutputRetryMaxAttempts()
-}
-
-func clonePayloadForEmptyOutputRetry(payload map[string]any, parentMessageID int) map[string]any {
-	return shared.ClonePayloadForEmptyOutputRetry(payload, parentMessageID)
-}
-
-func usagePromptWithEmptyOutputRetry(originalPrompt string, retryAttempts int) string {
-	return shared.UsagePromptWithEmptyOutputRetry(originalPrompt, retryAttempts)
 }
 
 func formatIncrementalStreamToolCallDeltas(deltas []toolstream.ToolCallDelta, ids map[int]string) []map[string]any {
@@ -136,8 +126,4 @@ func filterIncrementalToolCallDeltasByAllowed(deltas []toolstream.ToolCallDelta,
 
 func formatFinalStreamToolCallsWithStableIDs(calls []toolcall.ParsedToolCall, ids map[int]string, toolsRaw any) []map[string]any {
 	return shared.FormatFinalStreamToolCallsWithStableIDs(calls, ids, toolsRaw)
-}
-
-func detectAssistantToolCalls(rawText, visibleText, exposedThinking, detectionThinking string, toolNames []string) toolcall.ToolCallParseResult {
-	return shared.DetectAssistantToolCalls(rawText, visibleText, exposedThinking, detectionThinking, toolNames)
 }

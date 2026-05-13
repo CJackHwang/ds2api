@@ -1,27 +1,29 @@
 package toolcall
 
-import "strings"
+import (
+	"strings"
+)
 
 func normalizeDSMLToolCallMarkup(text string) (string, bool) {
 	if text == "" {
 		return "", true
 	}
-	hasAliasLikeMarkup, _ := ContainsToolMarkupSyntaxOutsideIgnored(text)
-	if !hasAliasLikeMarkup {
-		return text, true
+	canonicalized := canonicalizeToolCallCandidateSpans(text)
+	hasDSMLLikeMarkup, hasCanonicalMarkup := ContainsToolMarkupSyntaxOutsideIgnored(canonicalized)
+	if !hasDSMLLikeMarkup && !hasCanonicalMarkup {
+		return canonicalized, true
 	}
-	return rewriteDSMLToolMarkupOutsideIgnored(text), true
+	return rewriteDSMLToolMarkupOutsideIgnored(canonicalized), true
 }
 
 func rewriteDSMLToolMarkupOutsideIgnored(text string) string {
 	if text == "" {
 		return ""
 	}
-	lower := strings.ToLower(text)
 	var b strings.Builder
 	b.Grow(len(text))
 	for i := 0; i < len(text); {
-		next, advanced, blocked := skipXMLIgnoredSection(text, lower, i)
+		next, advanced, blocked := skipXMLIgnoredSection(text, i)
 		if blocked {
 			b.WriteString(text[i:])
 			break
@@ -31,26 +33,29 @@ func rewriteDSMLToolMarkupOutsideIgnored(text string) string {
 			i = next
 			continue
 		}
+		if end, ok := markdownCodeSpanEnd(text, i); ok {
+			b.WriteString(text[i:end])
+			i = end
+			continue
+		}
 		tag, ok := scanToolMarkupTagAt(text, i)
 		if !ok {
 			b.WriteByte(text[i])
 			i++
 			continue
 		}
-		if tag.DSMLLike {
-			b.WriteByte('<')
-			if tag.Closing {
-				b.WriteByte('/')
-			}
-			b.WriteString(tag.Name)
-			b.WriteString(text[tag.NameEnd : tag.End+1])
-			if text[tag.End] != '>' {
-				b.WriteByte('>')
-			}
-			i = tag.End + 1
-			continue
+		b.WriteByte('<')
+		if tag.Closing {
+			b.WriteByte('/')
 		}
-		b.WriteString(text[tag.Start : tag.End+1])
+		b.WriteString(tag.Name)
+		if delimLen := xmlTagEndDelimiterLenEndingAt(text, tag.End); delimLen > 0 {
+			b.WriteString(text[tag.NameEnd : tag.End+1-delimLen])
+			b.WriteByte('>')
+		} else {
+			b.WriteString(text[tag.NameEnd : tag.End+1])
+			b.WriteByte('>')
+		}
 		i = tag.End + 1
 	}
 	return b.String()

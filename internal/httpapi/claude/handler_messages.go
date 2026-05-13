@@ -145,7 +145,7 @@ func (h *Handler) handleClaudeDirectStream(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	streamReq := start.Request
-	h.handleClaudeStreamRealtime(w, r, start.Response, streamReq.ResponseModel, streamReq.Messages, streamReq.Thinking, streamReq.Search, streamReq.ToolNames, streamReq.ToolsRaw, historySession)
+	h.handleClaudeStreamRealtimeWithRetry(w, r, a, start.Response, start.Payload, start.Pow, streamReq, streamReq.ResponseModel, streamReq.Messages, streamReq.Thinking, streamReq.Search, streamReq.ToolNames, streamReq.ToolsRaw, streamReq.PromptTokenText, historySession)
 }
 
 func (h *Handler) proxyViaOpenAI(w http.ResponseWriter, r *http.Request, store ConfigReader) bool {
@@ -359,4 +359,115 @@ func (h *Handler) handleClaudeStreamRealtime(w http.ResponseWriter, r *http.Requ
 		OnParsed:   streamRuntime.onParsed,
 		OnFinalize: streamRuntime.onFinalize,
 	})
+}
+
+func (h *Handler) handleClaudeStreamRealtimeWithRetry(w http.ResponseWriter, r *http.Request, a *auth.RequestAuth, resp *http.Response, payload map[string]any, pow string, stdReq promptcompat.StandardRequest, model string, messages []any, thinkingEnabled, searchEnabled bool, toolNames []string, toolsRaw any, promptTokenText string, historySession *responsehistory.Session) {
+	if resp.StatusCode != http.StatusOK {
+		defer func() { _ = resp.Body.Close() }()
+		body, _ := io.ReadAll(resp.Body)
+		if historySession != nil {
+			historySession.Error(resp.StatusCode, strings.TrimSpace(string(body)), "error", "", "")
+		}
+		writeClaudeError(w, http.StatusInternalServerError, string(body))
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache, no-transform")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+	rc := http.NewResponseController(w)
+	_, canFlush := w.(http.Flusher)
+	if !canFlush {
+		config.Logger.Warn("[claude_stream] response writer does not support flush; streaming may be buffered")
+	}
+
+	streamRuntime := newClaudeStreamRuntime(
+		w,
+		rc,
+		canFlush,
+		model,
+		messages,
+		thinkingEnabled,
+		searchEnabled,
+		stripReferenceMarkersEnabled(),
+		toolNames,
+		toolsRaw,
+		promptTokenText,
+		historySession,
+	)
+	streamRuntime.sendMessageStart()
+
+	completionruntime.ExecuteStreamWithRetry(r.Context(), h.DS, a, resp, payload, pow, completionruntime.StreamRetryOptions{
+		Surface:          "claude.messages",
+		Stream:           true,
+		RetryEnabled:     true,
+		MaxAttempts:      3,
+		UsagePrompt:      promptTokenText,
+		Request:          stdReq,
+		CurrentInputFile: h.Store,
+	}, completionruntime.StreamRetryHooks{
+		ConsumeAttempt: func(currentResp *http.Response, allowDeferEmpty bool) (bool, bool) {
+			return h.consumeClaudeStreamAttempt(r, currentResp, streamRuntime, thinkingEnabled, allowDeferEmpty)
+		},
+		Finalize: func(_ int) {
+			streamRuntime.finalize("end_turn", false)
+		},
+		ParentMessageID: func() int {
+			return streamRuntime.responseMessageID
+		},
+		OnRetryPrompt: func(prompt string) {
+			streamRuntime.promptTokenText = prompt
+		},
+		OnRetryFailure: func(status int, message, code string) {
+			streamRuntime.sendErrorWithCode(status, strings.TrimSpace(message), code)
+		},
+	})
+}
+
+func (h *Handler) consumeClaudeStreamAttempt(r *http.Request, resp *http.Response, streamRuntime *claudeStreamRuntime, thinkingEnabled bool, allowDeferEmpty bool) (bool, bool) {
+	defer func() { _ = resp.Body.Close() }()
+	initialType := "text"
+	if thinkingEnabled {
+		initialType = "thinking"
+	}
+	finalReason := streamengine.StopReason("")
+	var scannerErr error
+	streamengine.ConsumeSSE(streamengine.ConsumeConfig{
+		Context:             r.Context(),
+		Body:                resp.Body,
+		ThinkingEnabled:     thinkingEnabled,
+		InitialType:         initialType,
+		KeepAliveInterval:   claudeStreamPingInterval,
+		IdleTimeout:         claudeStreamIdleTimeout,
+		MaxKeepAliveNoInput: claudeStreamMaxKeepaliveCnt,
+	}, streamengine.ConsumeHooks{
+		OnKeepAlive: func() {
+			streamRuntime.sendPing()
+		},
+		OnParsed: streamRuntime.onParsed,
+		OnFinalize: func(reason streamengine.StopReason, err error) {
+			finalReason = reason
+			scannerErr = err
+		},
+	})
+	if string(finalReason) == "upstream_error" {
+		if streamRuntime.history != nil {
+			streamRuntime.history.Error(500, streamRuntime.upstreamErr, "upstream_error", responsehistory.ThinkingForArchive(streamRuntime.rawThinking.String(), streamRuntime.toolDetectionThinking.String(), streamRuntime.thinking.String()), responsehistory.TextForArchive(streamRuntime.rawText.String(), streamRuntime.text.String()))
+		}
+		streamRuntime.sendError(streamRuntime.upstreamErr)
+		return true, false
+	}
+	if scannerErr != nil {
+		if streamRuntime.history != nil {
+			streamRuntime.history.Error(500, scannerErr.Error(), "error", responsehistory.ThinkingForArchive(streamRuntime.rawThinking.String(), streamRuntime.toolDetectionThinking.String(), streamRuntime.thinking.String()), responsehistory.TextForArchive(streamRuntime.rawText.String(), streamRuntime.text.String()))
+		}
+		streamRuntime.sendError(scannerErr.Error())
+		return true, false
+	}
+	terminalWritten := streamRuntime.finalize("end_turn", allowDeferEmpty)
+	if terminalWritten {
+		return true, false
+	}
+	return false, true
 }

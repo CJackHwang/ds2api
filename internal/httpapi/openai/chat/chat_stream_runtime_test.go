@@ -10,7 +10,7 @@ import (
 	"ds2api/internal/promptcompat"
 )
 
-func TestChatStreamKeepAliveEmitsEmptyChoiceDataFrame(t *testing.T) {
+func TestChatStreamKeepAliveUsesCommentOnly(t *testing.T) {
 	rec := httptest.NewRecorder()
 	runtime := newChatStreamRuntime(
 		rec,
@@ -40,18 +40,8 @@ func TestChatStreamKeepAliveEmitsEmptyChoiceDataFrame(t *testing.T) {
 	if done {
 		t.Fatalf("keep-alive must not emit [DONE], body=%q", body)
 	}
-	if len(frames) != 1 {
-		t.Fatalf("expected one data frame, got %d body=%q", len(frames), body)
-	}
-	if got := asString(frames[0]["id"]); got != "chatcmpl-test" {
-		t.Fatalf("expected completion id to be preserved, got %q", got)
-	}
-	if got := asString(frames[0]["object"]); got != "chat.completion.chunk" {
-		t.Fatalf("expected chat chunk object, got %q", got)
-	}
-	choices, _ := frames[0]["choices"].([]any)
-	if len(choices) != 0 {
-		t.Fatalf("expected empty choices heartbeat, got %#v", choices)
+	if len(frames) != 0 {
+		t.Fatalf("keep-alive must not emit JSON data frames, got %#v body=%q", frames, body)
 	}
 }
 

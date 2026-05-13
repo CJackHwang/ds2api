@@ -9,8 +9,8 @@ Thanks for your interest in contributing to DS2API!
 ### Prerequisites
 
 - Go 1.26+
-- Node.js `20.19+` or `22.12+` (for WebUI development)
-- npm (bundled with Node.js)
+- Node.js `20.19+` or `22.12+` (for WebUI development; CI / Docker builds use Node 24)
+- npm (bundled with Node.js; 10+ recommended)
 
 ### Backend Development
 

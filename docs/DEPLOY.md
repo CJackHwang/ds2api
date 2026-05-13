@@ -4,7 +4,7 @@
 
 本指南基于当前 Go 代码库，详细说明各种部署方式。
 
-本页导航：[文档总索引](./README.md)｜[架构说明](./ARCHITECTURE.md)｜[接口文档](../API.md)｜[测试指南](./TESTING.md)
+本页导航：[文档总索引](./README.md)|[架构说明](./ARCHITECTURE.md)|[接口文档](../API.md)|[测试指南](./TESTING.md)
 
 ---
 
@@ -39,8 +39,8 @@
 | 依赖 | 最低版本 | 说明 |
 | --- | --- | --- |
 | Go | 1.26+ | 编译后端 |
-| Node.js | `20.19+` 或 `22.12+` | 仅在需要本地构建 WebUI 时 |
-| npm | 随 Node.js 提供 | 安装 WebUI 依赖 |
+| Node.js | `20.19+` 或 `22.12+`（CI / Docker 构建使用 Node 24） | 仅在需要本地构建 WebUI 时 |
+| npm | 随 Node.js 提供，建议 10+ | 安装 WebUI 依赖 |
 
 配置来源（任选其一）：
 
@@ -299,6 +299,8 @@ VERCEL_TEAM_ID=team_xxxxxxxxxxxx   # 个人账号可留空
 | `DS2API_VERCEL_INTERNAL_SECRET` | 混合流式内部鉴权 | 回退用 `DS2API_ADMIN_KEY` |
 | `DS2API_VERCEL_STREAM_LEASE_TTL_SECONDS` | 流式 lease TTL | `900` |
 | `DS2API_RAW_STREAM_SAMPLE_ROOT` | raw stream 样本保存/读取根目录 | `tests/raw_stream_samples` |
+| `DS2API_STATIC_ADMIN_DIR` | WebUI 静态资源目录 | `static/admin` |
+| `DS2API_AUTO_BUILD_WEBUI` | 本地启动时是否自动构建缺失的 WebUI（`1/true/yes/on` 或 `0/false/no/off`） | 非 Vercel 默认开启 |
 | `VERCEL_TOKEN` | Vercel 同步 token | — |
 | `VERCEL_PROJECT_ID` | Vercel 项目 ID | — |
 | `VERCEL_TEAM_ID` | Vercel 团队 ID | — |
@@ -331,7 +333,7 @@ api/index.go  api/chat-stream.js
 ```
 
 - **入口文件**：`api/index.go`（Serverless Go）
-- **流式入口**：`api/chat-stream.js`（Node Runtime，保证实时 SSE）
+- **流式入口**：`api/chat-stream.js`（Node Runtime，保证实时 SSE；`vercel.json` 仅把规范路径 `/v1/chat/completions` 重写到这里，根路径快捷别名 `/chat/completions` 仍走 Go 入口）
 - **路由重写**：`vercel.json`
 - **构建命令**：`npm ci --prefix webui && npm run build --prefix webui`（自动执行）
 
@@ -448,7 +450,7 @@ go run ./cmd/ds2api
 
 ### 4.2 WebUI 构建
 
-本地首次启动时，若 `static/admin/` 不存在，服务会自动尝试构建 WebUI（需要 Node.js/npm；缺依赖时会先执行 `npm ci`，再执行 `npm run build -- --outDir static/admin --emptyOutDir`）。
+本地首次启动时，若 WebUI 静态目录不存在，服务会自动尝试构建 WebUI（需要 Node.js/npm；缺依赖时会先执行 `npm ci --prefix webui`，再执行 `npm run build --prefix webui -- --outDir <静态目录> --emptyOutDir`）。默认静态目录为 `static/admin/`，可用 `DS2API_STATIC_ADMIN_DIR` 覆盖。
 
 你也可以手动构建：
 

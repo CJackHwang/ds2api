@@ -263,6 +263,42 @@ func TestNormalizeOpenAIMessagesForPrompt_AssistantNilContentDoesNotInjectNullLi
 	}
 }
 
+func TestNormalizeOpenAIMessagesForPrompt_CanonicalizesStandaloneAssistantToolMarkupContent(t *testing.T) {
+	raw := []any{
+		map[string]any{
+			"role": "assistant",
+			"content": `<！DSML！tool_calls>
+  <！DSML！invoke name=“Bash”>
+  <！DSML！parameter name=“command”><！[CDATA[lsof -i :4321 -t]]><！/DSML！parameter>
+  <！DSML！parameter name=“description”><！[CDATA[Verify port 4321 is free]]><！/DSML！parameter>
+  <！/DSML！invoke>
+  <！/DSML！tool_calls>`,
+		},
+	}
+
+	normalized := NormalizeOpenAIMessagesForPrompt(raw, "")
+	if len(normalized) != 1 {
+		t.Fatalf("expected one normalized assistant message, got %#v", normalized)
+	}
+	content, _ := normalized[0]["content"].(string)
+	for _, want := range []string{
+		"<|DSML|tool_calls>",
+		`<|DSML|invoke name="Bash">`,
+		`<|DSML|parameter name="command"><![CDATA[lsof -i :4321 -t]]></|DSML|parameter>`,
+		`<|DSML|parameter name="description"><![CDATA[Verify port 4321 is free]]></|DSML|parameter>`,
+		"</|DSML|tool_calls>",
+	} {
+		if !strings.Contains(content, want) {
+			t.Fatalf("expected canonicalized assistant tool markup to contain %q, got %q", want, content)
+		}
+	}
+	for _, bad := range []string{"<！DSML", "！tool_calls", "“", "”"} {
+		if strings.Contains(content, bad) {
+			t.Fatalf("expected malformed assistant tool markup to be removed from prompt history, found %q in %q", bad, content)
+		}
+	}
+}
+
 func TestNormalizeOpenAIMessagesForPrompt_DeveloperRoleMapsToSystem(t *testing.T) {
 	raw := []any{
 		map[string]any{"role": "developer", "content": "必须先走工具调用"},

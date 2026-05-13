@@ -39,8 +39,8 @@ Recommended order when choosing a deployment method:
 | Dependency | Minimum Version | Notes |
 | --- | --- | --- |
 | Go | 1.26+ | Build backend |
-| Node.js | `20.19+` or `22.12+` | Only needed to build WebUI locally |
-| npm | Bundled with Node.js | Install WebUI dependencies |
+| Node.js | `20.19+` or `22.12+` (CI / Docker builds use Node 24) | Only needed to build WebUI locally |
+| npm | Bundled with Node.js; 10+ recommended | Install WebUI dependencies |
 
 Config source (choose one):
 
@@ -299,6 +299,8 @@ VERCEL_TEAM_ID=team_xxxxxxxxxxxx   # optional for personal accounts
 | `DS2API_VERCEL_INTERNAL_SECRET` | Hybrid streaming internal auth | Falls back to `DS2API_ADMIN_KEY` |
 | `DS2API_VERCEL_STREAM_LEASE_TTL_SECONDS` | Stream lease TTL | `900` |
 | `DS2API_RAW_STREAM_SAMPLE_ROOT` | Raw stream sample root for saving/reading samples | `tests/raw_stream_samples` |
+| `DS2API_STATIC_ADMIN_DIR` | WebUI static asset directory | `static/admin` |
+| `DS2API_AUTO_BUILD_WEBUI` | Whether local startup auto-builds missing WebUI assets (`1/true/yes/on` or `0/false/no/off`) | Enabled outside Vercel |
 | `VERCEL_TOKEN` | Vercel sync token | — |
 | `VERCEL_PROJECT_ID` | Vercel project ID | — |
 | `VERCEL_TEAM_ID` | Vercel team ID | — |
@@ -321,7 +323,7 @@ Request ──────┐
 ```
 
 - **Go entry**: `api/index.go` (Serverless Go)
-- **Stream entry**: `api/chat-stream.js` (Node Runtime for real-time SSE)
+- **Stream entry**: `api/chat-stream.js` (Node Runtime for real-time SSE; `vercel.json` rewrites only the canonical `/v1/chat/completions` path here, while the root shortcut `/chat/completions` stays on the Go entry)
 - **Routing**: `vercel.json`
 - **Build command**: `npm ci --prefix webui && npm run build --prefix webui` (automatic)
 
@@ -438,7 +440,7 @@ Default local access URL: `http://127.0.0.1:5001`; the server actually binds to 
 
 ### 4.2 WebUI Build
 
-On first local startup, if `static/admin/` is missing, DS2API will automatically attempt to build the WebUI (requires Node.js/npm; when dependencies are missing it runs `npm ci` first, then `npm run build -- --outDir static/admin --emptyOutDir`).
+On first local startup, if the WebUI static directory is missing, DS2API automatically attempts to build it (requires Node.js/npm; when dependencies are missing it runs `npm ci --prefix webui`, then `npm run build --prefix webui -- --outDir <static-dir> --emptyOutDir`). The default static directory is `static/admin/`, and `DS2API_STATIC_ADMIN_DIR` can override it.
 
 Manual build:
 

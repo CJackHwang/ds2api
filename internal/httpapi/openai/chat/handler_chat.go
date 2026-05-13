@@ -28,6 +28,10 @@ func (h *Handler) ChatCompletions(w http.ResponseWriter, r *http.Request) {
 		h.handleVercelStreamPow(w, r)
 		return
 	}
+	if isVercelStreamSwitchRequest(r) {
+		h.handleVercelStreamSwitch(w, r)
+		return
+	}
 	if isVercelStreamPrepareRequest(r) {
 		h.handleVercelStreamPrepare(w, r)
 		return
@@ -114,7 +118,7 @@ func (h *Handler) ChatCompletions(w http.ResponseWriter, r *http.Request) {
 	}
 	streamReq := start.Request
 	refFileTokens := streamReq.RefFileTokens
-	h.handleStreamWithRetry(w, r, a, start.Response, start.Payload, start.Pow, sessionID, streamReq.ResponseModel, streamReq.PromptTokenText, refFileTokens, streamReq.Thinking, streamReq.Search, streamReq.ToolNames, streamReq.ToolsRaw, streamReq.ToolChoice, historySession)
+	h.handleStreamWithRetry(w, r, a, start.Response, start.Payload, start.Pow, sessionID, &sessionID, streamReq, streamReq.ResponseModel, streamReq.PromptTokenText, refFileTokens, streamReq.Thinking, streamReq.Search, streamReq.ToolNames, streamReq.ToolsRaw, streamReq.ToolChoice, historySession)
 }
 
 func (h *Handler) autoDeleteRemoteSession(ctx context.Context, a *auth.RequestAuth, sessionID string) {

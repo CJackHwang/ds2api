@@ -75,7 +75,7 @@ npm run build --prefix webui
 1. **Preflight 检查**：
    - `go test ./... -count=1`（单元测试）
    - `./tests/scripts/check-node-split-syntax.sh`（Node 拆分模块语法门禁）
-   - `node --test tests/node/stream-tool-sieve.test.js tests/node/chat-stream.test.js tests/node/js_compat_test.js`
+   - `node --test --test-concurrency=1 tests/node/stream-tool-sieve.test.js tests/node/chat-stream.test.js tests/node/chat-history-utils.test.js tests/node/js_compat_test.js`
    - `npm run build --prefix webui`（WebUI 构建检查）
 
 2. **隔离启动**：复制 `config.json` 到临时目录，启动独立服务进程
@@ -203,10 +203,10 @@ go test ./...
 
 ```bash
 # 运行 tool calls 相关测试（推荐用于调试 tool call 解析问题）
-go test -v -run 'TestParseToolCalls|TestRepair' ./internal/toolcall/
+go test -v -run 'TestParseToolCalls|TestProcessToolSieve|TestRepair' ./internal/toolcall ./internal/toolstream
 
 # 运行单个测试用例
-go test -v -run TestParseToolCallsWithDeepSeekHallucination ./internal/toolcall/
+go test -v -run TestParseToolCallsAllowsAllEmptyParameterPayload ./internal/toolcall
 
 # 运行 format 相关测试
 go test -v ./internal/format/...
@@ -221,23 +221,23 @@ go test -v ./internal/httpapi/openai/...
 
 ```bash
 # 1. 运行 tool calls 相关的所有测试
-go test -v -run 'TestParseToolCalls|TestRepair' ./internal/toolcall/
+go test -v -run 'TestParseToolCalls|TestProcessToolSieve|TestRepair' ./internal/toolcall ./internal/toolstream
 
 # 2. 查看测试输出中的详细调试信息
-go test -v -run TestParseToolCallsWithDeepSeekHallucination ./internal/toolcall/ 2>&1
+go test -v -run TestProcessToolSieveReleasesMalformedExecutableXMLBlock ./internal/toolstream 2>&1
 
 # 3. 检查具体测试用例的修复效果
-# 测试用例位于 internal/toolcall/toolcalls_test.go，包含：
-# - TestParseToolCallsWithDeepSeekHallucination: DeepSeek 典型幻觉输出
+# 重点测试位于 internal/toolcall/toolcalls_test.go 与 internal/toolstream/tool_sieve_xml_test.go，包含：
+# - TestParseToolCallsAllowsAllEmptyParameterPayload: 空参数结构化保留
+# - TestProcessToolSieveReleasesMalformedExecutableXMLBlock: malformed XML wrapper 释放为文本
 # - TestRepairLooseJSONWithNestedObjects: 嵌套对象的方括号修复
-# - TestParseToolCallsWithMixedWindowsPaths: Windows 路径处理
 ```
 
 ### 运行 Node.js 测试
 
 ```bash
 # 运行 Node 测试
-node --test tests/node/stream-tool-sieve.test.js
+node --test --test-concurrency=1 tests/node/stream-tool-sieve.test.js tests/node/chat-stream.test.js tests/node/chat-history-utils.test.js tests/node/js_compat_test.js
 
 # 或使用脚本
 ./tests/scripts/run-unit-node.sh

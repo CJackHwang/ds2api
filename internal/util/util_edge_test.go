@@ -162,20 +162,20 @@ func TestMessagesPrepareMergesConsecutiveSameRole(t *testing.T) {
 		{"role": "user", "content": "World"},
 	}
 	got := MessagesPrepare(messages)
-	if !strings.HasPrefix(got, "<｜begin▁of▁sentence｜>") {
+	if !strings.HasPrefix(got, "<|begin▁of▁sentence|>") {
 		t.Fatalf("expected user marker at the start, got %q", got)
 	}
 	if !strings.Contains(got, "Hello") || !strings.Contains(got, "World") {
 		t.Fatalf("expected both messages, got %q", got)
 	}
 	// Should be merged into a single user turn with one marker at the start.
-	count := strings.Count(got, "<｜User｜>")
+	count := strings.Count(got, "<|User|>")
 	if count != 1 {
 		t.Fatalf("expected one User marker for the merged pair, got %d occurrences", count)
 	}
 	// User messages no longer have end_of_sentence markers in the official format.
 	// The merged pair should have zero end_of_sentence markers (user turn only).
-	if count := strings.Count(got, "<｜end▁of▁sentence｜>"); count != 0 {
+	if count := strings.Count(got, "<|end▁of▁sentence|>"); count != 0 {
 		t.Fatalf("expected zero sentence terminators for user-only merge, got %d occurrences", count)
 	}
 }
@@ -186,16 +186,16 @@ func TestMessagesPrepareAssistantMarkers(t *testing.T) {
 		{"role": "assistant", "content": "Hello!"},
 	}
 	got := MessagesPrepare(messages)
-	if !strings.Contains(got, "<｜Assistant｜>") {
+	if !strings.Contains(got, "<|Assistant|>") {
 		t.Fatalf("expected assistant marker, got %q", got)
 	}
-	if !strings.Contains(got, "<｜end▁of▁sentence｜>") {
+	if !strings.Contains(got, "<|end▁of▁sentence|>") {
 		t.Fatalf("expected end of sentence marker, got %q", got)
 	}
-	if strings.Count(got, "<｜end▁of▁sentence｜>") != 1 {
+	if strings.Count(got, "<|end▁of▁sentence|>") != 1 {
 		t.Fatalf("expected one end_of_sentence (assistant only), got %q", got)
 	}
-	if !strings.Contains(got, "<｜Assistant｜>Hello!<｜end▁of▁sentence｜>") {
+	if !strings.Contains(got, "<|Assistant|>Hello!<|end▁of▁sentence|>") {
 		t.Fatalf("expected assistant EOS suffix, got %q", got)
 	}
 	if strings.Contains(got, "<think>") || strings.Contains(got, "</think>") {

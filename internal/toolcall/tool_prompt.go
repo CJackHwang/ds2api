@@ -21,15 +21,19 @@ RULES:
 1) Use the <|DSML|tool_calls> wrapper format.
 2) Put one or more <|DSML|invoke> entries under a single <|DSML|tool_calls> root.
 3) Put the tool name in the invoke name attribute: <|DSML|invoke name="TOOL_NAME">.
+3a) Tag punctuation alphabet: ASCII < > / = " plus the halfwidth pipe |.
 4) All string values must use <![CDATA[...]]>, even short ones. This includes code, scripts, file contents, prompts, paths, names, and queries.
 5) Every top-level argument must be a <|DSML|parameter name="ARG_NAME">...</|DSML|parameter> node.
 6) Objects use nested XML elements inside the parameter body. Arrays may repeat <item> children.
 7) Numbers, booleans, and null stay plain text.
 8) Use only the parameter names in the tool schema. Do not invent fields.
-9) Do NOT wrap XML in markdown fences. Do NOT output explanations, role markers, or internal monologue.
-10) If you call a tool, the first non-whitespace characters of that tool block must be exactly <|DSML|tool_calls>.
-11) Never omit the opening <|DSML|tool_calls> tag, even if you already plan to close with </|DSML|tool_calls>.
-12) Compatibility note: the runtime also accepts the legacy XML tags <tool_calls> / <invoke> / <parameter>, but prefer the DSML-prefixed form above.
+9) Fill parameters with the actual values required for this call. Do not emit placeholder, blank, or whitespace-only parameters.
+10) If a required parameter value is unknown, ask the user or answer normally instead of outputting an empty tool call.
+11) For shell tools such as Bash / execute_command, the command/script must be inside the command parameter. Never call them with an empty command.
+12) Do NOT wrap XML in markdown fences. Do NOT output explanations, role markers, or internal monologue.
+13) If you call a tool, the first non-whitespace characters of that tool block must be exactly <|DSML|tool_calls>.
+14) Never omit the opening <|DSML|tool_calls> tag, even if you already plan to close with </|DSML|tool_calls>.
+15) Compatibility note: the runtime also accepts the legacy XML tags <tool_calls> / <invoke> / <parameter>, but prefer the DSML-prefixed form above.
 
 PARAMETER SHAPES:
 - string => <|DSML|parameter name="x"><![CDATA[value]]></|DSML|parameter>
@@ -48,9 +52,14 @@ Wrong 2 — Markdown code fences:
 Wrong 3 — missing opening wrapper:
   <|DSML|invoke name="TOOL_NAME">...</|DSML|invoke>
   </|DSML|tool_calls>
+Wrong 4 — empty parameters:
+  <|DSML|tool_calls>
+    <|DSML|invoke name="Bash">
+      <|DSML|parameter name="command"></|DSML|parameter>
+    </|DSML|invoke>
+  </|DSML|tool_calls>
 
 Remember: The ONLY valid way to use tools is the <|DSML|tool_calls>...</|DSML|tool_calls> block at the end of your response.
-
 ` + buildCorrectToolExamples(toolNames)
 }
 

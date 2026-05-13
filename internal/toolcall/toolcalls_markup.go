@@ -9,9 +9,6 @@ import (
 
 var toolCallMarkupKVPattern = regexp.MustCompile(`(?is)<(?:[a-z0-9_:-]+:)?([a-z0-9_\-.]+)\b[^>]*>(.*?)</(?:[a-z0-9_:-]+:)?([a-z0-9_\-.]+)>`)
 
-// cdataPattern matches a standalone CDATA section.
-var cdataPattern = regexp.MustCompile(`(?is)^<!\[CDATA\[(.*?)]]>$`)
-
 func parseMarkupKVObject(text string) map[string]any {
 	matches := toolCallMarkupKVPattern.FindAllStringSubmatch(strings.TrimSpace(text), -1)
 	if len(matches) == 0 {
@@ -108,11 +105,14 @@ func extractRawTagValue(inner string) string {
 
 func extractStandaloneCDATA(inner string) (string, bool) {
 	trimmed := strings.TrimSpace(inner)
-	if cdataMatches := cdataPattern.FindStringSubmatch(trimmed); len(cdataMatches) >= 2 {
-		return cdataMatches[1], true
-	}
-	if strings.HasPrefix(strings.ToLower(trimmed), "<![cdata[") {
-		return trimmed[len("<![CDATA["):], true
+	if openLen := toolCDATAOpenLenAt(trimmed, 0); openLen > 0 {
+		if closeStart := findTrailingToolCDATACloseStart(trimmed); closeStart >= openLen {
+			return trimmed[openLen:closeStart], true
+		}
+		if end := findToolCDATAEnd(trimmed, openLen); end >= 0 {
+			return trimmed[openLen:end], true
+		}
+		return trimmed[openLen:], true
 	}
 	return "", false
 }
@@ -145,26 +145,22 @@ func SanitizeLooseCDATA(text string) string {
 		return ""
 	}
 
-	lower := strings.ToLower(text)
-	const openMarker = "<![cdata["
-	const closeMarker = "]]>"
-
 	var b strings.Builder
 	b.Grow(len(text))
 	changed := false
 	pos := 0
 	for pos < len(text) {
-		startRel := strings.Index(lower[pos:], openMarker)
-		if startRel < 0 {
+		start := indexToolCDATAOpen(text, pos)
+		if start < 0 {
 			b.WriteString(text[pos:])
 			break
 		}
-		start := pos + startRel
-		contentStart := start + len(openMarker)
+		openLen := toolCDATAOpenLenAt(text, start)
+		contentStart := start + openLen
 		b.WriteString(text[pos:start])
 
-		if endRel := strings.Index(lower[contentStart:], closeMarker); endRel >= 0 {
-			end := contentStart + endRel + len(closeMarker)
+		if endRel := findToolCDATAEnd(text, contentStart); endRel >= 0 {
+			end := endRel + toolCDATACloseLenAt(text, endRel)
 			b.WriteString(text[start:end])
 			pos = end
 			continue

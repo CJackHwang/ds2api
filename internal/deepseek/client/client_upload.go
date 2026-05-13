@@ -95,11 +95,7 @@ func (c *Client) UploadFile(ctx context.Context, a *auth.RequestAuth, req Upload
 		resp, err := c.doUpload(ctx, clients.regular, clients.fallback, dsprotocol.DeepSeekUploadFileURL, headers, body)
 		if err != nil {
 			config.Logger.Warn("[upload_file] request error", "error", err, "account", a.AccountID, "filename", filename)
-			powHeader = ""
-			lastFailureKind = FailureUnknown
-			lastFailureMessage = err.Error()
-			attempts++
-			continue
+			return nil, err
 		}
 		if captureSession != nil {
 			resp.Body = captureSession.WrapBody(resp.Body, resp.StatusCode)
@@ -201,7 +197,7 @@ func escapeMultipartFilename(filename string) string {
 	return filename
 }
 
-func (c *Client) doUpload(ctx context.Context, doer trans.Doer, fallback trans.Doer, url string, headers map[string]string, body []byte) (*http.Response, error) {
+func (c *Client) doUpload(ctx context.Context, doer trans.Doer, _ trans.Doer, url string, headers map[string]string, body []byte) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
@@ -213,15 +209,7 @@ func (c *Client) doUpload(ctx context.Context, doer trans.Doer, fallback trans.D
 	if err == nil {
 		return resp, nil
 	}
-	config.Logger.Warn("[deepseek] fingerprint upload request failed, fallback to std transport", "url", url, "error", err)
-	req2, reqErr := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
-	if reqErr != nil {
-		return nil, reqErr
-	}
-	for k, v := range headers {
-		req2.Header.Set(k, v)
-	}
-	return fallback.Do(req2)
+	return nil, err
 }
 
 func extractUploadFileResult(resp map[string]any) *UploadFileResult {

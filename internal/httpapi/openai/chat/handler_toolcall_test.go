@@ -85,8 +85,7 @@ func streamFinishReason(frames []map[string]any) string {
 	return ""
 }
 
-// Backward-compatible alias for historical test name used in CI logs.
-func TestHandleNonStreamReturns429WhenUpstreamOutputEmpty(t *testing.T) {
+func TestHandleNonStreamSingleAttemptReturns503WhenUpstreamOutputEmpty(t *testing.T) {
 	h := &Handler{}
 	resp := makeSSEHTTPResponse(
 		`data: {"p":"response/content","v":""}`,
@@ -95,17 +94,17 @@ func TestHandleNonStreamReturns429WhenUpstreamOutputEmpty(t *testing.T) {
 	rec := httptest.NewRecorder()
 
 	h.handleNonStream(rec, resp, "cid-empty", "deepseek-v4-flash", "prompt", 0, false, false, nil, nil, nil)
-	if rec.Code != http.StatusTooManyRequests {
-		t.Fatalf("expected status 429 for empty upstream output, got %d body=%s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected status 503 for empty upstream output, got %d body=%s", rec.Code, rec.Body.String())
 	}
 	out := decodeJSONBody(t, rec.Body.String())
 	errObj, _ := out["error"].(map[string]any)
-	if asString(errObj["code"]) != "upstream_empty_output" {
-		t.Fatalf("expected code=upstream_empty_output, got %#v", out)
+	if asString(errObj["code"]) != "upstream_unavailable" {
+		t.Fatalf("expected code=upstream_unavailable, got %#v", out)
 	}
 }
 
-func TestHandleNonStreamReturnsContentFilterErrorWhenUpstreamFilteredWithoutOutput(t *testing.T) {
+func TestHandleNonStreamSingleAttemptReturnsContentFilterErrorWhenUpstreamFilteredWithoutOutput(t *testing.T) {
 	h := &Handler{}
 	resp := makeSSEHTTPResponse(
 		`data: {"code":"content_filter"}`,
@@ -124,7 +123,7 @@ func TestHandleNonStreamReturnsContentFilterErrorWhenUpstreamFilteredWithoutOutp
 	}
 }
 
-func TestHandleNonStreamReturns429WhenUpstreamHasOnlyThinking(t *testing.T) {
+func TestHandleNonStreamSingleAttemptReturns429WhenUpstreamHasOnlyThinking(t *testing.T) {
 	h := &Handler{}
 	resp := makeSSEHTTPResponse(
 		`data: {"p":"response/thinking_content","v":"Only thinking"}`,

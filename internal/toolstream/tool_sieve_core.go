@@ -57,10 +57,17 @@ func ProcessChunk(state *State, chunk string, toolNames []string) []Event {
 			break
 		}
 		start := findToolSegmentStart(state, pending)
+		if start == holdToolSegmentStart {
+			break
+		}
 		if start >= 0 {
 			prefix := pending[:start]
 			if prefix != "" {
+				resetMarkdownSpan := shouldResetUnclosedMarkdownPrefix(state, prefix, pending[start:])
 				state.noteText(prefix)
+				if resetMarkdownSpan {
+					state.markdownCodeSpanTicks = 0
+				}
 				events = append(events, Event{Content: prefix})
 			}
 			state.pending.Reset()
@@ -88,6 +95,13 @@ func Flush(state *State, toolNames []string) []Event {
 		return nil
 	}
 	events := ProcessChunk(state, "", toolNames)
+	if state.pending.Len() > 0 && state.markdownCodeSpanTicks > 0 {
+		// At end of stream, an unmatched backtick is literal Markdown text.
+		// Re-scan pending content so a real tool call after that stray
+		// backtick is not permanently hidden by inline-code state.
+		state.markdownCodeSpanTicks = 0
+		events = append(events, ProcessChunk(state, "", toolNames)...)
+	}
 	if len(state.pendingToolCalls) > 0 {
 		events = append(events, Event{ToolCalls: state.pendingToolCalls})
 		state.pendingToolRaw = ""
@@ -158,6 +172,15 @@ func splitSafeContentForToolDetection(state *State, s string) (safe, hold string
 		if insideCodeFenceWithState(state, s[:xmlIdx]) {
 			return s, ""
 		}
+		markdown := markdownCodeSpanStateAt(state, s[:xmlIdx])
+		if markdown.ticks > 0 {
+			if markdownCodeSpanCloses(s[xmlIdx:], markdown.ticks) {
+				return s, ""
+			}
+			if markdown.fromPrior {
+				return "", s
+			}
+		}
 		if xmlIdx > 0 {
 			return s[:xmlIdx], s[xmlIdx:]
 		}
@@ -165,6 +188,8 @@ func splitSafeContentForToolDetection(state *State, s string) (safe, hold string
 	}
 	return s, ""
 }
+
+const holdToolSegmentStart = -2
 
 func findToolSegmentStart(state *State, s string) int {
 	if s == "" {
@@ -177,11 +202,84 @@ func findToolSegmentStart(state *State, s string) int {
 			return -1
 		}
 		start := includeDuplicateLeadingLessThan(s, tag.Start)
-		if !insideCodeFenceWithState(state, s[:start]) {
+		if insideCodeFenceWithState(state, s[:start]) {
+			offset = tag.End + 1
+			continue
+		}
+		markdown := markdownCodeSpanStateAt(state, s[:start])
+		if markdown.ticks == 0 {
 			return start
 		}
-		offset = tag.End + 1
+		if markdownCodeSpanCloses(s[start:], markdown.ticks) {
+			offset = tag.End + 1
+			continue
+		}
+		if markdown.fromPrior {
+			return holdToolSegmentStart
+		}
+		return start
 	}
+}
+
+type markdownCodeSpanScan struct {
+	ticks     int
+	fromPrior bool
+}
+
+func markdownCodeSpanStateAt(state *State, text string) markdownCodeSpanScan {
+	ticks := 0
+	fromPrior := false
+	if state != nil && state.markdownCodeSpanTicks > 0 {
+		ticks = state.markdownCodeSpanTicks
+		fromPrior = true
+	}
+	for i := 0; i < len(text); {
+		if text[i] != '`' {
+			i++
+			continue
+		}
+		run := countBacktickRun(text, i)
+		if ticks == 0 {
+			if run >= 3 && atMarkdownFenceLineStart(text, i) {
+				i += run
+				continue
+			}
+			if state != nil && insideCodeFenceWithState(state, text[:i]) {
+				i += run
+				continue
+			}
+			ticks = run
+			fromPrior = false
+		} else if run == ticks {
+			ticks = 0
+			fromPrior = false
+		}
+		i += run
+	}
+	return markdownCodeSpanScan{ticks: ticks, fromPrior: fromPrior}
+}
+
+func markdownCodeSpanCloses(text string, ticks int) bool {
+	if ticks <= 0 {
+		return false
+	}
+	for i := 0; i < len(text); {
+		if text[i] != '`' {
+			i++
+			continue
+		}
+		run := countBacktickRun(text, i)
+		if run == ticks {
+			return true
+		}
+		i += run
+	}
+	return false
+}
+
+func shouldResetUnclosedMarkdownPrefix(state *State, prefix, suffix string) bool {
+	markdown := markdownCodeSpanStateAt(state, prefix)
+	return markdown.ticks > 0 && !markdown.fromPrior && !markdownCodeSpanCloses(suffix, markdown.ticks)
 }
 
 func includeDuplicateLeadingLessThan(s string, idx int) int {

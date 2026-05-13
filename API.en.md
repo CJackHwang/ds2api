@@ -18,6 +18,7 @@ Docs: [Overview](README.en.md) / [Architecture](docs/ARCHITECTURE.en.md) / [Depl
 - [OpenAI-Compatible API](#openai-compatible-api)
 - [Claude-Compatible API](#claude-compatible-api)
 - [Gemini-Compatible API](#gemini-compatible-api)
+- [Ollama API](#ollama-api)
 - [Admin API](#admin-api)
 - [Error Payloads](#error-payloads)
 - [cURL Examples](#curl-examples)
@@ -31,7 +32,7 @@ Docs: [Overview](README.en.md) / [Architecture](docs/ARCHITECTURE.en.md) / [Depl
 | Base URL | `http://localhost:5001` or your deployment domain |
 | Default Content-Type | `application/json` |
 | Health probes | `GET /healthz`, `GET /readyz` |
-| CORS | Enabled (uniformly covers `/v1/*`, `/anthropic/*`, `/v1beta/models/*`, and `/admin/*`; echoes the browser `Origin` when present, otherwise `*`; default allow-list includes `Content-Type`, `Authorization`, `X-API-Key`, `X-Ds2-Target-Account`, `X-Ds2-Source`, `X-Vercel-Protection-Bypass`, `X-Goog-Api-Key`, `Anthropic-Version`, `Anthropic-Beta`, and also accepts third-party preflight-requested headers such as `x-stainless-*`; `/v1/chat/completions` on Vercel Node Runtime matches the same behavior; internal-only `X-Ds2-Internal-Token` remains blocked) |
+| CORS | Enabled (uniformly covers `/v1/*`, `/anthropic/*`, `/v1beta/models/*`, `/api/*`, and `/admin/*`; echoes the browser `Origin` when present, otherwise `*`; default allow-list includes `Content-Type`, `Authorization`, `X-API-Key`, `X-Ds2-Target-Account`, `X-Ds2-Source`, `X-Vercel-Protection-Bypass`, `X-Goog-Api-Key`, `Anthropic-Version`, `Anthropic-Beta`, and also accepts third-party preflight-requested headers such as `x-stainless-*`; `/v1/chat/completions` on Vercel Node Runtime matches the same behavior; internal-only `X-Ds2-Internal-Token` remains blocked) |
 
 - All JSON request bodies must be valid UTF-8; malformed byte sequences are rejected on ingress with `400 invalid json`.
 
@@ -39,8 +40,10 @@ Docs: [Overview](README.en.md) / [Architecture](docs/ARCHITECTURE.en.md) / [Depl
 
 - OpenAI / Claude / Gemini protocols are now mounted on one shared `chi` router tree assembled in `internal/server/router.go`.
 - Adapter responsibilities are streamlined to: **request normalization → DeepSeek invocation → protocol-shaped rendering**, reducing legacy split-logic paths.
-- Tool-calling semantics are aligned between Go and Node runtime: models should output the DSML shell `<|DSML|tool_calls>` → `<|DSML|invoke name="...">` → `<|DSML|parameter name="...">`; DS2API also accepts legacy canonical XML `<tool_calls>` → `<invoke name="...">` → `<parameter name="...">`. DSML is normalized back to XML at the parser entry, so internal parsing remains XML-based, with stream-time anti-leak filtering.
+- Tool-calling semantics are aligned between Go and Node runtime: models should output the halfwidth-pipe DSML shell `<|DSML|tool_calls>` → `<|DSML|invoke name="...">` → `<|DSML|parameter name="...">`; DS2API also accepts DSML wrapper aliases such as `<dsml|tool_calls>` and `<|tool_calls>`, common DSML separator drift such as `<|DSML tool_calls>`, collapsed DSML local names such as `<DSMLtool_calls>`, control-separator drift such as `<DSML␂tool_calls>` / raw STX `\x02`, CJK angle bracket, fullwidth-bang / ideographic-comma separator drift, PascalCase local-name drift, and trailing attribute separator drift such as `<DSM|parameter name="command"|>...〈/DSM|parameter〉`, `<！DSML！invoke name=“Bash”>`, `<、DSML、tool_calls>`, `<DSmartToolCalls>`, or `<DSMLtool_calls※>`, arbitrary protocol prefixes such as `<proto💥tool_calls>`, and legacy canonical XML `<tool_calls>` → `<invoke name="...">` → `<parameter name="...">`. The scanner normalizes fixed local names (`tool_calls` / `invoke` / `parameter`) with non-structural separators before or after them back to XML before parsing, and also tolerates CDATA opener drift such as `<！[CDATA[` / `<、[CDATA[`; only wrapped tool blocks or the narrow missing-opening-wrapper repair path enter the tool path, while bare `<invoke>` does not count as supported syntax. JSON literal parameter bodies are preserved as structured values, explicit empty or whitespace-only parameters are preserved as empty strings, malformed complete wrappers are released as plain text, and loose CDATA is narrowly repaired at final parse/flush when it can preserve a complete outer tool call.
 - `Admin API` separates static config from runtime policy: `/admin/config*` for configuration state, `/admin/settings*` for runtime behavior.
+- When upstream returns a thinking-only response with no visible text, the Go main path and the Vercel Node streaming path retry once in the same DeepSeek session: it appends the prompt suffix `"Previous reply had no visible output. Please regenerate the visible final answer or tool call now."` and sets `parent_message_id`. If that same-account retry would still end as `429 upstream_empty_output`, managed-account mode switches to the next available account, creates a fresh session, and retries the original payload once before returning 429.
+- Citation/reference marker boundary: streaming output hides upstream `[citation:N]` / `[reference:N]` placeholders by default; non-stream output converts DeepSeek search reference markers into Markdown links.
 
 ---
 
@@ -83,7 +86,7 @@ Two header formats accepted:
 - Token is in `config.keys` → **Managed account mode**: DS2API auto-selects an account via rotation
 - Token is not in `config.keys` → **Direct token mode**: treated as a DeepSeek token directly
 
-**Optional header**: `X-Ds2-Target-Account: <email_or_mobile>` — Pin a specific managed account; if the target account does not exist or the managed-account queue is exhausted, the request returns `429`, and current responses do not include `Retry-After`. If the account exists but login/refresh fails, the request returns the underlying `401` or upstream error.
+**Optional header**: `X-Ds2-Target-Account: <email_or_mobile>` — Pin a specific managed account; if the target account does not exist or the managed-account queue is exhausted, the request returns `429`, and current responses do not include `Retry-After`. If the account exists but login/refresh fails, the request returns the underlying `401` or upstream error. Without a pinned target, managed-account completion requests try one alternate-account fresh retry before returning an empty-output 429; pinned-target requests and requests with no other available account do not switch.
 Gemini-compatible clients can also send `x-goog-api-key`, `?key=`, or `?api_key=` as the caller credential source.
 
 ### Admin Endpoints (`/admin/*`)
@@ -123,6 +126,9 @@ Gemini-compatible clients can also send `x-goog-api-key`, `?key=`, or `?api_key=
 | POST | `/v1beta/models/{model}:streamGenerateContent` | Business | Gemini stream |
 | POST | `/v1/models/{model}:generateContent` | Business | Gemini non-stream compat path |
 | POST | `/v1/models/{model}:streamGenerateContent` | Business | Gemini stream compat path |
+| GET | `/api/version` | None | Ollama version endpoint |
+| GET | `/api/tags` | None | Ollama model list |
+| POST | `/api/show` | None | Ollama model capability query (returns `id` + `capabilities`) |
 | POST | `/admin/login` | None | Admin login |
 | GET | `/admin/verify` | JWT | Verify admin JWT |
 | GET | `/admin/vercel/config` | Admin | Read preconfigured Vercel creds |
@@ -222,22 +228,26 @@ For `chat` / `responses` / `embeddings`, DS2API follows a wide-input/strict-outp
 
 1. Match DeepSeek native model IDs first.
 2. Then match exact keys in `model_aliases`.
-3. If still unmatched, fall back by known family heuristics (`o*`, `gpt-*`, `claude-*`, etc.).
-4. If still unmatched, return `invalid_request_error`.
+3. If the request name ends with `-nothinking`, resolve the base alias and append the corresponding no-thinking variant.
+4. If still unmatched, return `invalid_request_error`. Unknown model families are not guessed heuristically; add explicit compatibility names through `model_aliases`.
 
 Built-in aliases come from `internal/config/models.go`; `config.model_aliases` can override or add mappings at runtime. Excerpt:
 
 - OpenAI / Codex: `gpt-4o`, `gpt-4.1`, `gpt-5`, `gpt-5.5`, `gpt-5-codex`, `gpt-5.3-codex`, `codex-mini-latest`
 - OpenAI reasoning: `o1`, `o3`, `o3-deep-research`, `o4-mini`
 - Claude: `claude-opus-4-6`, `claude-sonnet-4-6`, `claude-haiku-4-5`, `claude-3-5-sonnet-latest`
-- Gemini: `gemini-2.5-pro`, `gemini-2.5-flash`, `gemini-pro-vision`
-- Other compatibility families: `llama-*`, `qwen-*`, `mistral-*`, and `command-*` fall back through family heuristics
+- Gemini: `gemini-2.5-pro`, `gemini-2.5-flash`, `gemini-3.1-pro`, `gemini-3-pro`, `gemini-3-flash`, `gemini-3.1-flash-lite`, `gemini-pro-vision`
+- Other exact built-in aliases: `llama-3.1-70b-instruct`, `qwen-max`
+
+Aliases with a `-nothinking` suffix also map to the corresponding forced no-thinking DeepSeek model.
 
 Current vision support resolves only to `deepseek-v4-vision` and does not expose a separate `vision-search` variant.
 
 Retired historical families such as `claude-1.*`, `claude-2.*`, `claude-instant-*`, and `gpt-3.5*` are explicitly rejected.
 
 ### `POST /v1/chat/completions`
+
+> Path note: besides the canonical `/v1/chat/completions`, DS2API also accepts the root shortcut `/chat/completions`. On Vercel Runtime, `vercel.json` rewrites only the canonical `/v1/chat/completions` path to the Node streaming bridge; the root shortcut stays on the Go primary path. Use `/v1/chat/completions` on Vercel when real-time streaming is required.
 
 **Headers**:
 
@@ -250,7 +260,7 @@ Content-Type: application/json
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
-| `model` | string | ✅ | DeepSeek native models + common aliases (`gpt-5.5`, `gpt-5.4-mini`, `gpt-5.3-codex`, `o3`, `claude-opus-4-6`, `gemini-2.5-pro`, `gemini-2.5-flash`, etc.) |
+| `model` | string | ✅ | DeepSeek native models + common aliases (`gpt-5.5`, `gpt-5.4-mini`, `gpt-5.3-codex`, `o3`, `claude-opus-4-6`, `gemini-2.5-pro`, `gemini-3.1-pro`, `gemini-3-flash`, etc.); `-nothinking` suffixes force thinking / reasoning off |
 | `messages` | array | ✅ | OpenAI-style messages |
 | `stream` | boolean | ❌ | Default `false` |
 | `tools` | array | ❌ | Function calling schema |
@@ -345,7 +355,8 @@ When `tools` is present, DS2API performs anti-leak handling:
 
 Additional notes:
 
-- The parser treats DSML shell tool blocks (`<|DSML|tool_calls>` / `<|DSML|invoke name="...">` / `<|DSML|parameter name="...">`) and legacy canonical XML tool blocks (`<tool_calls>` / `<invoke name="...">` / `<parameter name="...">`) as executable tool calls. DSML is normalized back to XML at the parser entry; internal parsing remains XML-based. Legacy `<tools>`, `<tool_call>`, `<tool_name>`, `<param>`, `<function_call>`, `tool_use`, antml variants, and standalone JSON `tool_calls` payloads are treated as plain text.
+- The parser treats the recommended halfwidth-pipe DSML shell tool blocks (`<|DSML|tool_calls>` / `<|DSML|invoke name="...">` / `<|DSML|parameter name="...">`), DSML wrapper aliases (`<dsml|tool_calls>`, `<|tool_calls>`), common DSML separator drift (`<|DSML tool_calls>` / `<|DSML invoke>` / `<|DSML parameter>`), collapsed DSML local names (`<DSMLtool_calls>` / `<DSMLinvoke>` / `<DSMLparameter>`), control-separator drift (`<DSML␂tool_calls>` / raw STX `\x02`), CJK angle bracket, fullwidth-bang / ideographic-comma separator drift, PascalCase local-name drift, and trailing attribute separator drift (`<DSM|parameter name="command"|>...〈/DSM|parameter〉` / `<！DSML！invoke name=“Bash”>` / `<、DSML、tool_calls>` / `<DSmartToolCalls>` / `<DSMLtool_calls※>`), arbitrary protocol prefixes (`<proto💥tool_calls>`), and legacy canonical XML tool blocks (`<tool_calls>` / `<invoke name="...">` / `<parameter name="...">`) as executable tool calls. These shells normalize non-structural separators back to XML first, while internal parsing remains XML-based; CDATA opener drift such as `<！[CDATA[` / `<、[CDATA[` is also normalized for parameter bodies. Legacy `<tools>`, `<tool_call>`, `<tool_name>`, `<param>`, `<function_call>`, `tool_use`, antml variants, and standalone JSON `tool_calls` payloads are treated as plain text; complete but malformed wrappers are also released as plain text.
+- The parser no longer drops tool calls solely because parameter values are empty; explicit empty strings or whitespace-only parameters become empty strings in structured `tool_calls`. Prompting still tells the model not to emit blank parameters, and missing/empty argument rejection belongs in the tool executor or client schema validation.
 - If the final visible response text is empty but the reasoning stream contains an executable tool call, Chat / Responses emits a standard OpenAI `tool_calls` / `function_call` output during finalization. If thinking/reasoning was not enabled by the client, that reasoning text is used only for detection and is not exposed as visible text or `reasoning_content`.
 - `tool_calls` shown inside fenced markdown code blocks (for example, ```json ... ```) are treated as examples, not executable calls.
 
@@ -617,6 +628,20 @@ Returns SSE (`text/event-stream`), each chunk as `data: <json>`:
 
 ---
 
+## Ollama API
+
+- `POST /api/show` request body: `{"model":"<model-id>"}`.
+- Response uses lowercase `id` (not `ID`) and includes `capabilities` for Ollama-style clients and strict schemas.
+
+Example response:
+
+```json
+{
+  "id": "deepseek-v4-flash",
+  "capabilities": ["tools", "thinking"]
+}
+```
+
 ## Admin API
 
 ### `POST /admin/login`
@@ -744,6 +769,7 @@ Reads runtime settings and status, including:
 - `responses` / `embeddings`
 - `auto_delete` (`mode`: `none` / `single` / `all`; legacy `sessions=true` is still treated as `all`)
 - `current_input_file` (`enabled` defaults to `true`, plus `min_chars`)
+- `thinking_injection` (`enabled` defaults to `true`, `prompt`, and `default_prompt`)
 - `model_aliases`
 - `env_backed`, `needs_vercel_sync`
 - `toolcall` policy is fixed to `feature_match + high` and is no longer returned or editable via settings
@@ -758,6 +784,7 @@ Hot-updates runtime settings. Supported fields:
 - `embeddings.provider`
 - `auto_delete.mode`
 - `current_input_file.enabled` / `current_input_file.min_chars`
+- `thinking_injection.enabled` / `thinking_injection.prompt`
 - `model_aliases`
 - `toolcall` policy is fixed and is no longer writable through settings
 
@@ -1238,7 +1265,7 @@ Clients should handle HTTP status code plus `error` / `detail` fields.
 | Code | Meaning |
 | --- | --- |
 | `401` | Authentication failed (invalid key/token, or expired admin JWT) |
-| `429` | Too many requests (exceeded inflight + queue capacity; current responses do not include `Retry-After`) |
+| `429` | Too many requests (exceeded inflight + queue capacity, or upstream thinking-only output with no visible answer; managed-account mode first tries one alternate-account fresh retry; current responses do not include `Retry-After`) |
 | `503` | Model unavailable or upstream error |
 
 ---

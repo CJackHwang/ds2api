@@ -25,14 +25,21 @@ func normalizeClaudeMessages(messages []any) []any {
 		switch content := msg["content"].(type) {
 		case []any:
 			textParts := make([]string, 0, len(content))
+			pendingThinking := ""
 			flushText := func() {
 				if len(textParts) == 0 {
 					return
 				}
-				out = append(out, map[string]any{
+				message := map[string]any{
 					"role":    role,
 					"content": strings.Join(textParts, "\n"),
-				})
+				}
+				if role == "assistant" && strings.TrimSpace(pendingThinking) != "" {
+					message["reasoning_content"] = pendingThinking
+					message["content"] = prependClaudeReasoningForPrompt(pendingThinking, safeStringValue(message["content"]))
+					pendingThinking = ""
+				}
+				out = append(out, message)
 				textParts = textParts[:0]
 			}
 			for _, block := range content {
@@ -46,10 +53,29 @@ func normalizeClaudeMessages(messages []any) []any {
 					if t, ok := b["text"].(string); ok {
 						textParts = append(textParts, t)
 					}
+				case "thinking":
+					if role == "assistant" {
+						if thinking := extractClaudeThinkingBlockText(b); thinking != "" {
+							if pendingThinking == "" {
+								pendingThinking = thinking
+							} else {
+								pendingThinking += "\n" + thinking
+							}
+						}
+						continue
+					}
+					if raw := strings.TrimSpace(formatClaudeUnknownBlockForPrompt(b)); raw != "" {
+						textParts = append(textParts, raw)
+					}
 				case "tool_use":
 					if role == "assistant" {
 						flushText()
 						if toolMsg := normalizeClaudeToolUseToAssistant(b, state); toolMsg != nil {
+							if strings.TrimSpace(pendingThinking) != "" {
+								toolMsg["reasoning_content"] = pendingThinking
+								toolMsg["content"] = prependClaudeReasoningForPrompt(pendingThinking, safeStringValue(toolMsg["content"]))
+								pendingThinking = ""
+							}
 							out = append(out, toolMsg)
 						}
 						continue
@@ -69,12 +95,52 @@ func normalizeClaudeMessages(messages []any) []any {
 				}
 			}
 			flushText()
+			if role == "assistant" && strings.TrimSpace(pendingThinking) != "" {
+				out = append(out, map[string]any{
+					"role":              "assistant",
+					"reasoning_content": pendingThinking,
+					"content":           formatClaudeReasoningForPrompt(pendingThinking),
+				})
+			}
 		default:
 			copied := cloneMap(msg)
 			out = append(out, copied)
 		}
 	}
 	return out
+}
+
+func prependClaudeReasoningForPrompt(reasoning, content string) string {
+	reasoning = strings.TrimSpace(reasoning)
+	content = strings.TrimSpace(content)
+	if reasoning == "" {
+		return content
+	}
+	block := formatClaudeReasoningForPrompt(reasoning)
+	if content == "" {
+		return block
+	}
+	return block + "\n\n" + content
+}
+
+func formatClaudeReasoningForPrompt(reasoning string) string {
+	reasoning = strings.TrimSpace(reasoning)
+	if reasoning == "" {
+		return ""
+	}
+	return "[reasoning_content]\n" + reasoning + "\n[/reasoning_content]"
+}
+
+func extractClaudeThinkingBlockText(block map[string]any) string {
+	if block == nil {
+		return ""
+	}
+	for _, key := range []string{"thinking", "text", "content"} {
+		if text := strings.TrimSpace(safeStringValue(block[key])); text != "" {
+			return text
+		}
+	}
+	return ""
 }
 
 func buildClaudeToolPrompt(tools []any) string {

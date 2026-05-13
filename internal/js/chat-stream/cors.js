@@ -19,13 +19,15 @@ const BLOCKED_CORS_REQUEST_HEADERS = new Set([
 function setCorsHeaders(res, req) {
   const origin = asString(readHeader(req, 'origin'));
   res.setHeader('Access-Control-Allow-Origin', origin || '*');
+  if (origin) {
+    addVaryHeader(res, 'Origin');
+  }
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE');
   res.setHeader('Access-Control-Max-Age', '600');
   res.setHeader(
     'Access-Control-Allow-Headers',
     buildCORSAllowHeaders(req),
   );
-  addVaryHeader(res, 'Origin');
   addVaryHeader(res, 'Access-Control-Request-Headers');
   if (asString(readHeader(req, 'access-control-request-private-network')).toLowerCase() === 'true') {
     res.setHeader('Access-Control-Allow-Private-Network', 'true');

@@ -1,10 +1,11 @@
 'use strict';
 
-const CDATA_PATTERN = /^<!\[CDATA\[([\s\S]*?)]]>$/i;
+const CDATA_PATTERN = /^(?:<|〈)(?:!|！)\[CDATA\[([\s\S]*?)]](?:>|＞|〉)$/i;
 const XML_ATTR_PATTERN = /\b([a-z0-9_:-]+)\s*=\s*("([^"]*)"|'([^']*)')/gi;
 const TOOL_MARKUP_NAMES = [
   { raw: 'tool_calls', canonical: 'tool_calls' },
   { raw: 'tool-calls', canonical: 'tool_calls', dsmlOnly: true },
+  { raw: 'toolcalls', canonical: 'tool_calls', dsmlOnly: true },
   { raw: 'invoke', canonical: 'invoke' },
   { raw: 'parameter', canonical: 'parameter' },
 ];
@@ -68,6 +69,66 @@ function stripFencedCodeBlocks(text) {
   return out.join('');
 }
 
+function stripMarkdownCodeSpans(text) {
+  const raw = toStringSafe(text);
+  if (!raw) {
+    return '';
+  }
+  let out = '';
+  for (let i = 0; i < raw.length;) {
+    const skipped = skipXmlIgnoredSection(raw, i);
+    if (skipped.blocked) {
+      out += raw.slice(i);
+      break;
+    }
+    if (skipped.advanced) {
+      out += raw.slice(i, skipped.next);
+      i = skipped.next;
+      continue;
+    }
+    const spanEnd = markdownCodeSpanEnd(raw, i);
+    if (spanEnd.ok) {
+      i = spanEnd.end;
+      continue;
+    }
+    out += raw[i];
+    i += 1;
+  }
+  return out;
+}
+
+function markdownCodeSpanEnd(text, start) {
+  const raw = toStringSafe(text);
+  if (start < 0 || start >= raw.length || raw[start] !== '`') {
+    return { ok: false, end: start };
+  }
+  const count = countLeadingChars(raw, start, '`');
+  if (!count) {
+    return { ok: false, end: start };
+  }
+  let search = start + count;
+  while (search < raw.length) {
+    if (raw[search] !== '`') {
+      search += 1;
+      continue;
+    }
+    const run = countLeadingChars(raw, search, '`');
+    if (run === count) {
+      return { ok: true, end: search + run };
+    }
+    search += run;
+  }
+  return { ok: false, end: start };
+}
+
+function countLeadingChars(text, start, ch) {
+  let count = 0;
+  while (start + count < text.length && text[start + count] === ch) {
+    count += 1;
+  }
+  return count;
+}
+
 function parseFenceOpenLine(trimmed) {
   if (trimmed.length < 3) return null;
   const ch = trimmed[0];
@@ -87,7 +148,7 @@ function isFenceCloseLine(trimmed, fenceChar, fenceLen) {
 }
 
 function cdataStartsBeforeFence(line) {
-  const cdataIdx = line.toLowerCase().indexOf('<![cdata[');
+  const cdataIdx = indexToolCDATAOpen(line, 0);
   if (cdataIdx < 0) return false;
   const fenceIdx = Math.min(
     line.indexOf('```') >= 0 ? line.indexOf('```') : Infinity,
@@ -97,20 +158,28 @@ function cdataStartsBeforeFence(line) {
 }
 
 function updateCDATAStateLine(inCDATA, line) {
-  const lower = line.toLowerCase();
   let pos = 0;
   let state = inCDATA;
-  while (pos < lower.length) {
+  while (pos < line.length) {
     if (state) {
-      const end = lower.indexOf(']]>', pos);
+      let end = -1;
+      let closeLen = 0;
+      for (let i = pos; i < line.length; i += 1) {
+        const foundLen = toolCDATACloseLenAt(line, i);
+        if (foundLen > 0) {
+          end = i;
+          closeLen = foundLen;
+          break;
+        }
+      }
       if (end < 0) return true;
-      pos = end + ']]>'.length;
+      pos = end + closeLen;
       state = false;
       continue;
     }
-    const start = lower.indexOf('<![cdata[', pos);
+    const start = indexToolCDATAOpen(line, pos);
     if (start < 0) return false;
-    pos = start + '<![cdata['.length;
+    pos = start + toolCDATAOpenLenAt(line, start);
     state = true;
   }
   return state;
@@ -121,12 +190,20 @@ function parseMarkupToolCalls(text) {
   if (!normalized.ok) {
     return [];
   }
-  const raw = normalized.text.trim();
+  let raw = normalized.text.trim();
   if (!raw) {
     return [];
   }
+  let wrappers = findToolCallElementBlocksOutsideIgnored(raw);
+  if (wrappers.length === 0 && hasRepairableXMLToolCallsWrapper(raw)) {
+    const repaired = repairMissingXMLToolCallsOpeningWrapper(raw);
+    if (repaired !== raw) {
+      raw = repaired;
+      wrappers = findToolCallElementBlocksOutsideIgnored(raw);
+    }
+  }
   const out = [];
-  for (const wrapper of findXmlElementBlocks(raw, 'tool_calls')) {
+  for (const wrapper of wrappers) {
     const body = toStringSafe(wrapper.body);
     for (const block of findXmlElementBlocks(body, 'invoke')) {
       const parsed = parseMarkupSingleToolCall(block);
@@ -138,17 +215,48 @@ function parseMarkupToolCalls(text) {
   return out;
 }
 
+function findToolCallElementBlocksOutsideIgnored(text) {
+  const raw = toStringSafe(text);
+  const out = [];
+  for (let searchFrom = 0; searchFrom < raw.length;) {
+    const tag = findToolMarkupTagOutsideIgnored(raw, searchFrom);
+    if (!tag) {
+      break;
+    }
+    if (tag.closing || tag.name !== 'tool_calls') {
+      searchFrom = tag.end + 1;
+      continue;
+    }
+    const closeTag = findMatchingToolMarkupClose(raw, tag);
+    if (!closeTag) {
+      searchFrom = tag.end + 1;
+      continue;
+    }
+    const endDelim = xmlTagEndDelimiterLenEndingAt(raw, tag.end);
+    const attrsEnd = endDelim > 0 ? tag.end + 1 - endDelim : tag.end + 1;
+    out.push({
+      attrs: raw.slice(tag.nameEnd, attrsEnd),
+      body: raw.slice(tag.end + 1, closeTag.start),
+      start: tag.start,
+      end: closeTag.end + 1,
+    });
+    searchFrom = closeTag.end + 1;
+  }
+  return out;
+}
+
 function normalizeDSMLToolCallMarkup(text) {
   const raw = toStringSafe(text);
   if (!raw) {
     return { text: '', ok: true };
   }
-  const styles = containsToolMarkupSyntaxOutsideIgnored(raw);
-  if (!styles.dsml) {
-    return { text: raw, ok: true };
+  const canonicalized = canonicalizeToolCallCandidateSpans(raw);
+  const styles = containsToolMarkupSyntaxOutsideIgnored(canonicalized);
+  if (!styles.dsml && !styles.canonical) {
+    return { text: canonicalized, ok: true };
   }
   return {
-    text: replaceDSMLToolMarkupOutsideIgnored(raw),
+    text: replaceDSMLToolMarkupOutsideIgnored(canonicalized),
     ok: true,
   };
 }
@@ -167,14 +275,18 @@ function containsToolCallWrapperSyntaxOutsideIgnored(text) {
   if (!raw) {
     return styles;
   }
-  const lower = raw.toLowerCase();
   for (let i = 0; i < raw.length;) {
-    const skipped = skipXmlIgnoredSection(lower, i);
+    const skipped = skipXmlIgnoredSection(raw, i);
     if (skipped.blocked) {
       return styles;
     }
     if (skipped.advanced) {
       i = skipped.next;
+      continue;
+    }
+    const spanEnd = markdownCodeSpanEnd(raw, i);
+    if (spanEnd.ok) {
+      i = spanEnd.end;
       continue;
     }
     const tag = scanToolMarkupTagAt(raw, i);
@@ -205,12 +317,17 @@ function containsToolMarkupSyntaxOutsideIgnored(text) {
     return styles;
   }
   for (let i = 0; i < raw.length;) {
-    const skipped = skipXmlIgnoredSection(raw.toLowerCase(), i);
+    const skipped = skipXmlIgnoredSection(raw, i);
     if (skipped.blocked) {
       return styles;
     }
     if (skipped.advanced) {
       i = skipped.next;
+      continue;
+    }
+    const spanEnd = markdownCodeSpanEnd(raw, i);
+    if (spanEnd.ok) {
+      i = spanEnd.end;
       continue;
     }
     const tag = scanToolMarkupTagAt(raw, i);
@@ -236,10 +353,9 @@ function replaceDSMLToolMarkupOutsideIgnored(text) {
   if (!raw) {
     return '';
   }
-  const lower = raw.toLowerCase();
   let out = '';
   for (let i = 0; i < raw.length;) {
-    const skipped = skipXmlIgnoredSection(lower, i);
+    const skipped = skipXmlIgnoredSection(raw, i);
     if (skipped.blocked) {
       out += raw.slice(i);
       break;
@@ -249,16 +365,15 @@ function replaceDSMLToolMarkupOutsideIgnored(text) {
       i = skipped.next;
       continue;
     }
+    const spanEnd = markdownCodeSpanEnd(raw, i);
+    if (spanEnd.ok) {
+      out += raw.slice(i, spanEnd.end);
+      i = spanEnd.end;
+      continue;
+    }
     const tag = scanToolMarkupTagAt(raw, i);
     if (tag) {
-      if (tag.dsmlLike) {
-        out += `<${tag.closing ? '/' : ''}${tag.name}${raw.slice(tag.nameEnd, tag.end + 1)}`;
-        if (raw[tag.end] !== '>') {
-          out += '>';
-        }
-      } else {
-        out += raw.slice(tag.start, tag.end + 1);
-      }
+      out += `<${tag.closing ? '/' : ''}${tag.name}${raw.slice(tag.nameEnd, tag.end)}>`;
       i = tag.end + 1;
       continue;
     }
@@ -341,7 +456,7 @@ function findXmlStartTagOutsideCDATA(text, tag, from) {
   const lower = text.toLowerCase();
   const target = `<${tag}`;
   for (let i = Math.max(0, from || 0); i < text.length;) {
-    const skipped = skipXmlIgnoredSection(lower, i);
+    const skipped = skipXmlIgnoredSection(text, i);
     if (skipped.blocked) {
       return null;
     }
@@ -371,7 +486,7 @@ function findMatchingXmlEndTagOutsideCDATA(text, tag, from) {
   const closeTarget = `</${tag}`;
   let depth = 1;
   for (let i = Math.max(0, from || 0); i < text.length;) {
-    const skipped = skipXmlIgnoredSection(lower, i);
+    const skipped = skipXmlIgnoredSection(text, i);
     if (skipped.blocked) {
       return null;
     }
@@ -407,16 +522,18 @@ function findMatchingXmlEndTagOutsideCDATA(text, tag, from) {
   return null;
 }
 
-function skipXmlIgnoredSection(lower, i) {
-  if (lower.startsWith('<![cdata[', i)) {
-    const end = lower.indexOf(']]>', i + '<![cdata['.length);
+function skipXmlIgnoredSection(text, i) {
+  const raw = toStringSafe(text);
+  const openLen = toolCDATAOpenLenAt(raw, i);
+  if (openLen > 0) {
+    const end = findToolCDATAEnd(raw, i + openLen);
     if (end < 0) {
       return { advanced: false, blocked: true, next: i };
     }
-    return { advanced: true, blocked: false, next: end + ']]>'.length };
+    return { advanced: true, blocked: false, next: end + toolCDATACloseLenAt(raw, end) };
   }
-  if (lower.startsWith('<!--', i)) {
-    const end = lower.indexOf('-->', i + '<!--'.length);
+  if (raw.startsWith('<!--', i)) {
+    const end = raw.indexOf('-->', i + '<!--'.length);
     if (end < 0) {
       return { advanced: false, blocked: true, next: i };
     }
@@ -425,44 +542,89 @@ function skipXmlIgnoredSection(lower, i) {
   return { advanced: false, blocked: false, next: i };
 }
 
+function findNextCDATAOpen(text, from) {
+  const raw = toStringSafe(text);
+  const start = indexToolCDATAOpen(raw, from || 0);
+  if (start < 0) {
+    return { ok: false, start: -1, bodyStart: -1 };
+  }
+  return { ok: true, start, bodyStart: start + toolCDATAOpenLenAt(raw, start) };
+}
+
+function matchCDATAOpenAt(text, start) {
+  const raw = toStringSafe(text);
+  const openLen = toolCDATAOpenLenAt(raw, start);
+  return openLen > 0 ? { ok: true, bodyStart: start + openLen } : { ok: false, bodyStart: start };
+}
+
+function isCDATAOpenSeparator(ch) {
+  return isToolMarkupSeparator(ch);
+}
+
+function findCDATAEnd(text, from) {
+  const raw = toStringSafe(text);
+  const index = findToolCDATAEnd(raw, from);
+  return { index, len: index >= 0 ? toolCDATACloseLenAt(raw, index) : 0 };
+}
+
 function scanToolMarkupTagAt(text, start) {
   const raw = toStringSafe(text);
-  if (!raw || start < 0 || start >= raw.length || raw[start] !== '<') {
+  const startDelimLen = xmlTagStartDelimiterLenAt(raw, start);
+  if (!raw || start < 0 || start >= raw.length || !startDelimLen) {
     return null;
   }
   const lower = raw.toLowerCase();
-  let i = start + 1;
-  while (i < raw.length && raw[i] === '<') {
-    i += 1;
+  let i = start + startDelimLen;
+  while (i < raw.length) {
+    i = skipToolMarkupIgnorables(raw, i);
+    const delimLen = xmlTagStartDelimiterLenAt(raw, i);
+    if (!delimLen) {
+      break;
+    }
+    i += delimLen;
   }
-  const closing = raw[i] === '/';
-  if (closing) {
-    i += 1;
-  }
+  const slash = consumeToolMarkupClosingSlash(raw, i);
+  let closing = slash.closing;
+  i = slash.next;
   const prefix = consumeToolMarkupNamePrefix(raw, lower, i);
+  const prefixStart = i;
   i = prefix.next;
-  const dsmlLike = prefix.dsmlLike;
-  const { name, len } = matchToolMarkupName(lower, i, dsmlLike);
+  let dsmlLike = prefix.dsmlLike;
+  let { name, len } = matchToolMarkupName(raw, i, dsmlLike);
   if (!name) {
-    return null;
+    const fallback = matchToolMarkupNameAfterArbitraryPrefix(raw, prefixStart);
+    if (!fallback.ok) {
+      return null;
+    }
+    if (!closing && toolMarkupPrefixContainsSlash(raw.slice(prefixStart, fallback.start))) {
+      closing = true;
+    }
+    name = fallback.name;
+    i = fallback.start;
+    len = fallback.len;
+    dsmlLike = true;
   }
   const originalNameEnd = i + len;
   let nameEnd = originalNameEnd;
-  while (nameEnd < raw.length && isToolMarkupPipe(raw[nameEnd])) {
-    nameEnd += 1;
+  while (true) {
+    const nextPipe = consumeToolMarkupSeparator(raw, nameEnd);
+    if (!nextPipe.ok) {
+      break;
+    }
+    nameEnd = nextPipe.next;
   }
-  const hasTrailingPipe = nameEnd > originalNameEnd;
+  const hasTrailingSeparator = nameEnd > originalNameEnd;
   if (!hasXmlTagBoundary(raw, nameEnd)) {
     return null;
   }
   let end = findXmlTagEnd(raw, nameEnd);
   if (end < 0) {
-    if (!hasTrailingPipe) {
+    if (!hasTrailingSeparator) {
       return null;
     }
     end = nameEnd - 1;
   }
-  if (hasTrailingPipe) {
+  if (hasTrailingSeparator) {
     const nextLT = raw.indexOf('<', nameEnd);
     if (nextLT >= 0 && end >= nextLT) {
       end = nameEnd - 1;
@@ -478,7 +640,7 @@ function scanToolMarkupTagAt(text, start) {
     nameEnd,
     name,
     closing,
-    selfClosing: raw.slice(start, end + 1).trim().endsWith('/>'),
+    selfClosing: isSelfClosingXmlTag(raw.slice(start, end)),
     dsmlLike,
     canonical: !dsmlLike,
   };
@@ -486,14 +648,18 @@ function scanToolMarkupTagAt(text, start) {
 
 function findToolMarkupTagOutsideIgnored(text, from) {
   const raw = toStringSafe(text);
-  const lower = raw.toLowerCase();
   for (let i = Math.max(0, from || 0); i < raw.length;) {
-    const skipped = skipXmlIgnoredSection(lower, i);
+    const skipped = skipXmlIgnoredSection(raw, i);
     if (skipped.blocked) {
       return null;
     }
     if (skipped.advanced) {
       i = skipped.next;
+      continue;
+    }
+    const spanEnd = markdownCodeSpanEnd(raw, i);
+    if (spanEnd.ok) {
+      i = spanEnd.end;
       continue;
     }
     const tag = scanToolMarkupTagAt(raw, i);
@@ -535,13 +701,13 @@ function findMatchingToolMarkupClose(text, openTag) {
 
 function findPartialToolMarkupStart(text) {
   const raw = toStringSafe(text);
-  const lastLT = raw.lastIndexOf('<');
+  const lastLT = lastIndexOfToolMarkupStartDelimiter(raw);
   if (lastLT < 0) {
     return -1;
   }
   const start = includeDuplicateLeadingLessThan(raw, lastLT);
   const tail = raw.slice(start);
-  if (tail.includes('>')) {
+  if (containsXmlTagTerminator(tail)) {
     return -1;
   }
   return isPartialToolMarkupTagPrefix(tail) ? start : -1;
@@ -549,40 +715,62 @@ function findPartialToolMarkupStart(text) {
 
 function includeDuplicateLeadingLessThan(text, idx) {
   let out = idx;
-  while (out > 0 && text[out - 1] === '<') {
+  while (out > 0 && isXmlTagStartDelimiter(text[out - 1])) {
     out -= 1;
   }
   return out;
 }
 
-function isToolMarkupPipe(ch) {
-  return ch === '|' || ch === '｜';
+function isXmlTagStartDelimiter(ch) {
+  return ['<', '＜', '﹤', '〈'].includes(ch);
+}
+
+function isToolMarkupSeparator(ch) {
+  if (isToolMarkupWhitespaceLike(ch)) {
+    return false;
+  }
+  const normalized = normalizeFullwidthASCIIChar(ch || '');
+  if (!normalized || ['<', '>', '/', '=', '"', "'", '['].includes(normalized)) {
+    return false;
+  }
+  if ([' ', '\t', '\n', '\r'].includes(normalized)) {
+    return false;
+  }
+  return !/^[A-Za-z0-9]$/.test(normalized);
+}
+
+function isToolMarkupWhitespaceLike(ch) {
+  return !!ch && (/\s/u.test(ch) || ch === '▁');
 }
 
 function isPartialToolMarkupTagPrefix(text) {
   const raw = toStringSafe(text);
-  if (!raw || raw[0] !== '<' || raw.includes('>')) {
+  if (!raw || !isXmlTagStartDelimiter(raw[0]) || containsXmlTagTerminator(raw)) {
     return false;
   }
   const lower = raw.toLowerCase();
   let i = 1;
-  while (i < raw.length && raw[i] === '<') {
+  while (i < raw.length && isXmlTagStartDelimiter(raw[i])) {
     i += 1;
   }
   if (i >= raw.length) {
     return true;
   }
-  if (raw[i] === '/') {
-    i += 1;
+  const slash = consumeToolMarkupClosingSlash(raw, i);
+  if (slash.closing) {
+    i = slash.next;
   }
   while (i <= raw.length) {
     if (i === raw.length) {
       return true;
     }
-    if (hasToolMarkupNamePrefix(lower.slice(i))) {
+    if (hasToolMarkupNamePrefix(raw, i)) {
       return true;
     }
-    if ('dsml'.startsWith(lower.slice(i))) {
+    if (hasDSMLNamePrefixOrPartial(raw, i)) {
+      return true;
+    }
+    if (hasPartialToolMarkupNameAfterArbitraryPrefix(raw, i)) {
       return true;
     }
     const next = consumeToolMarkupNamePrefixOnce(raw, lower, i);
@@ -607,74 +795,928 @@ function consumeToolMarkupNamePrefix(raw, lower, idx) {
   }
 }
 
-function consumeToolMarkupNamePrefixOnce(raw, lower, idx) {
-  if (idx < raw.length && isToolMarkupPipe(raw[idx])) {
-    return { next: idx + 1, ok: true };
-  }
-  if (idx < raw.length && [' ', '\t', '\r', '\n'].includes(raw[idx])) {
-    return { next: idx + 1, ok: true };
-  }
-  if (lower.startsWith('dsml', idx)) {
-    let next = idx + 'dsml'.length;
-    if (next < raw.length && raw[next] === '-') {
-      next += 1;
+function matchToolMarkupNameAfterArbitraryPrefix(raw, start) {
+  for (let idx = start; idx < raw.length;) {
+    if (isToolMarkupTagTerminator(raw, idx)) {
+      return { ok: false };
     }
-    return { next, ok: true };
+    for (const name of TOOL_MARKUP_NAMES) {
+      const matched = consumeToolKeyword(raw, idx, name.raw);
+      if (!matched.ok) {
+        continue;
+      }
+      if (!toolMarkupPrefixAllowsLocalNameAt(raw, start, idx)) {
+        continue;
+      }
+      return { ok: true, name: name.canonical, start: idx, len: matched.next - idx };
+    }
+    idx += 1;
   }
-  return { next: idx, ok: false };
+  return { ok: false };
 }
 
-function hasToolMarkupNamePrefix(lowerTail) {
-  for (const name of TOOL_MARKUP_NAMES) {
-    if (lowerTail.startsWith(name.raw) || name.raw.startsWith(lowerTail)) {
+function hasPartialToolMarkupNameAfterArbitraryPrefix(raw, start) {
+  for (let idx = start; idx < raw.length;) {
+    if (isToolMarkupTagTerminator(raw, idx)) {
+      return false;
+    }
+    if (toolMarkupPrefixAllowsLocalNameAt(raw, start, idx) && hasToolMarkupNamePrefix(raw, idx)) {
+      return true;
+    }
+    if (toolMarkupPrefixAllowsLocalNameAt(raw, start, idx) && hasDSMLNamePrefixOrPartial(raw, idx)) {
+      return true;
+    }
+    idx += 1;
+  }
+  return toolMarkupPrefixAllowsLocalName(raw.slice(start));
+}
+
+function hasDSMLNamePrefixOrPartial(raw, start) {
+  const tail = normalizedASCIITailAt(raw, start);
+  return tail.startsWith('dsml') || 'dsml'.startsWith(tail) || hasConfusablePartialKeywordPrefix(raw, start, 'dsml');
+}
+
+function toolMarkupPrefixAllowsLocalName(prefix) {
+  if (!prefix) {
+    return false;
+  }
+  if (normalizedASCIITailAt(prefix, 0).includes('dsml')) {
+    return true;
+  }
+  if (/[="']/u.test(prefix)) {
+    return false;
+  }
+  const previous = normalizeFullwidthASCIIChar(prefix[prefix.length - 1] || '');
+  return !/^[A-Za-z0-9]$/.test(previous);
+}
+
+function toolMarkupPrefixAllowsLocalNameAt(raw, start, localStart) {
+  if (start < 0 || localStart <= start || localStart > raw.length) {
+    return false;
+  }
+  const prefix = raw.slice(start, localStart);
+  if (toolMarkupPrefixAllowsLocalName(prefix)) {
+    return true;
+  }
+  if (/[="']/u.test(prefix)) {
+    return false;
+  }
+  const previous = normalizeFullwidthASCIIChar(prefix[prefix.length - 1] || '');
+  const next = normalizeFullwidthASCIIChar(raw[localStart] || '');
+  return /^[A-Za-z0-9]$/.test(previous) && /^[A-Z]$/.test(next);
+}
+
+function toolMarkupPrefixContainsSlash(prefix) {
+  for (const ch of toStringSafe(prefix)) {
+    if (normalizeFullwidthASCIIChar(ch) === '/') {
       return true;
     }
   }
   return false;
 }
 
-function matchToolMarkupName(lower, start, dsmlLike) {
+function isToolMarkupTagTerminator(raw, idx) {
+  return raw[idx] === '>' || normalizeFullwidthASCIIChar(raw[idx] || '') === '>';
+}
+
+function consumeToolMarkupNamePrefixOnce(raw, lower, idx) {
+  idx = skipToolMarkupIgnorables(raw, idx);
+  const sep = consumeToolMarkupSeparator(raw, idx);
+  if (sep.ok) {
+    return sep;
+  }
+  const spacingLen = toolMarkupWhitespaceLikeLenAt(raw, idx);
+  if (spacingLen > 0) {
+    return { next: idx + spacingLen, ok: true };
+  }
+  const dsml = consumeToolKeyword(raw, idx, 'dsml');
+  if (dsml.ok) {
+    let next = dsml.next;
+    const dashLen = toolMarkupDashLenAt(raw, next);
+    const underscoreLen = toolMarkupUnderscoreLenAt(raw, next);
+    if (dashLen) {
+      next += dashLen;
+    } else if (underscoreLen) {
+      next += underscoreLen;
+    }
+    return { next, ok: true };
+  }
+  const arbitrary = consumeArbitraryToolMarkupNamePrefix(raw, lower, idx);
+  if (arbitrary.ok) {
+    return arbitrary;
+  }
+  return { next: idx, ok: false };
+}
+
+function consumeArbitraryToolMarkupNamePrefix(raw, _lower, idx) {
+  const first = consumeToolMarkupPrefixSegment(raw, idx);
+  if (!first.ok) {
+    return { next: idx, ok: false };
+  }
+  let j = first.next;
+  while (j < raw.length) {
+    const segment = consumeToolMarkupPrefixSegment(raw, j);
+    if (!segment.ok) {
+      break;
+    }
+    j = segment.next;
+  }
+  let k = j;
+  while (true) {
+    const spacingLen = toolMarkupWhitespaceLikeLenAt(raw, k);
+    if (!spacingLen) {
+      break;
+    }
+    k += spacingLen;
+  }
+  let next = k;
+  let ok = false;
+  const sep = consumeToolMarkupSeparator(raw, next);
+  if (sep.ok) {
+    next = sep.next;
+    ok = true;
+  } else {
+    const dashLen = toolMarkupDashLenAt(raw, next);
+    const underscoreLen = toolMarkupUnderscoreLenAt(raw, next);
+    if (dashLen) {
+      next += dashLen;
+      ok = true;
+    } else if (underscoreLen) {
+      next += underscoreLen;
+      ok = true;
+    }
+  }
+  if (!ok) {
+    return { next: idx, ok: false };
+  }
+  while (true) {
+    const spacingLen = toolMarkupWhitespaceLikeLenAt(raw, next);
+    if (!spacingLen) {
+      break;
+    }
+    next += spacingLen;
+  }
+  if (!hasToolMarkupNamePrefix(raw, next)) {
+    return { next: idx, ok: false };
+  }
+  return { next, ok: true };
+}
+
+function consumeToolMarkupPrefixSegment(raw, idx) {
+  if (idx < 0 || idx >= raw.length) {
+    return { next: idx, ok: false };
+  }
+  const normalized = normalizeFullwidthASCIIChar(raw[idx]);
+  if (/^[A-Za-z0-9]$/.test(normalized)) {
+    return { next: idx + 1, ok: true };
+  }
+  return { next: idx, ok: false };
+}
+
+function hasToolMarkupNamePrefix(raw, start) {
+  for (const name of TOOL_MARKUP_NAMES) {
+    if (consumeToolKeyword(raw, start, name.raw).ok) {
+      return true;
+    }
+    if (hasConfusablePartialKeywordPrefix(raw, start, name.raw)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function hasConfusablePartialKeywordPrefix(raw, start, keyword) {
+  if (start < 0 || start >= raw.length) {
+    return false;
+  }
+  let idx = start;
+  let matched = 0;
+  while (matched < keyword.length && idx < raw.length) {
+    idx = skipToolMarkupIgnorables(raw, idx);
+    if (idx >= raw.length) {
+      break;
+    }
+    const expected = keyword[matched];
+    if (expected === '_') {
+      const underscoreLen = toolMarkupUnderscoreLenAt(raw, idx);
+      if (!underscoreLen) {
+        return false;
+      }
+      idx += underscoreLen;
+      matched += 1;
+      continue;
+    }
+    if (expected === '-') {
+      const dashLen = toolMarkupDashLenAt(raw, idx);
+      if (!dashLen) {
+        return false;
+      }
+      idx += dashLen;
+      matched += 1;
+      continue;
+    }
+    const cp = raw.codePointAt(idx);
+    const ch = String.fromCodePoint(cp);
+    const folded = foldToolKeywordRune(ch);
+    if (!folded || folded !== expected.toLowerCase()) {
+      return false;
+    }
+    idx += ch.length;
+    matched += 1;
+  }
+  return matched > 0 && matched < keyword.length && idx === raw.length;
+}
+
+function matchToolMarkupName(raw, start, dsmlLike) {
   for (const name of TOOL_MARKUP_NAMES) {
     if (name.dsmlOnly && !dsmlLike) {
       continue;
     }
-    if (lower.startsWith(name.raw, start)) {
-      return { name: name.canonical, len: name.raw.length };
+    const matched = consumeToolKeyword(raw, start, name.raw);
+    if (matched.ok) {
+      return { name: name.canonical, len: matched.next - start };
     }
   }
   return { name: '', len: 0 };
 }
 
-function findXmlTagEnd(text, from) {
-  let quote = '';
-  for (let i = Math.max(0, from || 0); i < text.length; i += 1) {
-    const ch = text[i];
-    if (quote) {
-      if (ch === quote) {
-        quote = '';
+function consumeToolMarkupSeparator(raw, idx) {
+  idx = skipToolMarkupIgnorables(raw, idx);
+  if (idx >= raw.length) {
+    return { next: idx, ok: false };
+  }
+  const cp = raw.codePointAt(idx);
+  const ch = String.fromCodePoint(cp);
+  if (!isToolMarkupSeparator(ch)) {
+    return { next: idx, ok: false };
+  }
+  return { next: idx + ch.length, ok: true };
+}
+
+function hasToolMarkupBoundary(text, idx) {
+  idx = skipToolMarkupIgnorables(text, idx);
+  if (idx >= text.length) {
+    return true;
+  }
+  if (toolMarkupWhitespaceLikeLenAt(text, idx) > 0) {
+    return true;
+  }
+  if (consumeToolMarkupClosingSlash(text, idx).closing) {
+    return true;
+  }
+  return xmlTagEndDelimiterLenAt(text, idx) > 0;
+}
+
+function consumeToolMarkupLessThan(raw, idx) {
+  idx = skipToolMarkupIgnorables(raw, idx);
+  if (idx < 0 || idx >= raw.length) {
+    return { next: idx, ok: false };
+  }
+  const delimLen = xmlTagStartDelimiterLenAt(raw, idx);
+  if (!delimLen) {
+    return { next: idx, ok: false };
+  }
+  return { next: idx + delimLen, ok: true };
+}
+
+function canonicalizeToolCallCandidateSpans(text) {
+  const raw = toStringSafe(text);
+  if (!raw) {
+    return '';
+  }
+  let out = '';
+  for (let i = 0; i < raw.length;) {
+    const skipped = skipXmlIgnoredSection(raw, i);
+    if (skipped.blocked) {
+      out += raw.slice(i);
+      break;
+    }
+    if (skipped.advanced) {
+      out += raw.slice(i, skipped.next);
+      i = skipped.next;
+      continue;
+    }
+    const spanEnd = markdownCodeSpanEnd(raw, i);
+    if (spanEnd.ok) {
+      out += raw.slice(i, spanEnd.end);
+      i = spanEnd.end;
+      continue;
+    }
+    const tag = scanToolMarkupTagAt(raw, i);
+    if (!tag) {
+      out += raw[i];
+      i += 1;
+      continue;
+    }
+    out += canonicalizeRecognizedToolMarkupTag(raw.slice(tag.start, tag.end + 1), tag);
+    i = tag.end + 1;
+  }
+  return out;
+}
+
+function canonicalizeRecognizedToolMarkupTag(rawTag, tag) {
+  const raw = toStringSafe(rawTag);
+  if (!raw || !tag) {
+    return raw;
+  }
+  let idx = 0;
+  const startLen = xmlTagStartDelimiterLenAt(raw, idx);
+  if (startLen > 0) {
+    idx += startLen;
+  }
+  while (idx < raw.length) {
+    idx = skipToolMarkupIgnorables(raw, idx);
+    const delimLen = xmlTagStartDelimiterLenAt(raw, idx);
+    if (!delimLen) {
+      break;
+    }
+    idx += delimLen;
+  }
+  idx = skipToolMarkupIgnorables(raw, idx);
+  if (tag.closing) {
+    const slash = consumeToolMarkupClosingSlash(raw, idx);
+    if (slash.closing) {
+      idx = slash.next;
+    }
+  }
+  const prefix = consumeToolMarkupNamePrefix(raw, raw.toLowerCase(), idx);
+  idx = prefix.next;
+  const nameMatch = consumeToolKeyword(raw, idx, rawNameForTag(tag));
+  const afterName = nameMatch.ok ? nameMatch.next : idx;
+  const attrs = parseCanonicalToolMarkupAttrs(raw, afterName);
+
+  let out = '<';
+  if (tag.closing) {
+    out += '/';
+  }
+  if (tag.dsmlLike) {
+    out += '|DSML|';
+  }
+  out += tag.name;
+  for (const attr of attrs) {
+    if (!attr || !attr.key) {
+      continue;
+    }
+    out += ` ${attr.key}="${quoteCanonicalXMLAttrValue(attr.value)}"`;
+  }
+  if (tag.selfClosing) {
+    out += '/';
+  }
+  out += '>';
+  return out;
+}
+
+function parseCanonicalToolMarkupAttrs(rawTag, startIdx) {
+  const raw = toStringSafe(rawTag);
+  let idx = Math.max(0, startIdx || 0);
+  const out = [];
+  while (idx < raw.length) {
+    idx = skipToolMarkupIgnorables(raw, idx);
+    if (idx >= raw.length) {
+      break;
+    }
+    const spacingLen = toolMarkupWhitespaceLikeLenAt(raw, idx);
+    if (spacingLen > 0) {
+      idx += spacingLen;
+      continue;
+    }
+    if (xmlTagEndDelimiterLenAt(raw, idx) > 0) {
+      break;
+    }
+    if (consumeToolMarkupPipe(raw, idx).ok) {
+      idx = consumeToolMarkupPipe(raw, idx).next;
+      continue;
+    }
+    if (consumeToolMarkupClosingSlash(raw, idx).closing) {
+      idx = consumeToolMarkupClosingSlash(raw, idx).next;
+      continue;
+    }
+
+    const keyStart = idx;
+    while (idx < raw.length) {
+      idx = skipToolMarkupIgnorables(raw, idx);
+      if (idx >= raw.length) {
+        break;
+      }
+      if (toolMarkupWhitespaceLikeLenAt(raw, idx) > 0) {
+        break;
+      }
+      if (toolMarkupEqualsLenAt(raw, idx) > 0 || xmlTagEndDelimiterLenAt(raw, idx) > 0) {
+        break;
+      }
+      if (consumeToolMarkupPipe(raw, idx).ok || consumeToolMarkupClosingSlash(raw, idx).closing) {
+        break;
+      }
+      const cp = raw.codePointAt(idx);
+      idx += cp > 0xFFFF ? 2 : 1;
+    }
+    const key = normalizeCanonicalToolAttrKey(raw.slice(keyStart, idx));
+
+    idx = skipToolMarkupIgnorables(raw, idx);
+    while (idx < raw.length) {
+      const wsLen = toolMarkupWhitespaceLikeLenAt(raw, idx);
+      if (!wsLen) {
+        break;
+      }
+      idx += wsLen;
+      idx = skipToolMarkupIgnorables(raw, idx);
+    }
+    const equalsLen = toolMarkupEqualsLenAt(raw, idx);
+    if (!equalsLen) {
+      continue;
+    }
+    idx += equalsLen;
+    idx = skipToolMarkupIgnorables(raw, idx);
+    while (idx < raw.length) {
+      const wsLen = toolMarkupWhitespaceLikeLenAt(raw, idx);
+      if (!wsLen) {
+        break;
+      }
+      idx += wsLen;
+      idx = skipToolMarkupIgnorables(raw, idx);
+    }
+    if (!key) {
+      if (idx < raw.length) {
+        const cp = raw.codePointAt(idx);
+        idx += cp > 0xFFFF ? 2 : 1;
       }
       continue;
     }
-    if (ch === '"' || ch === "'") {
-      quote = ch;
+
+    let value = '';
+    const quote = xmlQuotePairAt(raw, idx);
+    if (quote.len) {
+      const valueStart = idx + quote.len;
+      idx = valueStart;
+      while (idx < raw.length) {
+        const closeLen = xmlQuoteCloseDelimiterLenAt(raw, idx, quote.close);
+        if (closeLen) {
+          value = raw.slice(valueStart, idx);
+          idx += closeLen;
+          break;
+        }
+        const cp = raw.codePointAt(idx);
+        idx += cp > 0xFFFF ? 2 : 1;
+      }
+    } else {
+      const valueStart = idx;
+      while (idx < raw.length) {
+        if (toolMarkupWhitespaceLikeLenAt(raw, idx) > 0 || xmlTagEndDelimiterLenAt(raw, idx) > 0 || toolMarkupEqualsLenAt(raw, idx) > 0) {
+          break;
+        }
+        if (consumeToolMarkupPipe(raw, idx).ok || consumeToolMarkupClosingSlash(raw, idx).closing) {
+          break;
+        }
+        const cp = raw.codePointAt(idx);
+        idx += cp > 0xFFFF ? 2 : 1;
+      }
+      value = raw.slice(valueStart, idx);
+    }
+    out.push({ key, value });
+  }
+  return out;
+}
+
+function normalizeCanonicalToolAttrKey(rawKey) {
+  const trimmed = toStringSafe(removeToolMarkupIgnorables(rawKey)).trim();
+  if (!trimmed) {
+    return '';
+  }
+  const matched = consumeToolKeyword(trimmed, 0, 'name');
+  return matched.ok && skipToolMarkupIgnorables(trimmed, matched.next) === trimmed.length ? 'name' : '';
+}
+
+function quoteCanonicalXMLAttrValue(rawValue) {
+  return toStringSafe(rawValue).replace(/"/g, '&quot;');
+}
+
+function removeToolMarkupIgnorables(rawValue) {
+  const raw = toStringSafe(rawValue);
+  let out = '';
+  for (let i = 0; i < raw.length;) {
+    const ignorableLen = toolMarkupIgnorableLenAt(raw, i);
+    if (ignorableLen) {
+      i += ignorableLen;
       continue;
     }
-    if (ch === '>') {
-      return i;
+    const cp = raw.codePointAt(i);
+    const ch = String.fromCodePoint(cp);
+    out += ch;
+    i += ch.length;
+  }
+  return out;
+}
+
+function skipToolMarkupIgnorables(text, idx) {
+  const raw = toStringSafe(text);
+  let pos = Math.max(0, idx || 0);
+  while (pos < raw.length) {
+    const next = toolMarkupIgnorableLenAt(raw, pos);
+    if (!next) {
+      break;
     }
+    pos += next;
+  }
+  return pos;
+}
+
+function toolMarkupIgnorableLenAt(text, idx) {
+  const raw = toStringSafe(text);
+  if (idx < 0 || idx >= raw.length) {
+    return 0;
+  }
+  const cp = raw.codePointAt(idx);
+  if (cp === undefined) {
+    return 0;
+  }
+  const ch = String.fromCodePoint(cp);
+  const isFormat = /[\u00AD\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFE00-\uFE0F\uFEFF]/u.test(ch);
+  const isControl = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/u.test(ch);
+  return isFormat || isControl ? ch.length : 0;
+}
+
+function toolMarkupEqualsLenAt(text, idx) {
+  const raw = toStringSafe(text);
+  const pos = skipToolMarkupIgnorables(raw, idx);
+  for (const variant of ['=', '＝', '﹦', '꞊']) {
+    if (raw.startsWith(variant, pos)) {
+      return (pos + variant.length) - idx;
+    }
+  }
+  return 0;
+}
+
+function toolMarkupDashLenAt(text, idx) {
+  const raw = toStringSafe(text);
+  const pos = skipToolMarkupIgnorables(raw, idx);
+  for (const variant of ['-', '‐', '‑', '‒', '–', '—', '―', '−', '﹣', '－']) {
+    if (raw.startsWith(variant, pos)) {
+      return (pos + variant.length) - idx;
+    }
+  }
+  return 0;
+}
+
+function toolMarkupUnderscoreLenAt(text, idx) {
+  const raw = toStringSafe(text);
+  const pos = skipToolMarkupIgnorables(raw, idx);
+  for (const variant of ['_', '＿', '﹍', '﹎', '﹏']) {
+    if (raw.startsWith(variant, pos)) {
+      return (pos + variant.length) - idx;
+    }
+  }
+  return 0;
+}
+
+function consumeToolKeyword(text, idx, keyword) {
+  const raw = toStringSafe(text);
+  let next = idx;
+  for (const ch of keyword.toLowerCase()) {
+    next = skipToolMarkupIgnorables(raw, next);
+    if (next >= raw.length) {
+      return { next: idx, ok: false };
+    }
+    if (ch === '_') {
+      const len = toolMarkupUnderscoreLenAt(raw, next);
+      if (!len) {
+        return { next: idx, ok: false };
+      }
+      next += len;
+      continue;
+    }
+    if (ch === '-') {
+      const len = toolMarkupDashLenAt(raw, next);
+      if (!len) {
+        return { next: idx, ok: false };
+      }
+      next += len;
+      continue;
+    }
+    const cp = raw.codePointAt(next);
+    const folded = foldToolKeywordRune(String.fromCodePoint(cp));
+    if (!folded || folded !== ch) {
+      return { next: idx, ok: false };
+    }
+    next += cp > 0xFFFF ? 2 : 1;
+  }
+  return { next, ok: true };
+}
+
+function foldToolKeywordRune(ch) {
+  if (!ch) {
+    return '';
+  }
+  const cp = ch.codePointAt(0);
+  if (cp >= 0xFF21 && cp <= 0xFF3A) {
+    return String.fromCharCode(cp - 0xFEE0).toLowerCase();
+  }
+  if (cp >= 0xFF41 && cp <= 0xFF5A) {
+    return String.fromCharCode(cp - 0xFEE0);
+  }
+  const lower = ch.toLowerCase();
+  if ('acdeiklmnoprstv'.includes(lower)) {
+    return lower;
+  }
+  const mapped = {
+    'а': 'a',
+    'α': 'a',
+    'с': 'c',
+    'ϲ': 'c',
+    'ԁ': 'd',
+    'ⅾ': 'd',
+    'е': 'e',
+    'ε': 'e',
+    'і': 'i',
+    'ι': 'i',
+    'ı': 'i',
+    'к': 'k',
+    'κ': 'k',
+    'ⅼ': 'l',
+    'м': 'm',
+    'μ': 'm',
+    'ո': 'n',
+    'о': 'o',
+    'ο': 'o',
+    'р': 'p',
+    'ρ': 'p',
+    'ѕ': 's',
+    'т': 't',
+    'τ': 't',
+    'ν': 'v',
+    'ѵ': 'v',
+    'ⅴ': 'v',
+  };
+  return mapped[lower] || '';
+}
+
+function toolMarkupWhitespaceLikeLenAt(text, idx) {
+  const raw = toStringSafe(text);
+  const pos = skipToolMarkupIgnorables(raw, idx);
+  if (pos < 0 || pos >= raw.length) {
+    return 0;
+  }
+  if ([' ', '\t', '\n', '\r'].includes(raw[pos])) {
+    return (pos + 1) - idx;
+  }
+  if (raw.startsWith('▁', pos)) {
+    return (pos + '▁'.length) - idx;
+  }
+  const cp = raw.codePointAt(pos);
+  const ch = String.fromCodePoint(cp);
+  return /\s/u.test(ch) ? (pos + ch.length) - idx : 0;
+}
+
+function consumeToolMarkupPipe(raw, idx) {
+  const pos = skipToolMarkupIgnorables(raw, idx);
+  if (pos >= raw.length) {
+    return { next: idx, ok: false };
+  }
+  for (const variant of ['|', '│', '∣', '❘', 'ǀ', '￨']) {
+    if (raw.startsWith(variant, pos)) {
+      return { next: pos + variant.length, ok: true };
+    }
+  }
+  return { next: idx, ok: false };
+}
+
+function consumeToolMarkupClosingSlash(raw, idx) {
+  const pos = skipToolMarkupIgnorables(raw, idx);
+  if (pos >= raw.length) {
+    return { next: idx, closing: false };
+  }
+  for (const variant of ['/', '／', '∕', '⁄', '⧸']) {
+    if (raw.startsWith(variant, pos)) {
+      return { next: pos + variant.length, closing: true };
+    }
+  }
+  return { next: idx, closing: false };
+}
+
+function xmlTagStartDelimiterLenAt(text, idx) {
+  const raw = toStringSafe(text);
+  const pos = skipToolMarkupIgnorables(raw, idx);
+  if (pos < 0 || pos >= raw.length) {
+    return 0;
+  }
+  for (const variant of ['<', '＜', '﹤', '〈']) {
+    if (raw.startsWith(variant, pos)) {
+      return (pos + variant.length) - idx;
+    }
+  }
+  return 0;
+}
+
+function xmlTagEndDelimiterLenAt(text, idx) {
+  const raw = toStringSafe(text);
+  const pos = skipToolMarkupIgnorables(raw, idx);
+  if (pos < 0 || pos >= raw.length) {
+    return 0;
+  }
+  for (const variant of ['>', '＞', '﹥', '〉']) {
+    if (raw.startsWith(variant, pos)) {
+      return (pos + variant.length) - idx;
+    }
+  }
+  return 0;
+}
+
+function xmlTagEndDelimiterLenEndingAt(text, end) {
+  const raw = toStringSafe(text);
+  if (end < 0 || end >= raw.length) {
+    return 0;
+  }
+  for (const variant of ['>', '＞', '﹥', '〉']) {
+    if (end + 1 >= variant.length && raw.slice(end + 1 - variant.length, end + 1) === variant) {
+      return variant.length;
+    }
+  }
+  return 0;
+}
+
+function xmlQuotePairAt(text, idx) {
+  const raw = toStringSafe(text);
+  const pos = skipToolMarkupIgnorables(raw, idx);
+  if (pos < 0 || pos >= raw.length) {
+    return { close: '', len: 0 };
+  }
+  if (raw[pos] === '"') {
+    return { close: '"', len: (pos + 1) - idx };
+  }
+  if (raw[pos] === "'") {
+    return { close: "'", len: (pos + 1) - idx };
+  }
+  if (raw.startsWith('“', pos)) {
+    return { close: '”', len: (pos + '“'.length) - idx };
+  }
+  if (raw.startsWith('‘', pos)) {
+    return { close: '’', len: (pos + '‘'.length) - idx };
+  }
+  if (raw.startsWith('＂', pos)) {
+    return { close: '＂', len: (pos + '＂'.length) - idx };
+  }
+  if (raw.startsWith('＇', pos)) {
+    return { close: '＇', len: (pos + '＇'.length) - idx };
+  }
+  if (raw.startsWith('„', pos)) {
+    return { close: '”', len: (pos + '„'.length) - idx };
+  }
+  if (raw.startsWith('‟', pos)) {
+    return { close: '”', len: (pos + '‟'.length) - idx };
+  }
+  return { close: '', len: 0 };
+}
+
+function xmlQuoteCloseDelimiterLenAt(text, idx, close) {
+  const raw = toStringSafe(text);
+  if (!close) {
+    return 0;
+  }
+  return raw.startsWith(close, idx) ? close.length : 0;
+}
+
+function lastIndexOfToolMarkupStartDelimiter(raw) {
+  const text = toStringSafe(raw);
+  let best = -1;
+  for (const variant of ['<', '＜', '﹤', '〈']) {
+    const idx = text.lastIndexOf(variant);
+    if (idx > best) {
+      best = idx;
+    }
+  }
+  return best;
+}
+
+function containsXmlTagTerminator(raw) {
+  const text = toStringSafe(raw);
+  return text.includes('>') || text.includes('＞') || text.includes('﹥') || text.includes('〉');
+}
+
+function findXmlTagEnd(text, from) {
+  const raw = toStringSafe(text);
+  let quote = '';
+  for (let i = Math.max(0, from || 0); i < raw.length;) {
+    if (quote) {
+      const closeLen = xmlQuoteCloseDelimiterLenAt(raw, i, quote);
+      if (closeLen) {
+        quote = '';
+        i += closeLen;
+        continue;
+      }
+      const cp = raw.codePointAt(i);
+      i += cp > 0xFFFF ? 2 : 1;
+      continue;
+    }
+    const nextQuote = xmlQuotePairAt(raw, i);
+    if (nextQuote.len) {
+      quote = nextQuote.close;
+      i += nextQuote.len;
+      continue;
+    }
+    const endLen = xmlTagEndDelimiterLenAt(raw, i);
+    if (endLen > 0) {
+      return i + endLen - 1;
+    }
+    const cp = raw.codePointAt(i);
+    i += cp > 0xFFFF ? 2 : 1;
   }
   return -1;
 }
 
 function hasXmlTagBoundary(text, idx) {
-  if (idx >= text.length) {
+  const pos = skipToolMarkupIgnorables(text, idx);
+  if (pos >= text.length) {
     return true;
   }
-  return [' ', '\t', '\n', '\r', '>', '/'].includes(text[idx]);
+  return toolMarkupWhitespaceLikeLenAt(text, pos) > 0
+    || consumeToolMarkupClosingSlash(text, pos).closing
+    || xmlTagEndDelimiterLenAt(text, pos) > 0;
 }
 
 function isSelfClosingXmlTag(startTag) {
-  return toStringSafe(startTag).trim().endsWith('/');
+  const trimmed = toStringSafe(startTag).trim();
+  return trimmed.endsWith('/') || trimmed.endsWith('／');
+}
+
+function normalizeFullwidthASCIIChar(ch) {
+  if (!ch) {
+    return ch;
+  }
+  if (ch === '〈') {
+    return '<';
+  }
+  if (ch === '〉') {
+    return '>';
+  }
+  if (ch === '“' || ch === '”') {
+    return '"';
+  }
+  if (ch === '‘' || ch === '’') {
+    return "'";
+  }
+  const code = ch.charCodeAt(0);
+  if (code >= 0xff01 && code <= 0xff5e) {
+    return String.fromCharCode(code - 0xfee0);
+  }
+  return ch;
+}
+
+function normalizedASCIITailAt(raw, start) {
+  let out = '';
+  for (let i = Math.max(0, start || 0); i < raw.length; i += 1) {
+    const ch = normalizeFullwidthASCIIChar(raw[i]).toLowerCase();
+    if (ch.charCodeAt(0) > 0x7f) {
+      break;
+    }
+    out += ch;
+  }
+  return out;
+}
+
+function matchNormalizedASCII(raw, start, expected) {
+  let idx = start;
+  for (let j = 0; j < expected.length; j += 1) {
+    if (idx >= raw.length) {
+      return { ok: false, len: 0 };
+    }
+    const ch = normalizeFullwidthASCIIChar(raw[idx]).toLowerCase();
+    if (ch !== expected[j].toLowerCase()) {
+      return { ok: false, len: 0 };
+    }
+    idx += 1;
+  }
+  return { ok: true, len: idx - start };
+}
+
+function normalizeToolMarkupTagTailForXML(tail) {
+  let out = '';
+  const raw = typeof tail === 'string' ? tail : String(tail || '');
+  let quote = '';
+  for (let i = 0; i < raw.length; i += 1) {
+    const ch = raw[i];
+    const normalized = normalizeFullwidthASCIIChar(ch);
+    if (quote) {
+      out += normalized;
+      if (normalized === quote) {
+        quote = '';
+      }
+    } else if (normalized === '"' || normalized === "'") {
+      quote = normalized;
+      out += normalized;
+    } else if (normalized === '|' || normalized === '!') {
+      let j = i + 1;
+      while (j < raw.length && [' ', '\t', '\r', '\n'].includes(raw[j])) {
+        j += 1;
+      }
+      if (normalizeFullwidthASCIIChar(raw[j] || '') !== '>') {
+        out += normalized;
+      }
+    } else if (['>', '/', '='].includes(normalized)) {
+      out += normalized;
+    } else {
+      out += ch;
+    }
+  }
+  return out;
 }
 
 function parseMarkupInput(raw) {
@@ -767,7 +1809,7 @@ function findGenericXmlElementBlocks(text) {
 function findGenericXmlStartTagOutsideCDATA(text, from) {
   const lower = text.toLowerCase();
   for (let i = Math.max(0, from || 0); i < text.length;) {
-    const skipped = skipXmlIgnoredSection(lower, i);
+    const skipped = skipXmlIgnoredSection(text, i);
     if (skipped.blocked) {
       return null;
     }
@@ -817,7 +1859,7 @@ function findMatchingGenericXmlEndTagOutsideCDATA(text, name, from) {
   const closeTarget = `</${needle}`;
   let depth = 1;
   for (let i = Math.max(0, from || 0); i < text.length;) {
-    const skipped = skipXmlIgnoredSection(lower, i);
+    const skipped = skipXmlIgnoredSection(text, i);
     if (skipped.blocked) {
       return null;
     }
@@ -1017,14 +2059,37 @@ function unescapeHtml(safe) {
 
 function extractStandaloneCDATA(inner) {
   const s = toStringSafe(inner).trim();
-  const cdataMatch = s.match(CDATA_PATTERN);
-  if (cdataMatch && cdataMatch[1] !== undefined) {
-    return { ok: true, value: cdataMatch[1] };
+  const openLen = toolCDATAOpenLenAt(s, 0);
+  if (!openLen) {
+    return { ok: false, value: '' };
   }
-  if (s.toLowerCase().startsWith('<![cdata[')) {
-    return { ok: true, value: s.slice('<![CDATA['.length) };
+  const closeStart = findTrailingToolCDATACloseStart(s);
+  if (closeStart >= openLen) {
+    return { ok: true, value: s.slice(openLen, closeStart) };
   }
-  return { ok: false, value: '' };
+  const end = findToolCDATAEnd(s, openLen);
+  if (end >= 0) {
+    return { ok: true, value: s.slice(openLen, end) };
+  }
+  return { ok: true, value: s.slice(openLen) };
+}
+
+function findStandaloneCDATAEnd(text, from) {
+  const raw = toStringSafe(text);
+  let best = { index: -1, len: 0 };
+  for (let searchFrom = Math.max(0, from || 0); searchFrom < raw.length;) {
+    const index = findToolCDATAEnd(raw, searchFrom);
+    if (index < 0) {
+      break;
+    }
+    const len = toolCDATACloseLenAt(raw, index);
+    const closeEnd = index + len;
+    if (!raw.slice(closeEnd).trim()) {
+      best = { index, len };
+    }
+    searchFrom = closeEnd;
+  }
+  return best;
 }
 
 function parseJSONLiteralValue(raw) {
@@ -1267,26 +2332,23 @@ function sanitizeLooseCDATA(text) {
   if (!raw) {
     return '';
   }
-  const lower = raw.toLowerCase();
-  const openMarker = '<![cdata[';
-  const closeMarker = ']]>';
 
   let out = '';
   let pos = 0;
   let changed = false;
   while (pos < raw.length) {
-    const startRel = lower.indexOf(openMarker, pos);
-    if (startRel < 0) {
+    const start = indexToolCDATAOpen(raw, pos);
+    if (start < 0) {
       out += raw.slice(pos);
       break;
     }
-    const start = startRel;
-    const contentStart = start + openMarker.length;
+    const openLen = toolCDATAOpenLenAt(raw, start);
+    const contentStart = start + openLen;
     out += raw.slice(pos, start);
 
-    const endRel = lower.indexOf(closeMarker, contentStart);
+    const endRel = findToolCDATAEnd(raw, contentStart);
     if (endRel >= 0) {
-      const end = endRel + closeMarker.length;
+      const end = endRel + toolCDATACloseLenAt(raw, endRel);
       out += raw.slice(start, end);
       pos = end;
       continue;
@@ -1300,6 +2362,213 @@ function sanitizeLooseCDATA(text) {
   return changed ? out : raw;
 }
 
+function hasRepairableXMLToolCallsWrapper(text) {
+  const raw = toStringSafe(text).trim();
+  if (!raw || firstToolMarkupTagByName(raw, 'tool_calls', false)) {
+    return false;
+  }
+  const invoke = firstToolMarkupTagByName(raw, 'invoke', false);
+  if (!invoke) {
+    return false;
+  }
+  const close = lastToolMarkupTagByName(raw, 'tool_calls', true);
+  if (!close) {
+    return false;
+  }
+  return invoke.start < close.start;
+}
+
+function repairMissingXMLToolCallsOpeningWrapper(text) {
+  const raw = toStringSafe(text);
+  if (firstToolMarkupTagByName(raw, 'tool_calls', false)) {
+    return raw;
+  }
+  const invoke = firstToolMarkupTagByName(raw, 'invoke', false);
+  const close = lastToolMarkupTagByName(raw, 'tool_calls', true);
+  if (!invoke || !close || invoke.start >= close.start) {
+    return raw;
+  }
+  return `${raw.slice(0, invoke.start)}<tool_calls>${raw.slice(invoke.start, close.start)}</tool_calls>${raw.slice(close.end + 1)}`;
+}
+
+function firstToolMarkupTagByName(text, name, closing) {
+  const raw = toStringSafe(text);
+  for (let searchFrom = 0; searchFrom < raw.length;) {
+    const tag = findToolMarkupTagOutsideIgnored(raw, searchFrom);
+    if (!tag) {
+      break;
+    }
+    if (tag.name === name && tag.closing === closing) {
+      return tag;
+    }
+    searchFrom = tag.end + 1;
+  }
+  return null;
+}
+
+function lastToolMarkupTagByName(text, name, closing) {
+  const raw = toStringSafe(text);
+  let last = null;
+  for (let searchFrom = 0; searchFrom < raw.length;) {
+    const tag = findToolMarkupTagOutsideIgnored(raw, searchFrom);
+    if (!tag) {
+      break;
+    }
+    if (tag.name === name && tag.closing === closing) {
+      last = tag;
+    }
+    searchFrom = tag.end + 1;
+  }
+  return last;
+}
+
+function rawNameForTag(tag) {
+  for (const candidate of TOOL_MARKUP_NAMES) {
+    if (candidate.canonical === tag.name) {
+      return candidate.raw;
+    }
+  }
+  return tag.name || '';
+}
+
+function toolCDATAOpenLenAt(text, idx) {
+  const raw = toStringSafe(text);
+  const start = skipToolMarkupIgnorables(raw, idx);
+  const ltLen = xmlTagStartDelimiterLenAt(raw, start);
+  if (!ltLen) {
+    return 0;
+  }
+  let pos = start + ltLen;
+  for (let skipped = 0; skipped <= 4 && pos < raw.length; skipped += 1) {
+    pos = skipToolMarkupIgnorables(raw, pos);
+    if (raw[pos] === '[') {
+      pos += 1;
+      const keyword = consumeToolKeyword(raw, pos, 'cdata');
+      if (!keyword.ok) {
+        return 0;
+      }
+      pos = skipToolMarkupIgnorables(raw, keyword.next);
+      if (raw[pos] !== '[') {
+        return 0;
+      }
+      pos += 1;
+      return pos - idx;
+    }
+    const cp = raw.codePointAt(pos);
+    if (cp === undefined) {
+      return 0;
+    }
+    const ch = String.fromCodePoint(cp);
+    if (!isToolMarkupSeparator(ch)) {
+      return 0;
+    }
+    pos += ch.length;
+  }
+  return 0;
+}
+
+function toolCDATACloseLenAt(text, idx) {
+  const raw = toStringSafe(text);
+  const start = skipToolMarkupIgnorables(raw, idx);
+  if (raw[start] !== ']') {
+    return 0;
+  }
+  let pos = start + 1;
+  pos = skipToolMarkupIgnorables(raw, pos);
+  if (raw[pos] !== ']') {
+    return 0;
+  }
+  pos += 1;
+  const gtLen = xmlTagEndDelimiterLenAt(raw, pos);
+  return gtLen ? (pos + gtLen) - idx : 0;
+}
+
+function findToolCDATAEnd(text, from) {
+  const raw = toStringSafe(text);
+  if (from < 0 || from >= raw.length) {
+    return -1;
+  }
+  let firstNonFenceEnd = -1;
+  for (let i = from; i < raw.length; i += 1) {
+    const closeLen = toolCDATACloseLenAt(raw, i);
+    if (!closeLen) {
+      continue;
+    }
+    const end = i;
+    if (cdataOffsetIsInsideMarkdownFence(raw.slice(from, end))) {
+      continue;
+    }
+    if (cdataEndLooksStructural(raw, end + closeLen)) {
+      return end;
+    }
+    if (firstNonFenceEnd < 0) {
+      firstNonFenceEnd = end;
+    }
+    i = end + closeLen - 1;
+  }
+  return firstNonFenceEnd;
+}
+
+function indexToolCDATAOpen(text, from = 0) {
+  const raw = toStringSafe(text);
+  for (let i = Math.max(0, from || 0); i < raw.length; i += 1) {
+    if (toolCDATAOpenLenAt(raw, i)) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+function findTrailingToolCDATACloseStart(text) {
+  const raw = toStringSafe(text);
+  for (let i = raw.length - 1; i >= 0; i -= 1) {
+    const closeLen = toolCDATACloseLenAt(raw, i);
+    if (closeLen && i + closeLen === raw.length) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+function cdataOffsetIsInsideMarkdownFence(fragment) {
+  const lines = toStringSafe(fragment).split('\n');
+  let inFence = false;
+  let fenceChar = '';
+  let fenceLen = 0;
+  for (const line of lines) {
+    const trimmed = line.replace(/^[ \t]+/, '');
+    if (!inFence) {
+      const fence = parseFenceOpenLine(trimmed);
+      if (fence) {
+        inFence = true;
+        fenceChar = fence.ch;
+        fenceLen = fence.count;
+      }
+      continue;
+    }
+    if (isFenceCloseLine(trimmed, fenceChar, fenceLen)) {
+      inFence = false;
+      fenceChar = '';
+      fenceLen = 0;
+    }
+  }
+  return inFence;
+}
+
+function cdataEndLooksStructural(text, after) {
+  const raw = toStringSafe(text);
+  let pos = after;
+  while (pos < raw.length) {
+    const ch = raw[pos];
+    if ([' ', '\t', '\r', '\n'].includes(ch)) {
+      pos += 1;
+      continue;
+    }
+    return raw.startsWith('</', pos) || raw.startsWith('<／', pos) || raw.startsWith('＜/', pos) || raw.startsWith('＜／', pos);
+  }
+  return true;
+}
+
 function parseTagAttributes(raw) {
   const source = toStringSafe(raw);
   const out = {};
@@ -1311,7 +2580,7 @@ function parseTagAttributes(raw) {
     if (!key) {
       continue;
     }
-    out[key] = match[3] || match[4] || '';
+    out[key] = match.slice(3).find((value) => value !== undefined && value !== '') || '';
   }
   return out;
 }
@@ -1372,12 +2641,15 @@ function isOnlyRawValue(obj) {
 
 module.exports = {
   stripFencedCodeBlocks,
+  stripMarkdownCodeSpans,
   parseMarkupToolCalls,
   normalizeDSMLToolCallMarkup,
   containsToolMarkupSyntaxOutsideIgnored,
   containsToolCallWrapperSyntaxOutsideIgnored,
+  hasRepairableXMLToolCallsWrapper,
   findToolMarkupTagOutsideIgnored,
   findMatchingToolMarkupClose,
   findPartialToolMarkupStart,
+  indexToolCDATAOpen,
   sanitizeLooseCDATA,
 };

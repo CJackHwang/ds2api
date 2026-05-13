@@ -274,12 +274,12 @@ func TestChatCompletionsStreamEmitsFailureFrameWhenUpstreamOutputEmpty(t *testin
 	}
 	last := frames[0]
 	statusCode, ok := last["status_code"].(float64)
-	if !ok || int(statusCode) != http.StatusTooManyRequests {
-		t.Fatalf("expected status_code=429, got %#v body=%s", last["status_code"], rec.Body.String())
+	if !ok || int(statusCode) != http.StatusServiceUnavailable {
+		t.Fatalf("expected status_code=503, got %#v body=%s", last["status_code"], rec.Body.String())
 	}
 	errObj, _ := last["error"].(map[string]any)
-	if asString(errObj["code"]) != "upstream_empty_output" {
-		t.Fatalf("expected code=upstream_empty_output, got %#v", last)
+	if asString(errObj["code"]) != "upstream_unavailable" {
+		t.Fatalf("expected code=upstream_unavailable, got %#v", last)
 	}
 }
 
@@ -345,7 +345,7 @@ func TestChatCompletionsStreamRetriesEmptyOutputOnSameSession(t *testing.T) {
 
 func TestChatCompletionsNonStreamRetriesThinkingOnlyOutput(t *testing.T) {
 	ds := &streamStatusDSSeqStub{resps: []*http.Response{
-		makeOpenAISSEHTTPResponse(`data: {"response_message_id":99}`, "data: [DONE]"),
+		makeOpenAISSEHTTPResponse(`data: {"response_message_id":99,"p":"response/thinking_content","v":"plan"}`, "data: [DONE]"),
 		makeOpenAISSEHTTPResponse(`data: {"p":"response/content","v":"visible"}`, "data: [DONE]"),
 	}}
 	h := &openAITestSurface{
@@ -496,7 +496,7 @@ func TestResponsesStreamRetriesThinkingOnlyOutput(t *testing.T) {
 
 func TestResponsesNonStreamRetriesThinkingOnlyOutput(t *testing.T) {
 	ds := &streamStatusDSSeqStub{resps: []*http.Response{
-		makeOpenAISSEHTTPResponse(`data: {"response_message_id":88}`, "data: [DONE]"),
+		makeOpenAISSEHTTPResponse(`data: {"response_message_id":88,"p":"response/thinking_content","v":"plan"}`, "data: [DONE]"),
 		makeOpenAISSEHTTPResponse(`data: {"p":"response/content","v":"visible"}`, "data: [DONE]"),
 	}}
 	h := &openAITestSurface{
@@ -537,8 +537,15 @@ func TestResponsesNonStreamRetriesThinkingOnlyOutput(t *testing.T) {
 	if len(content) == 0 {
 		t.Fatalf("expected content entries, got %#v", item)
 	}
-	textEntry, _ := content[0].(map[string]any)
-	if asString(textEntry["type"]) != "output_text" || asString(textEntry["text"]) != "visible" {
+	var textEntry map[string]any
+	for _, entry := range content {
+		obj, _ := entry.(map[string]any)
+		if asString(obj["type"]) == "output_text" {
+			textEntry = obj
+			break
+		}
+	}
+	if asString(textEntry["text"]) != "visible" {
 		t.Fatalf("expected visible text entry, got %#v", content)
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -36,6 +37,31 @@ func TestBuildUploadMultipartBodyOmitsPurposeAndIncludesFilePart(t *testing.T) {
 	}
 	if !strings.Contains(payload, "hello") {
 		t.Fatalf("expected file content in payload: %q", payload)
+	}
+}
+
+func TestDoUploadDoesNotFallbackForNonIdempotentUpload(t *testing.T) {
+	var fallbackCalled bool
+	client := &Client{}
+	_, err := client.doUpload(
+		context.Background(),
+		doerFunc(func(req *http.Request) (*http.Response, error) {
+			_, _ = io.ReadAll(req.Body)
+			return nil, errors.New("ambiguous upload write failure")
+		}),
+		doerFunc(func(*http.Request) (*http.Response, error) {
+			fallbackCalled = true
+			return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader("{}"))}, nil
+		}),
+		dsprotocol.DeepSeekUploadFileURL,
+		map[string]string{"Content-Type": "multipart/form-data"},
+		[]byte("body"),
+	)
+	if err == nil {
+		t.Fatal("expected upload error")
+	}
+	if fallbackCalled {
+		t.Fatal("upload fallback should not be called for a non-idempotent request")
 	}
 }
 

@@ -18,9 +18,9 @@ test('chat history strict parser merges current input file placeholder', async (
       content: 'Continue from the latest state in the attached DS2API_HISTORY.txt context. Treat it as the current working state and answer the latest user request directly.',
     }],
     history_text: [
-      '<｜begin▁of▁sentence｜>',
-      '<｜User｜>hello',
-      '<｜Assistant｜>hi<｜end▁of▁sentence｜>',
+      '<|begin▁of▁sentence|>',
+      '<|User|>hello',
+      '<|Assistant|>hi<|end▁of▁sentence|>',
     ].join(''),
   };
 
@@ -43,9 +43,9 @@ test('chat history strict parser inserts history after system messages', async (
       { role: 'user', content: 'latest' },
     ],
     history_text: [
-      '<｜begin▁of▁sentence｜>',
-      '<｜User｜>old',
-      '<｜Assistant｜>done<｜end▁of▁sentence｜>',
+      '<|begin▁of▁sentence|>',
+      '<|User|>old',
+      '<|Assistant|>done<|end▁of▁sentence|>',
     ].join(''),
   };
 

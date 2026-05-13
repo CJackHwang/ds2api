@@ -316,11 +316,11 @@ func TestSieve_CharByCharToolCall(t *testing.T) {
 func TestSieve_FullwidthPipeWrapperDSMLInvoke(t *testing.T) {
 	var state State
 	chunks := []string{
-		"<｜tool_calls>\n",
+		"<|tool_calls>\n",
 		"<|DSML|invoke name=\"read_file\">\n",
 		"<|DSML|parameter name=\"path\">README.md</|DSML|parameter>\n",
 		"</|DSML|invoke>\n",
-		"</｜tool_calls>",
+		"</|tool_calls>",
 	}
 	var events []Event
 	for _, c := range chunks {
@@ -382,7 +382,7 @@ func TestSieve_TagMentionInTextThenRealToolCall(t *testing.T) {
 	chunks := []string{
 		"建议的 commit message：\n\nfeat: expand DSML alias support\n\n",
 		"Add support for <dsml|tool_calls>, ",
-		"<｜tool_calls> (fullwidth pipe),\n",
+		"<|tool_calls> (pipe alias),\n",
 		"and <|tool_calls> wrapper variants.\n\n",
 		"<|DSML|tool_calls>\n",
 		"<|DSML|invoke name=\"Bash\">\n",
@@ -466,14 +466,14 @@ func TestSieve_ReviewSampleWithAliasMentionsPreservesBodyAndToolCalls(t *testing
 	chunks := []string{
 		"Done reviewing the diff. Here's my analysis before we commit:\n\n",
 		"Summary of Changes\n",
-		"DSML wrapper variant support — recognize aliases (<dsml|tool_calls>, <|tool_calls>, <｜tool_calls>) alongside canonical <tool_calls> and <|DSML|tool_calls> wrappers.\n\n",
+		"DSML wrapper variant support — recognize aliases (<dsml|tool_calls>, <|tool_calls>) alongside canonical <tool_calls> and <|DSML|tool_calls> wrappers.\n\n",
 		"<|DSML|tool_calls>\n",
 		"<|DSML|invoke name=\"Bash\">\n",
 		"<|DSML|parameter name=\"command\"><![CDATA[git add docs/toolcall-semantics.md internal/toolstream/tool_sieve_xml.go]]></|DSML|parameter>\n",
 		"<|DSML|parameter name=\"description\"><![CDATA[Stage all relevant changed files]]></|DSML|parameter>\n",
 		"</|DSML|invoke>\n",
 		"<|DSML|invoke name=\"Bash\">\n",
-		"<|DSML|parameter name=\"command\"><![CDATA[git commit -m \"$(cat <<'EOF'\nfeat(toolstream): expand DSML wrapper detection\n\nSupport DSML wrapper aliases: <dsml|tool_calls>, <|tool_calls>, <｜tool_calls> alongside existing canonical wrappers.\nEOF\n)\"]]></|DSML|parameter>\n",
+		"<|DSML|parameter name=\"command\"><![CDATA[git commit -m \"$(cat <<'EOF'\nfeat(toolstream): expand DSML wrapper detection\n\nSupport DSML wrapper aliases: <dsml|tool_calls> and <|tool_calls> alongside existing canonical wrappers.\nEOF\n)\"]]></|DSML|parameter>\n",
 		"<|DSML|parameter name=\"description\"><![CDATA[Create commit with all staged changes]]></|DSML|parameter>\n",
 		"</|DSML|invoke>\n",
 		"</|DSML|tool_calls>",
