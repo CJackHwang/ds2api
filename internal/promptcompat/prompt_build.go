@@ -9,21 +9,21 @@ func buildOpenAIFinalPrompt(messagesRaw []any, toolsRaw any, traceID string, thi
 }
 
 func BuildOpenAIPrompt(messagesRaw []any, toolsRaw any, traceID string, toolPolicy ToolChoicePolicy, thinkingEnabled bool) (string, []string) {
-	return buildOpenAIPrompt(messagesRaw, toolsRaw, traceID, toolPolicy, thinkingEnabled, true)
+	return buildOpenAIPrompt(messagesRaw, toolsRaw, traceID, toolPolicy, thinkingEnabled, true, "")
 }
 
-func BuildOpenAIPromptWithToolInstructionsOnly(messagesRaw []any, toolsRaw any, traceID string, toolPolicy ToolChoicePolicy, thinkingEnabled bool) (string, []string) {
-	return buildOpenAIPrompt(messagesRaw, toolsRaw, traceID, toolPolicy, thinkingEnabled, false)
+func BuildOpenAIPromptWithToolInstructionsOnly(messagesRaw []any, toolsRaw any, traceID string, toolPolicy ToolChoicePolicy, thinkingEnabled bool, toolsFilename string) (string, []string) {
+	return buildOpenAIPrompt(messagesRaw, toolsRaw, traceID, toolPolicy, thinkingEnabled, false, toolsFilename)
 }
 
-func buildOpenAIPrompt(messagesRaw []any, toolsRaw any, traceID string, toolPolicy ToolChoicePolicy, thinkingEnabled bool, includeToolDescriptions bool) (string, []string) {
+func buildOpenAIPrompt(messagesRaw []any, toolsRaw any, traceID string, toolPolicy ToolChoicePolicy, thinkingEnabled bool, includeToolDescriptions bool, toolsFilename string) (string, []string) {
 	messages := NormalizeOpenAIMessagesForPrompt(messagesRaw, traceID)
 	toolNames := []string{}
 	if tools, ok := toolsRaw.([]any); ok && len(tools) > 0 {
 		if includeToolDescriptions {
 			messages, toolNames = injectToolPrompt(messages, tools, toolPolicy)
 		} else {
-			messages, toolNames = injectToolPromptInstructionsOnly(messages, tools, toolPolicy)
+			messages, toolNames = injectToolPromptInstructionsOnly(messages, tools, toolPolicy, toolsFilename)
 		}
 	}
 	return prompt.MessagesPrepareWithThinking(messages, thinkingEnabled), toolNames

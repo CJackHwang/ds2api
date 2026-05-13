@@ -108,8 +108,8 @@ func registerOpenAITestRoutes(r chi.Router, h *openAITestSurface) {
 	r.Post("/v1/embeddings", h.embeddingsHandler().Embeddings)
 }
 
-func buildOpenAICurrentInputContextTranscript(messages []any) string {
-	return promptcompat.BuildOpenAICurrentInputContextTranscript(messages)
+func buildOpenAICurrentInputContextTranscript(messages []any, historyFilename string) string {
+	return promptcompat.BuildOpenAICurrentInputContextTranscript(messages, historyFilename)
 }
 
 func writeOpenAIError(w http.ResponseWriter, status int, message string) {

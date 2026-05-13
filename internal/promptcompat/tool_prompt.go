@@ -7,12 +7,15 @@ import (
 	"unicode"
 
 	"ds2api/internal/toolcall"
+
+	"github.com/google/uuid"
 )
 
-const CurrentToolsContextFilename = "DS2API_TOOLS.txt"
-
-const toolsTranscriptTitle = "# DS2API_TOOLS.txt"
 const toolsTranscriptSummary = "Available tool descriptions and parameter schemas for this request."
+
+func GenerateToolsFilename() string {
+	return uuid.New().String() + ".txt"
+}
 
 type toolPromptParts struct {
 	Descriptions string
@@ -21,14 +24,14 @@ type toolPromptParts struct {
 }
 
 func injectToolPrompt(messages []map[string]any, tools []any, policy ToolChoicePolicy) ([]map[string]any, []string) {
-	return injectToolPromptWithDescriptions(messages, tools, policy, true)
+	return injectToolPromptWithDescriptions(messages, tools, policy, true, "")
 }
 
-func injectToolPromptInstructionsOnly(messages []map[string]any, tools []any, policy ToolChoicePolicy) ([]map[string]any, []string) {
-	return injectToolPromptWithDescriptions(messages, tools, policy, false)
+func injectToolPromptInstructionsOnly(messages []map[string]any, tools []any, policy ToolChoicePolicy, toolsFilename string) ([]map[string]any, []string) {
+	return injectToolPromptWithDescriptions(messages, tools, policy, false, toolsFilename)
 }
 
-func injectToolPromptWithDescriptions(messages []map[string]any, tools []any, policy ToolChoicePolicy, includeDescriptions bool) ([]map[string]any, []string) {
+func injectToolPromptWithDescriptions(messages []map[string]any, tools []any, policy ToolChoicePolicy, includeDescriptions bool, toolsFilename string) ([]map[string]any, []string) {
 	if policy.IsNone() {
 		return messages, nil
 	}
@@ -40,7 +43,10 @@ func injectToolPromptWithDescriptions(messages []map[string]any, tools []any, po
 	if includeDescriptions && parts.Descriptions != "" {
 		toolPrompt = parts.Descriptions + "\n\n" + toolPrompt
 	} else if !includeDescriptions && parts.Descriptions != "" {
-		toolPrompt = "Available tool descriptions and parameter schemas are attached in DS2API_TOOLS.txt. Treat DS2API_TOOLS.txt as the authoritative list of callable tools and schemas; use only tools and parameters listed there.\n\n" + toolPrompt
+		if toolsFilename == "" {
+			toolsFilename = "tools.txt"
+		}
+		toolPrompt = "Available tool descriptions and parameter schemas are attached in " + toolsFilename + ". Treat " + toolsFilename + " as the authoritative list of callable tools and schemas; use only tools and parameters listed there.\n\n" + toolPrompt
 	}
 
 	for i := range messages {
@@ -107,7 +113,7 @@ func buildToolPromptParts(tools []any, policy ToolChoicePolicy) toolPromptParts 
 	}
 }
 
-func BuildOpenAIToolsContextTranscript(toolsRaw any, policy ToolChoicePolicy) (string, []string) {
+func BuildOpenAIToolsContextTranscript(toolsRaw any, policy ToolChoicePolicy, toolsFilename string) (string, []string) {
 	if policy.IsNone() {
 		return "", nil
 	}
@@ -120,7 +126,11 @@ func BuildOpenAIToolsContextTranscript(toolsRaw any, policy ToolChoicePolicy) (s
 		return "", parts.Names
 	}
 	var b strings.Builder
-	b.WriteString(toolsTranscriptTitle)
+	if toolsFilename != "" {
+		b.WriteString("# " + toolsFilename)
+	} else {
+		b.WriteString("# tools")
+	}
 	b.WriteString("\n")
 	b.WriteString(toolsTranscriptSummary)
 	b.WriteString("\n\n")

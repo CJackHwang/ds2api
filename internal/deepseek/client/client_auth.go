@@ -11,13 +11,15 @@ import (
 
 	"ds2api/internal/auth"
 	"ds2api/internal/config"
+
+	"github.com/google/uuid"
 )
 
 func (c *Client) Login(ctx context.Context, acc config.Account) (string, error) {
 	clients := c.requestClientsForAccount(acc)
 	payload := map[string]any{
 		"password":  strings.TrimSpace(acc.Password),
-		"device_id": "deepseek_to_api",
+		"device_id": strings.ReplaceAll(uuid.New().String(), "-", ""),
 		"os":        "android",
 	}
 	if email := strings.TrimSpace(acc.Email); email != "" {

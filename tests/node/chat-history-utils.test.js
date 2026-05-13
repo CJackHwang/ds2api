@@ -15,7 +15,7 @@ test('chat history strict parser merges current input file placeholder', async (
   const item = {
     messages: [{
       role: 'user',
-      content: 'Continue from the latest state in the attached DS2API_HISTORY.txt context. Treat it as the current working state and answer the latest user request directly.',
+      content: 'Continue from the latest state in the attached test-history.txt context. Treat it as the current working state and answer the latest user request directly.',
     }],
     history_text: [
       '<|begin▁of▁sentence|>',
@@ -64,13 +64,14 @@ test('chat history transcript parser replaces current input file placeholder', a
     buildListModeMessages,
   } = await loadUtils();
   const t = (key) => key;
+  const testFilename = 'test-history.txt';
   const item = {
     messages: [{
       role: 'user',
-      content: 'Continue from the latest state in the attached DS2API_HISTORY.txt context. Treat it as the current working state and answer the latest user request directly.',
+      content: `Continue from the latest state in the attached ${testFilename} context. Treat it as the current working state and answer the latest user request directly.`,
     }],
     history_text: [
-      '# DS2API_HISTORY.txt',
+      `# ${testFilename}`,
       'Prior conversation history and tool progress.',
       '',
       '=== 1. SYSTEM ===',

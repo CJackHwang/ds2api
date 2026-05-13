@@ -3,15 +3,18 @@ package promptcompat
 import (
 	"fmt"
 	"strings"
+
+	"github.com/google/uuid"
 )
 
-const CurrentInputContextFilename = "DS2API_HISTORY.txt"
-
-const historyTranscriptTitle = "# DS2API_HISTORY.txt"
 const historyTranscriptSummary = "Prior conversation history and tool progress."
 
+func GenerateHistoryFilename() string {
+	return uuid.New().String() + ".txt"
+}
+
 func BuildOpenAIHistoryTranscript(messages []any) string {
-	return buildOpenAIHistoryTranscript(messages)
+	return buildOpenAIHistoryTranscript(messages, "")
 }
 
 func BuildOpenAICurrentUserInputTranscript(text string) string {
@@ -20,19 +23,23 @@ func BuildOpenAICurrentUserInputTranscript(text string) string {
 	}
 	return buildOpenAIHistoryTranscript([]any{
 		map[string]any{"role": "user", "content": text},
-	})
+	}, "")
 }
 
-func BuildOpenAICurrentInputContextTranscript(messages []any) string {
-	return buildOpenAIHistoryTranscript(messages)
+func BuildOpenAICurrentInputContextTranscript(messages []any, historyFilename string) string {
+	return buildOpenAIHistoryTranscript(messages, historyFilename)
 }
 
-func buildOpenAIHistoryTranscript(messages []any) string {
+func buildOpenAIHistoryTranscript(messages []any, historyFilename string) string {
 	if len(messages) == 0 {
 		return ""
 	}
 	var b strings.Builder
-	b.WriteString(historyTranscriptTitle)
+	if historyFilename != "" {
+		b.WriteString("# " + historyFilename)
+	} else {
+		b.WriteString("# context")
+	}
 	b.WriteString("\n")
 	b.WriteString(historyTranscriptSummary)
 	b.WriteString("\n\n")

@@ -17,6 +17,8 @@ import (
 	"ds2api/internal/auth"
 	"ds2api/internal/config"
 	trans "ds2api/internal/deepseek/transport"
+
+	"github.com/google/uuid"
 )
 
 type UploadFileRequest struct {
@@ -50,6 +52,11 @@ func (c *Client) UploadFile(ctx context.Context, a *auth.RequestAuth, req Upload
 	if filename == "" {
 		filename = "upload.bin"
 	}
+	ext := filepath.Ext(filename)
+	if ext == "" {
+		ext = ".bin"
+	}
+	filename = uuid.New().String() + ext
 	contentType := strings.TrimSpace(req.ContentType)
 	if contentType == "" {
 		contentType = "application/octet-stream"

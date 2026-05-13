@@ -14,8 +14,6 @@ import (
 )
 
 const (
-	currentInputFilename    = promptcompat.CurrentInputContextFilename
-	currentToolsFilename    = promptcompat.CurrentToolsContextFilename
 	currentInputContentType = "text/plain; charset=utf-8"
 	currentInputPurpose     = "assistants"
 )
@@ -47,17 +45,21 @@ func (s Service) ApplyCurrentInputFile(ctx context.Context, a *auth.RequestAuth,
 	if len([]rune(text)) < threshold {
 		return stdReq, nil
 	}
-	fileText := promptcompat.BuildOpenAICurrentInputContextTranscript(stdReq.Messages)
+
+	historyFilename := promptcompat.GenerateHistoryFilename()
+	toolsFilename := promptcompat.GenerateToolsFilename()
+
+	fileText := promptcompat.BuildOpenAICurrentInputContextTranscript(stdReq.Messages, historyFilename)
 	if strings.TrimSpace(fileText) == "" {
 		return stdReq, errors.New("current user input file produced empty transcript")
 	}
-	toolsText, _ := promptcompat.BuildOpenAIToolsContextTranscript(stdReq.ToolsRaw, stdReq.ToolChoice)
+	toolsText, _ := promptcompat.BuildOpenAIToolsContextTranscript(stdReq.ToolsRaw, stdReq.ToolChoice, toolsFilename)
 	modelType := "default"
 	if resolvedType, ok := config.GetModelType(stdReq.ResolvedModel); ok {
 		modelType = resolvedType
 	}
 	result, err := s.DS.UploadFile(ctx, a, dsclient.UploadFileRequest{
-		Filename:    currentInputFilename,
+		Filename:    historyFilename,
 		ContentType: currentInputContentType,
 		Purpose:     currentInputPurpose,
 		ModelType:   modelType,
@@ -74,7 +76,7 @@ func (s Service) ApplyCurrentInputFile(ctx context.Context, a *auth.RequestAuth,
 	toolFileID := ""
 	if strings.TrimSpace(toolsText) != "" {
 		result, err := s.DS.UploadFile(ctx, a, dsclient.UploadFileRequest{
-			Filename:    currentToolsFilename,
+			Filename:    toolsFilename,
 			ContentType: currentInputContentType,
 			Purpose:     currentInputPurpose,
 			ModelType:   modelType,
@@ -92,7 +94,7 @@ func (s Service) ApplyCurrentInputFile(ctx context.Context, a *auth.RequestAuth,
 	messages := []any{
 		map[string]any{
 			"role":    "user",
-			"content": currentInputFilePrompt(toolFileID != ""),
+			"content": currentInputFilePrompt(toolFileID != "", historyFilename, toolsFilename),
 		},
 	}
 
@@ -101,8 +103,10 @@ func (s Service) ApplyCurrentInputFile(ctx context.Context, a *auth.RequestAuth,
 	stdReq.CurrentInputFileApplied = true
 	stdReq.CurrentInputFileID = fileID
 	stdReq.CurrentToolsFileID = toolFileID
+	stdReq.HistoryFilename = historyFilename
+	stdReq.ToolsFilename = toolsFilename
 	stdReq.RefFileIDs = prependUniqueRefFileIDs(stdReq.RefFileIDs, fileID, toolFileID)
-	stdReq.FinalPrompt, stdReq.ToolNames = promptcompat.BuildOpenAIPromptWithToolInstructionsOnly(messages, stdReq.ToolsRaw, "", stdReq.ToolChoice, stdReq.Thinking)
+	stdReq.FinalPrompt, stdReq.ToolNames = promptcompat.BuildOpenAIPromptWithToolInstructionsOnly(messages, stdReq.ToolsRaw, "", stdReq.ToolChoice, stdReq.Thinking, toolsFilename)
 	// Token accounting must reflect the actual downstream context:
 	// uploaded context files + the continuation live prompt.
 	tokenParts := []string{fileText}
@@ -126,8 +130,18 @@ func (s Service) ReuploadAppliedCurrentInputFile(ctx context.Context, a *auth.Re
 	if resolvedType, ok := config.GetModelType(stdReq.ResolvedModel); ok {
 		modelType = resolvedType
 	}
+
+	historyFilename := stdReq.HistoryFilename
+	if historyFilename == "" {
+		historyFilename = promptcompat.GenerateHistoryFilename()
+	}
+	toolsFilename := stdReq.ToolsFilename
+	if toolsFilename == "" {
+		toolsFilename = promptcompat.GenerateToolsFilename()
+	}
+
 	result, err := s.DS.UploadFile(ctx, a, dsclient.UploadFileRequest{
-		Filename:    currentInputFilename,
+		Filename:    historyFilename,
 		ContentType: currentInputContentType,
 		Purpose:     currentInputPurpose,
 		ModelType:   modelType,
@@ -141,11 +155,11 @@ func (s Service) ReuploadAppliedCurrentInputFile(ctx context.Context, a *auth.Re
 		return stdReq, errors.New("upload current user input file returned empty file id")
 	}
 
-	toolsText, _ := promptcompat.BuildOpenAIToolsContextTranscript(stdReq.ToolsRaw, stdReq.ToolChoice)
+	toolsText, _ := promptcompat.BuildOpenAIToolsContextTranscript(stdReq.ToolsRaw, stdReq.ToolChoice, toolsFilename)
 	toolFileID := ""
 	if strings.TrimSpace(toolsText) != "" {
 		result, err := s.DS.UploadFile(ctx, a, dsclient.UploadFileRequest{
-			Filename:    currentToolsFilename,
+			Filename:    toolsFilename,
 			ContentType: currentInputContentType,
 			Purpose:     currentInputPurpose,
 			ModelType:   modelType,
@@ -163,6 +177,8 @@ func (s Service) ReuploadAppliedCurrentInputFile(ctx context.Context, a *auth.Re
 	stdReq.RefFileIDs = replaceGeneratedCurrentInputRefs(stdReq.RefFileIDs, stdReq.CurrentInputFileID, stdReq.CurrentToolsFileID, fileID, toolFileID)
 	stdReq.CurrentInputFileID = fileID
 	stdReq.CurrentToolsFileID = toolFileID
+	stdReq.HistoryFilename = historyFilename
+	stdReq.ToolsFilename = toolsFilename
 	return stdReq, nil
 }
 
@@ -185,10 +201,16 @@ func latestUserInputForFile(messages []any) (int, string) {
 	return -1, ""
 }
 
-func currentInputFilePrompt(hasToolsFile bool) string {
-	prompt := "Continue from the latest state in the attached DS2API_HISTORY.txt context. Treat it as the current working state and answer the latest user request directly."
+func currentInputFilePrompt(hasToolsFile bool, historyFilename, toolsFilename string) string {
+	if historyFilename == "" {
+		historyFilename = "context.txt"
+	}
+	prompt := "Continue from the latest state in the attached " + historyFilename + " context. Treat it as the current working state and answer the latest user request directly."
 	if hasToolsFile {
-		prompt += " Available tool descriptions and parameter schemas are attached in DS2API_TOOLS.txt; use only those tools and follow the tool-call format rules in this prompt."
+		if toolsFilename == "" {
+			toolsFilename = "tools.txt"
+		}
+		prompt += " Available tool descriptions and parameter schemas are attached in " + toolsFilename + "; use only those tools and follow the tool-call format rules in this prompt."
 	}
 	return prompt
 }

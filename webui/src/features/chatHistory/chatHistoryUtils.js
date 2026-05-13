@@ -11,16 +11,16 @@ const TOOL_MARKER = '<|Tool|>'
 const END_INSTRUCTIONS_MARKER = '<|end▁of▁instructions|>'
 const END_SENTENCE_MARKER = '<|end▁of▁sentence|>'
 const END_TOOL_RESULTS_MARKER = '<|end▁of▁toolresults|>'
-const CURRENT_INPUT_FILE_PROMPT = 'Continue from the latest state in the attached DS2API_HISTORY.txt context. Treat it as the current working state and answer the latest user request directly.'
+const CURRENT_INPUT_FILE_PROMPT_RE = /^Continue from the latest state in the attached .+\.txt context\. Treat it as the current working state and answer the latest user request directly\./
 const LEGACY_CURRENT_INPUT_FILE_PROMPTS = new Set([
     'The current request and prior conversation context have already been provided. Answer the latest user request directly.',
 ])
-const HISTORY_TRANSCRIPT_TITLE = '# DS2API_HISTORY.txt'
+const HISTORY_TRANSCRIPT_TITLE_RE = /^# .+\.txt$/
 const HISTORY_TRANSCRIPT_ENTRY_RE = /^===\s+\d+\.\s+([A-Z][A-Z_ -]*)\s+===\s*$/gm
 
 function isCurrentInputFilePrompt(value) {
     const text = String(value || '').trim()
-    return text === CURRENT_INPUT_FILE_PROMPT || LEGACY_CURRENT_INPUT_FILE_PROMPTS.has(text)
+    return CURRENT_INPUT_FILE_PROMPT_RE.test(text) || LEGACY_CURRENT_INPUT_FILE_PROMPTS.has(text)
 }
 
 function normalizeHistoryRole(role) {
@@ -235,7 +235,8 @@ export function parseStrictHistoryMessages(historyText) {
 
 export function parseTranscriptHistoryMessages(historyText) {
     const rawText = String(historyText || '')
-    const titleIndex = rawText.indexOf(HISTORY_TRANSCRIPT_TITLE)
+    const titleMatch = rawText.match(HISTORY_TRANSCRIPT_TITLE_RE)
+    const titleIndex = titleMatch ? titleMatch.index : -1
     const transcript = titleIndex >= 0 ? rawText.slice(titleIndex) : rawText
     const matches = [...transcript.matchAll(HISTORY_TRANSCRIPT_ENTRY_RE)]
     if (!matches.length) return null
