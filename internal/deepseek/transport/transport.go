@@ -85,7 +85,6 @@ func chromeTLSDialer(dialContext DialContextFunc) func(ctx context.Context, netw
 			NextProtos:   []string{"http/1.1"},
 		}
 		uConn := utls.UClient(plainConn, uCfg, utls.HelloChrome_Auto)
-		uConn.SetALPNProtocols([]string{"http/1.1"})
 		err = uConn.HandshakeContext(ctx)
 		if err != nil {
 			_ = plainConn.Close()
