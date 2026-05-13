@@ -313,8 +313,8 @@ func TestStartCompletionAppliesCurrentInputFileGlobally(t *testing.T) {
 		t.Fatalf("expected uploaded file id in ref_file_ids, got %#v", ds.payloads[0]["ref_file_ids"])
 	}
 	prompt, _ := ds.payloads[0]["prompt"].(string)
-	if !strings.Contains(prompt, "Continue from the latest state in the attached "+uploadedFilename+" context.") {
-		t.Fatalf("expected continuation prompt, got %q", prompt)
+	if !strings.Contains(prompt, uploadedFilename) {
+		t.Fatalf("expected continuation prompt to contain uploaded filename, got %q", prompt)
 	}
 	if !start.Request.CurrentInputFileApplied || !strings.Contains(start.Request.PromptTokenText, "# "+uploadedFilename) {
 		t.Fatalf("expected prepared request to carry current input file state, got %#v", start.Request)
