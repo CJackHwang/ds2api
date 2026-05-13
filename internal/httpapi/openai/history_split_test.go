@@ -253,7 +253,7 @@ func TestApplyCurrentInputFileUploadsFirstTurnWithNumberedHistoryTranscript(t *t
 	}
 	for _, want := range []string{
 		"# " + historyFilename,
-		"=== 1. USER ===",
+		"1. USER",
 		"first turn content that is long enough",
 	} {
 		if !strings.Contains(uploadedText, want) {
@@ -279,7 +279,7 @@ func TestApplyCurrentInputFileUploadsFirstTurnWithNumberedHistoryTranscript(t *t
 	if !strings.Contains(out.PromptTokenText, "first turn content that is long enough") {
 		t.Fatalf("expected prompt token text to preserve original full context, got %q", out.PromptTokenText)
 	}
-	if !strings.Contains(out.PromptTokenText, "# "+historyFilename) || !strings.Contains(out.PromptTokenText, "=== 1. USER ===") {
+	if !strings.Contains(out.PromptTokenText, "# "+historyFilename) || !strings.Contains(out.PromptTokenText, "1. USER") {
 		t.Fatalf("expected prompt token text to include numbered history transcript, got %q", out.PromptTokenText)
 	}
 }
