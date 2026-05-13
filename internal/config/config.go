@@ -19,6 +19,7 @@ type Config struct {
 	Embeddings        EmbeddingsConfig        `json:"embeddings,omitempty"`
 	AutoDelete        AutoDeleteConfig        `json:"auto_delete"`
 	CurrentInputFile  CurrentInputFileConfig  `json:"current_input_file,omitempty"`
+	ContextMode       string                  `json:"context_mode,omitempty"`
 	ThinkingInjection ThinkingInjectionConfig `json:"thinking_injection,omitempty"`
 	Vercel            VercelConfig            `json:"vercel,omitempty"`
 	VercelSyncHash    string                  `json:"_vercel_sync_hash,omitempty"`

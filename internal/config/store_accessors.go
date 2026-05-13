@@ -160,6 +160,12 @@ func (s *Store) CurrentInputFileMinChars() int {
 	return s.cfg.CurrentInputFile.MinChars
 }
 
+func (s *Store) ContextMode() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return strings.ToLower(strings.TrimSpace(s.cfg.ContextMode))
+}
+
 func (s *Store) ThinkingInjectionEnabled() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

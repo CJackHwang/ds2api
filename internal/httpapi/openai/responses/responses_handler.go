@@ -115,6 +115,14 @@ func (h *Handler) Responses(w http.ResponseWriter, r *http.Request) {
 			writeOpenAIErrorWithCode(w, outErr.Status, outErr.Message, outErr.Code)
 			return
 		}
+		// Store session state for incremental context on next request.
+		if h.Session != nil && result.Turn.ResponseMessageID > 0 {
+			accountID := ""
+			if a != nil {
+				accountID = a.AccountID
+			}
+			h.Session.StoreResponse(accountID, len(stdReq.Messages), result.SessionID, result.Turn.ResponseMessageID)
+		}
 		if historySession != nil {
 			historySession.SuccessTurn(http.StatusOK, result.Turn, assistantturn.OpenAIResponsesUsage(result.Turn))
 		}

@@ -95,6 +95,14 @@ func (h *Handler) ChatCompletions(w http.ResponseWriter, r *http.Request) {
 			writeOpenAIErrorWithCode(w, outErr.Status, outErr.Message, outErr.Code)
 			return
 		}
+		// Store session state for incremental context on next request.
+		if h.Session != nil && result.Turn.ResponseMessageID > 0 {
+			accountID := ""
+			if a != nil {
+				accountID = a.AccountID
+			}
+			h.Session.StoreResponse(accountID, len(stdReq.Messages), result.SessionID, result.Turn.ResponseMessageID)
+		}
 		respBody := openaifmt.BuildChatCompletionWithToolCalls(result.SessionID, stdReq.ResponseModel, result.Turn.Prompt, result.Turn.Thinking, result.Turn.Text, result.Turn.ToolCalls, stdReq.ToolsRaw)
 		respBody["usage"] = assistantturn.OpenAIChatUsage(result.Turn)
 		finishReason := assistantturn.FinalizeTurn(result.Turn, assistantturn.FinalizeOptions{}).FinishReason

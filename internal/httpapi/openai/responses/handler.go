@@ -24,6 +24,7 @@ type Handler struct {
 	Auth        shared.AuthResolver
 	DS          shared.DeepSeekCaller
 	ChatHistory *chathistory.Store
+	Session     *history.SessionStore
 
 	responsesMu sync.Mutex
 	responses   *responseStore
@@ -38,6 +39,20 @@ func (h *Handler) applyCurrentInputFile(ctx context.Context, a *auth.RequestAuth
 		return stdReq, nil
 	}
 	stdReq = shared.ApplyThinkingInjection(h.Store, stdReq)
+
+	// Check context mode: "session" uses persistent sessions, default uses file upload.
+	if h.Store != nil && h.Store.ContextMode() == "session" && h.Session != nil {
+		accountID := ""
+		if a != nil {
+			accountID = a.AccountID
+		}
+		stdReq = h.Session.ApplySessionContext(stdReq, accountID)
+		if stdReq.SessionIncremental {
+			return stdReq, nil
+		}
+		// First request of conversation — fall through to file upload for initial context.
+	}
+
 	svc := history.Service{Store: h.Store, DS: h.DS}
 	out, err := svc.ApplyCurrentInputFile(ctx, a, stdReq)
 	if err != nil || out.CurrentInputFileApplied {

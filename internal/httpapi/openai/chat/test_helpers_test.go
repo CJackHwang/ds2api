@@ -37,6 +37,7 @@ func (m mockOpenAIConfig) AutoDeleteMode() string {
 }
 func (m mockOpenAIConfig) AutoDeleteSessions() bool      { return false }
 func (m mockOpenAIConfig) CurrentInputFileEnabled() bool { return m.currentInputEnabled }
+func (m mockOpenAIConfig) ContextMode() string           { return "" }
 func (m mockOpenAIConfig) CurrentInputFileMinChars() int {
 	return m.currentInputMin
 }

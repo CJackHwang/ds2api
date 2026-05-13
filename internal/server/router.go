@@ -27,6 +27,7 @@ import (
 	"ds2api/internal/httpapi/openai/chat"
 	"ds2api/internal/httpapi/openai/embeddings"
 	"ds2api/internal/httpapi/openai/files"
+	"ds2api/internal/httpapi/openai/history"
 	"ds2api/internal/httpapi/openai/responses"
 	"ds2api/internal/httpapi/openai/shared"
 	"ds2api/internal/httpapi/requestbody"
@@ -63,8 +64,9 @@ func NewApp() (*App, error) {
 	}
 
 	modelsHandler := &shared.ModelsHandler{Store: store}
-	chatHandler := &chat.Handler{Store: store, Auth: resolver, DS: dsClient, ChatHistory: chatHistoryStore}
-	responsesHandler := &responses.Handler{Store: store, Auth: resolver, DS: dsClient, ChatHistory: chatHistoryStore}
+	sessionStore := history.NewSessionStore(30 * time.Minute)
+	chatHandler := &chat.Handler{Store: store, Auth: resolver, DS: dsClient, ChatHistory: chatHistoryStore, Session: sessionStore}
+	responsesHandler := &responses.Handler{Store: store, Auth: resolver, DS: dsClient, ChatHistory: chatHistoryStore, Session: sessionStore}
 	filesHandler := &files.Handler{Store: store, Auth: resolver, DS: dsClient, ChatHistory: chatHistoryStore}
 	embeddingsHandler := &embeddings.Handler{Store: store, Auth: resolver, DS: dsClient, ChatHistory: chatHistoryStore}
 	claudeHandler := &claude.Handler{Store: store, Auth: resolver, DS: dsClient, OpenAI: chatHandler, ChatHistory: chatHistoryStore}

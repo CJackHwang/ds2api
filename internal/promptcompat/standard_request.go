@@ -25,6 +25,9 @@ type StandardRequest struct {
 	RefFileIDs              []string
 	RefFileTokens           int
 	PassThrough             map[string]any
+	SessionChatID           string
+	SessionParentMsgID      int
+	SessionIncremental      bool
 }
 
 type ToolChoiceMode string
@@ -78,10 +81,18 @@ func (r StandardRequest) CompletionPayload(sessionID string) map[string]any {
 		}
 		refFileIDs = append(refFileIDs, fileID)
 	}
+	chatSessionID := sessionID
+	if r.SessionIncremental && r.SessionChatID != "" {
+		chatSessionID = r.SessionChatID
+	}
+	var parentMessageID any
+	if r.SessionIncremental && r.SessionParentMsgID > 0 {
+		parentMessageID = r.SessionParentMsgID
+	}
 	payload := map[string]any{
-		"chat_session_id":   sessionID,
+		"chat_session_id":   chatSessionID,
 		"model_type":        modelType,
-		"parent_message_id": nil,
+		"parent_message_id": parentMessageID,
 		"prompt":            r.FinalPrompt,
 		"ref_file_ids":      refFileIDs,
 		"thinking_enabled":  r.Thinking,
