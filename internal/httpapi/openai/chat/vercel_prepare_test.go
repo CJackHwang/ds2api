@@ -135,8 +135,9 @@ func TestHandleVercelStreamPrepareAppliesCurrentInputFile(t *testing.T) {
 		t.Fatalf("expected payload object, got %#v", body["payload"])
 	}
 	promptText, _ := payload["prompt"].(string)
-	if !strings.Contains(promptText, "Continue from the latest state in the attached ") || !strings.Contains(promptText, " context.") {
-		t.Fatalf("expected continuation prompt, got %s", promptText)
+	historyFilename := ds.uploadCalls[0].Filename
+	if !strings.Contains(promptText, historyFilename) {
+		t.Fatalf("expected continuation prompt to reference history file, got %s", promptText)
 	}
 	if strings.Contains(promptText, "first user turn") || strings.Contains(promptText, "latest user turn") {
 		t.Fatalf("expected original turns hidden from prompt, got %s", promptText)

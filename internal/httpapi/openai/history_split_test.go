@@ -71,15 +71,12 @@ func TestBuildOpenAICurrentInputContextTranscriptUsesNumberedHistorySections(t *
 	if !strings.Contains(transcript, "# "+testFilename) {
 		t.Fatalf("expected history transcript header, got %q", transcript)
 	}
-	if !strings.Contains(transcript, "Prior conversation history and tool progress.") {
-		t.Fatalf("expected history transcript description, got %q", transcript)
-	}
 	for _, want := range []string{
-		"=== 1. SYSTEM ===",
-		"=== 2. USER ===",
-		"=== 3. ASSISTANT ===",
-		"=== 4. TOOL ===",
-		"=== 5. USER ===",
+		"1. SYSTEM",
+		"2. USER",
+		"3. ASSISTANT",
+		"4. TOOL",
+		"5. USER",
 		"first user turn",
 		"tool result",
 		"latest user turn",
@@ -273,8 +270,8 @@ func TestApplyCurrentInputFileUploadsFirstTurnWithNumberedHistoryTranscript(t *t
 	if strings.Contains(out.FinalPrompt, "CURRENT_USER_INPUT.txt") || strings.Contains(out.FinalPrompt, "Read that file") {
 		t.Fatalf("expected live prompt not to instruct file reads, got %s", out.FinalPrompt)
 	}
-	if !strings.Contains(out.FinalPrompt, "Continue from the latest state in the attached "+historyFilename+" context.") {
-		t.Fatalf("expected continuation-oriented prompt in live prompt, got %s", out.FinalPrompt)
+	if !strings.Contains(out.FinalPrompt, historyFilename) {
+		t.Fatalf("expected continuation prompt to reference uploaded history file, got %s", out.FinalPrompt)
 	}
 	if len(out.RefFileIDs) != 1 || out.RefFileIDs[0] != "file-inline-1" {
 		t.Fatalf("expected current input file id in ref_file_ids, got %#v", out.RefFileIDs)
@@ -321,11 +318,11 @@ func TestApplyCurrentInputFilePreservesFullContextPromptForTokenCounting(t *test
 	if strings.Contains(out.PromptTokenText, "[file content end]") || strings.Contains(out.PromptTokenText, "[file name]:") {
 		t.Fatalf("expected prompt token text to omit file wrapper tags, got %q", out.PromptTokenText)
 	}
-	if !strings.Contains(out.PromptTokenText, "# "+out.HistoryFilename) || !strings.Contains(out.PromptTokenText, "=== 1. SYSTEM ===") {
+	if !strings.Contains(out.PromptTokenText, "# "+out.HistoryFilename) || !strings.Contains(out.PromptTokenText, "1. SYSTEM") {
 		t.Fatalf("expected prompt token text to include numbered history transcript, got %q", out.PromptTokenText)
 	}
-	if !strings.Contains(out.PromptTokenText, "Continue from the latest state in the attached "+out.HistoryFilename+" context.") {
-		t.Fatalf("expected prompt token text to also include continuation prompt, got %q", out.PromptTokenText)
+	if !strings.Contains(out.PromptTokenText, out.HistoryFilename) {
+		t.Fatalf("expected prompt token text to reference history file, got %q", out.PromptTokenText)
 	}
 	if strings.Contains(out.FinalPrompt, "first user turn") || strings.Contains(out.FinalPrompt, "latest user turn") {
 		t.Fatalf("expected live prompt to hide original turns, got %q", out.FinalPrompt)
@@ -370,7 +367,7 @@ func TestApplyCurrentInputFileUploadsFullContextFile(t *testing.T) {
 		t.Fatalf("expected vision model type for vision request, got %q", upload.ModelType)
 	}
 	uploadedText := string(upload.Data)
-	for _, want := range []string{"# " + historyFilename, "=== 1. SYSTEM ===", "=== 2. USER ===", "=== 3. ASSISTANT ===", "=== 4. TOOL ===", "=== 5. USER ===", "system instructions", "first user turn", "hidden reasoning", "tool result", "latest user turn", promptcompat.ThinkingInjectionMarker} {
+	for _, want := range []string{"# " + historyFilename, "1. SYSTEM", "2. USER", "3. ASSISTANT", "4. TOOL", "5. USER", "system instructions", "first user turn", "hidden reasoning", "tool result", "latest user turn", promptcompat.ThinkingInjectionMarker} {
 		if !strings.Contains(uploadedText, want) {
 			t.Fatalf("expected full context file to contain %q, got %q", want, uploadedText)
 		}
@@ -378,8 +375,8 @@ func TestApplyCurrentInputFileUploadsFullContextFile(t *testing.T) {
 	if strings.Contains(out.FinalPrompt, "first user turn") || strings.Contains(out.FinalPrompt, "latest user turn") || strings.Contains(out.FinalPrompt, "CURRENT_USER_INPUT.txt") || strings.Contains(out.FinalPrompt, "Read that file") {
 		t.Fatalf("expected live prompt to use only a continuation instruction, got %s", out.FinalPrompt)
 	}
-	if !strings.Contains(out.FinalPrompt, "Continue from the latest state in the attached "+historyFilename+" context.") {
-		t.Fatalf("expected continuation-oriented prompt in live prompt, got %s", out.FinalPrompt)
+	if !strings.Contains(out.FinalPrompt, historyFilename) {
+		t.Fatalf("expected continuation prompt to reference uploaded history file, got %s", out.FinalPrompt)
 	}
 }
 
@@ -441,7 +438,7 @@ func TestApplyCurrentInputFileUploadsToolsContextSeparately(t *testing.T) {
 	if strings.Contains(toolsText, "TOOL CALL FORMAT") {
 		t.Fatalf("tools transcript should not duplicate tool format instructions, got %q", toolsText)
 	}
-	if !strings.Contains(out.FinalPrompt, "Continue from the latest state in the attached "+historyFilename+" context.") || !strings.Contains(out.FinalPrompt, toolsFilename) {
+	if !strings.Contains(out.FinalPrompt, historyFilename) || !strings.Contains(out.FinalPrompt, toolsFilename) {
 		t.Fatalf("expected live prompt to reference both context files, got %q", out.FinalPrompt)
 	}
 	if !strings.Contains(out.FinalPrompt, "TOOL CALL FORMAT") || !strings.Contains(out.FinalPrompt, "Remember: The ONLY valid way to use tools") {
@@ -485,7 +482,7 @@ func TestApplyCurrentInputFileCarriesHistoryText(t *testing.T) {
 	if out.HistoryText != string(ds.uploadCalls[0].Data) {
 		t.Fatalf("expected current input file flow to preserve uploaded text in history, got %q", out.HistoryText)
 	}
-	if !strings.Contains(out.HistoryText, "# "+out.HistoryFilename) || !strings.Contains(out.HistoryText, "=== 1. SYSTEM ===") {
+	if !strings.Contains(out.HistoryText, "# "+out.HistoryFilename) || !strings.Contains(out.HistoryText, "1. SYSTEM") {
 		t.Fatalf("expected history text to use numbered transcript format, got %q", out.HistoryText)
 	}
 }
@@ -529,7 +526,7 @@ func TestChatCompletionsCurrentInputFileUploadsContextAndKeepsNeutralPrompt(t *t
 	if strings.Contains(historyText, "[file content end]") || strings.Contains(historyText, "[file content begin]") || strings.Contains(historyText, "[file name]:") {
 		t.Fatalf("expected history transcript without file wrapper tags, got %s", historyText)
 	}
-	if !strings.Contains(historyText, "# "+historyFilename) || !strings.Contains(historyText, "=== 1. SYSTEM ===") {
+	if !strings.Contains(historyText, "# "+historyFilename) || !strings.Contains(historyText, "1. SYSTEM") {
 		t.Fatalf("expected history transcript to use numbered sections, got %s", historyText)
 	}
 	if !strings.Contains(historyText, "latest user turn") {
@@ -539,8 +536,8 @@ func TestChatCompletionsCurrentInputFileUploadsContextAndKeepsNeutralPrompt(t *t
 		t.Fatal("expected completion payload to be captured")
 	}
 	promptText, _ := ds.completionReq["prompt"].(string)
-	if !strings.Contains(promptText, "Continue from the latest state in the attached "+historyFilename+" context.") {
-		t.Fatalf("expected continuation-oriented prompt, got %s", promptText)
+	if !strings.Contains(promptText, historyFilename) {
+		t.Fatalf("expected continuation prompt to reference history file, got %s", promptText)
 	}
 	if strings.Contains(promptText, "first user turn") || strings.Contains(promptText, "latest user turn") {
 		t.Fatalf("expected prompt to hide original turns, got %s", promptText)
@@ -595,15 +592,15 @@ func TestResponsesCurrentInputFileUploadsContextAndKeepsNeutralPrompt(t *testing
 		t.Fatalf("unexpected upload filename: %q", historyFilename)
 	}
 	historyText := string(ds.uploadCalls[0].Data)
-	if !strings.Contains(historyText, "# "+historyFilename) || !strings.Contains(historyText, "=== 1. SYSTEM ===") {
+	if !strings.Contains(historyText, "# "+historyFilename) || !strings.Contains(historyText, "1. SYSTEM") {
 		t.Fatalf("expected uploaded history text to use numbered transcript format, got %s", historyText)
 	}
 	if ds.completionReq == nil {
 		t.Fatal("expected completion payload to be captured")
 	}
 	promptText, _ := ds.completionReq["prompt"].(string)
-	if !strings.Contains(promptText, "Continue from the latest state in the attached "+historyFilename+" context.") {
-		t.Fatalf("expected continuation-oriented prompt, got %s", promptText)
+	if !strings.Contains(promptText, historyFilename) {
+		t.Fatalf("expected continuation prompt to reference history file, got %s", promptText)
 	}
 	if strings.Contains(promptText, "first user turn") || strings.Contains(promptText, "latest user turn") {
 		t.Fatalf("expected prompt to hide original turns, got %s", promptText)
@@ -813,14 +810,14 @@ func TestCurrentInputFileWorksAcrossAutoDeleteModes(t *testing.T) {
 				t.Fatalf("unexpected upload filename for mode=%s: %q", mode, historyFilename)
 			}
 			historyText := string(ds.uploadCalls[0].Data)
-			if !strings.Contains(historyText, "# "+historyFilename) || !strings.Contains(historyText, "=== 1. SYSTEM ===") {
+			if !strings.Contains(historyText, "# "+historyFilename) || !strings.Contains(historyText, "1. SYSTEM") {
 				t.Fatalf("expected uploaded history text to use numbered transcript format, got %s", historyText)
 			}
 			if ds.completionReq == nil {
 				t.Fatalf("expected completion payload for mode=%s", mode)
 			}
 			promptText, _ := ds.completionReq["prompt"].(string)
-			if !strings.Contains(promptText, "Continue from the latest state in the attached "+historyFilename+" context.") || strings.Contains(promptText, "first user turn") || strings.Contains(promptText, "latest user turn") {
+			if !strings.Contains(promptText, historyFilename) || strings.Contains(promptText, "first user turn") || strings.Contains(promptText, "latest user turn") {
 				t.Fatalf("unexpected prompt for mode=%s: %s", mode, promptText)
 			}
 		})

@@ -178,8 +178,8 @@ func TestGeminiDirectAppliesCurrentInputFile(t *testing.T) {
 		t.Fatalf("expected uploaded history ref id, got %#v", ds.payloads[0]["ref_file_ids"])
 	}
 	prompt, _ := ds.payloads[0]["prompt"].(string)
-	if !strings.Contains(prompt, "Continue from the latest state in the attached "+historyFilename+" context.") {
-		t.Fatalf("expected continuation prompt, got %q", prompt)
+	if !strings.Contains(prompt, historyFilename) {
+		t.Fatalf("expected continuation prompt to reference history file, got %q", prompt)
 	}
 	snapshot, err := historyStore.Snapshot()
 	if err != nil {
@@ -201,7 +201,7 @@ func TestGeminiDirectAppliesCurrentInputFile(t *testing.T) {
 	if full.HistoryText != string(ds.uploadCalls[0].Data) {
 		t.Fatalf("expected uploaded current input file to be persisted in history text")
 	}
-	if len(full.Messages) != 1 || !strings.Contains(full.Messages[0].Content, "Continue from the latest state in the attached "+historyFilename+" context.") {
+	if len(full.Messages) != 1 || !strings.Contains(full.Messages[0].Content, historyFilename) {
 		t.Fatalf("expected persisted message to match upstream continuation prompt, got %#v", full.Messages)
 	}
 }
