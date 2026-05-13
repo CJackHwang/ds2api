@@ -3,6 +3,7 @@ package transport
 import (
 	"context"
 	"crypto/tls"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/cookiejar"
@@ -36,7 +37,7 @@ func NewWithDialContext(timeout time.Duration, dialContext DialContextFunc) *Cli
 		MaxIdleConnsPerHost: 100,
 		IdleConnTimeout:     90 * time.Second,
 		DialContext:         dialContext,
-		DialTLSContext:      androidTLSDialer(dialContext),
+		DialTLSContext:      safariTLSDialer(dialContext),
 		TLSClientConfig:     &tls.Config{MinVersion: tls.VersionTLS12},
 	}
 	if useEnvProxy {
@@ -70,7 +71,7 @@ func NewFallbackClient(timeout time.Duration, dialContext DialContextFunc) *http
 	return &http.Client{Timeout: timeout, Transport: base, Jar: jar}
 }
 
-func androidTLSDialer(dialContext DialContextFunc) func(ctx context.Context, network, addr string) (net.Conn, error) {
+func safariTLSDialer(dialContext DialContextFunc) func(ctx context.Context, network, addr string) (net.Conn, error) {
 	if dialContext == nil {
 		dialContext = (&net.Dialer{Timeout: 15 * time.Second, KeepAlive: 30 * time.Second}).DialContext
 	}
@@ -81,12 +82,35 @@ func androidTLSDialer(dialContext DialContextFunc) func(ctx context.Context, net
 		}
 		host, _, _ := net.SplitHostPort(addr)
 		uCfg := &utls.Config{ServerName: host}
-		uConn := utls.UClient(plainConn, uCfg, utls.HelloAndroid_11_OkHttp)
+		uConn := utls.UClient(plainConn, uCfg, utls.HelloSafari_Auto)
+		if err := forceHTTP11ALPN(uConn); err != nil {
+			_ = plainConn.Close()
+			return nil, err
+		}
 		err = uConn.HandshakeContext(ctx)
 		if err != nil {
 			_ = plainConn.Close()
 			return nil, err
 		}
+		if negotiated := uConn.ConnectionState().NegotiatedProtocol; negotiated != "" && negotiated != "http/1.1" {
+			_ = uConn.Close()
+			return nil, fmt.Errorf("unexpected ALPN protocol negotiated: %s", negotiated)
+		}
 		return uConn, nil
 	}
+}
+
+func forceHTTP11ALPN(uConn *utls.UConn) error {
+	if err := uConn.BuildHandshakeState(); err != nil {
+		return err
+	}
+	for _, ext := range uConn.Extensions {
+		alpnExt, ok := ext.(*utls.ALPNExtension)
+		if !ok {
+			continue
+		}
+		alpnExt.AlpnProtocols = []string{"http/1.1"}
+		return nil
+	}
+	return nil
 }
