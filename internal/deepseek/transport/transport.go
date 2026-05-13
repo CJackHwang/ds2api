@@ -36,7 +36,7 @@ func NewWithDialContext(timeout time.Duration, dialContext DialContextFunc) *Cli
 		MaxIdleConnsPerHost: 100,
 		IdleConnTimeout:     90 * time.Second,
 		DialContext:         dialContext,
-		DialTLSContext:      androidTLSDialer(dialContext),
+		DialTLSContext:      chromeTLSDialer(dialContext),
 		TLSClientConfig:     &tls.Config{MinVersion: tls.VersionTLS12},
 	}
 	if useEnvProxy {
@@ -70,7 +70,7 @@ func NewFallbackClient(timeout time.Duration, dialContext DialContextFunc) *http
 	return &http.Client{Timeout: timeout, Transport: base, Jar: jar}
 }
 
-func androidTLSDialer(dialContext DialContextFunc) func(ctx context.Context, network, addr string) (net.Conn, error) {
+func chromeTLSDialer(dialContext DialContextFunc) func(ctx context.Context, network, addr string) (net.Conn, error) {
 	if dialContext == nil {
 		dialContext = (&net.Dialer{Timeout: 15 * time.Second, KeepAlive: 30 * time.Second}).DialContext
 	}
@@ -81,7 +81,7 @@ func androidTLSDialer(dialContext DialContextFunc) func(ctx context.Context, net
 		}
 		host, _, _ := net.SplitHostPort(addr)
 		uCfg := &utls.Config{ServerName: host}
-		uConn := utls.UClient(plainConn, uCfg, utls.HelloAndroid_11_OkHttp)
+		uConn := utls.UClient(plainConn, uCfg, utls.HelloChrome_Auto)
 		err = uConn.HandshakeContext(ctx)
 		if err != nil {
 			_ = plainConn.Close()

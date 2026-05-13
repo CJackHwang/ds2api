@@ -20,7 +20,7 @@ func (c *Client) Login(ctx context.Context, acc config.Account) (string, error) 
 	payload := map[string]any{
 		"password":  strings.TrimSpace(acc.Password),
 		"device_id": strings.ReplaceAll(uuid.New().String(), "-", ""),
-		"os":        "android",
+		"os":        "web",
 	}
 	if email := strings.TrimSpace(acc.Email); email != "" {
 		payload["email"] = email
