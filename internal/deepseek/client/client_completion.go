@@ -17,8 +17,11 @@ import (
 func (c *Client) CallCompletion(ctx context.Context, a *auth.RequestAuth, payload map[string]any, powResp string, maxAttempts int) (*http.Response, error) {
 	_ = maxAttempts
 	clients := c.requestClientsForAuth(ctx, a)
-	headers := c.authHeaders(a.DeepSeekToken)
+	headers := c.authHeadersWithCookie(a.DeepSeekToken, a.Account.CookieString())
 	headers["x-ds-pow-response"] = powResp
+	if chatSessionID, _ := payload["chat_session_id"].(string); chatSessionID != "" {
+		headers["referer"] = "https://chat.deepseek.com/a/chat/s/" + chatSessionID
+	}
 	captureSession := c.capture.Start("deepseek_completion", dsprotocol.DeepSeekCompletionURL, a.AccountID, payload)
 	resp, err := c.streamPostOnce(ctx, clients.stream, dsprotocol.DeepSeekCompletionURL, headers, payload)
 	if err != nil {

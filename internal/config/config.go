@@ -28,13 +28,14 @@ type Config struct {
 }
 
 type Account struct {
-	Name     string `json:"name,omitempty"`
-	Remark   string `json:"remark,omitempty"`
-	Email    string `json:"email,omitempty"`
-	Mobile   string `json:"mobile,omitempty"`
-	Password string `json:"password,omitempty"`
-	Token    string `json:"token,omitempty"`
-	ProxyID  string `json:"proxy_id,omitempty"`
+	Name     string            `json:"name,omitempty"`
+	Remark   string            `json:"remark,omitempty"`
+	Email    string            `json:"email,omitempty"`
+	Mobile   string            `json:"mobile,omitempty"`
+	Password string            `json:"password,omitempty"`
+	Token    string            `json:"token,omitempty"`
+	ProxyID  string            `json:"proxy_id,omitempty"`
+	Cookie   map[string]string `json:"cookie,omitempty"`
 }
 
 type APIKey struct {

@@ -54,8 +54,9 @@ func (c *Client) callContinue(ctx context.Context, a *auth.RequestAuth, sessionI
 		return nil, errors.New("missing continue identifiers")
 	}
 	clients := c.requestClientsForAuth(ctx, a)
-	headers := c.authHeaders(a.DeepSeekToken)
+	headers := c.authHeadersWithCookie(a.DeepSeekToken, a.Account.CookieString())
 	headers["x-ds-pow-response"] = powResp
+	headers["referer"] = "https://chat.deepseek.com/a/chat/s/" + sessionID
 	payload := map[string]any{
 		"chat_session_id":    sessionID,
 		"message_id":         responseMessageID,
