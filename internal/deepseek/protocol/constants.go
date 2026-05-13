@@ -135,9 +135,9 @@ func buildBaseHeaders(client clientConstants, overrides map[string]string) map[s
 		if client.Platform == "android" {
 			randomizedAPI := randomizeAndroidAPI()
 			userAgent += " Android/" + randomizedAPI
-			out["x-client-version"] = randomizedVersion
 		}
 		out["User-Agent"] = userAgent
+		out["x-client-version"] = randomizedVersion
 	}
 	if client.Platform != "" {
 		out["x-client-platform"] = client.Platform

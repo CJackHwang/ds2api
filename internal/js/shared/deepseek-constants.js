@@ -36,6 +36,18 @@ function asNonEmptyString(value) {
   return typeof value === 'string' && value !== '' ? value : '';
 }
 
+function randomizeVersion(version) {
+  const parts = version.split('.').map(Number);
+  const major = parts[0] || 2;
+  const minor = parts[1] || 0;
+  const patch = Math.floor(Math.random() * 9) + 1;
+  return `${major}.${minor}.${patch}`;
+}
+
+function randomizeAndroidAPI() {
+  return String(Math.floor(Math.random() * 6) + 30);
+}
+
 function normalizeClient(raw) {
   const client = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
   return {
@@ -53,16 +65,17 @@ function buildBaseHeaders(parsed, client) {
     : {};
   const baseHeaders = { ...DEFAULT_BASE_HEADERS, ...rawBaseHeaders };
   if (client.name && client.version) {
-    const androidSuffix = client.platform === 'android' && client.androidApiLevel
-      ? ` Android/${client.androidApiLevel}`
-      : '';
-    baseHeaders['User-Agent'] = `${client.name}/${client.version}${androidSuffix}`;
+    const randomizedVersion = randomizeVersion(client.version);
+    let androidSuffix = '';
+    if (client.platform === 'android') {
+      const randomizedAPI = randomizeAndroidAPI();
+      androidSuffix = ` Android/${randomizedAPI}`;
+    }
+    baseHeaders['User-Agent'] = `${client.name}/${randomizedVersion}${androidSuffix}`;
+    baseHeaders['x-client-version'] = randomizedVersion;
   }
   if (client.platform) {
     baseHeaders['x-client-platform'] = client.platform;
-  }
-  if (client.version) {
-    baseHeaders['x-client-version'] = client.version;
   }
   if (client.locale) {
     baseHeaders['x-client-locale'] = client.locale;
