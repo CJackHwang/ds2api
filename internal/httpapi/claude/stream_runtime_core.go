@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"ds2api/internal/httpapi/openai/history"
 	"ds2api/internal/responsehistory"
 	"ds2api/internal/sse"
 	streamengine "ds2api/internal/stream"
@@ -49,6 +50,11 @@ type claudeStreamRuntime struct {
 	ended              bool
 	upstreamErr        string
 	history            *responsehistory.Session
+
+	sessionStore    *history.SessionStore
+	sessionAccountID string
+	sessionID        string
+	sessionMessagesCount int
 }
 
 func newClaudeStreamRuntime(
@@ -64,6 +70,10 @@ func newClaudeStreamRuntime(
 	toolsRaw any,
 	promptTokenText string,
 	history *responsehistory.Session,
+	sessionStore *history.SessionStore,
+	sessionAccountID string,
+	sessionID string,
+	sessionMessagesCount int,
 ) *claudeStreamRuntime {
 	return &claudeStreamRuntime{
 		w:                     w,
@@ -82,6 +92,10 @@ func newClaudeStreamRuntime(
 		messageID:             fmt.Sprintf("msg_%d", time.Now().UnixNano()),
 		thinkingBlockIndex:    -1,
 		textBlockIndex:        -1,
+		sessionStore:          sessionStore,
+		sessionAccountID:      sessionAccountID,
+		sessionID:             sessionID,
+		sessionMessagesCount:  sessionMessagesCount,
 	}
 }
 

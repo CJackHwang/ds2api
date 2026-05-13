@@ -82,6 +82,16 @@ func (h *Handler) handleClaudeDirect(w http.ResponseWriter, r *http.Request) boo
 		return true
 	}
 	defer h.Auth.Release(a)
+
+	// Apply session context when enabled.
+	if h.Store != nil && h.Store.ContextMode() == "session" && h.Session != nil {
+		accountID := ""
+		if a != nil {
+			accountID = a.AccountID
+		}
+		norm.Standard = h.Session.ApplySessionContext(norm.Standard, accountID)
+	}
+
 	stdReq, err := h.applyCurrentInputFile(r.Context(), a, norm.Standard)
 	if err != nil {
 		status, message := mapCurrentInputFileError(err)
@@ -112,6 +122,13 @@ func (h *Handler) handleClaudeDirect(w http.ResponseWriter, r *http.Request) boo
 	}
 	if historySession != nil {
 		historySession.SuccessTurn(http.StatusOK, result.Turn, responsehistory.GenericUsage(result.Turn))
+	}
+	if h.Session != nil && result.Turn.ResponseMessageID > 0 {
+		accountID := ""
+		if a != nil {
+			accountID = a.AccountID
+		}
+		h.Session.StoreResponse(accountID, len(stdReq.Messages), result.SessionID, result.Turn.ResponseMessageID)
 	}
 	writeJSON(w, http.StatusOK, claudefmt.BuildMessageResponseFromTurn(
 		fmt.Sprintf("msg_%d", time.Now().UnixNano()),
@@ -145,7 +162,11 @@ func (h *Handler) handleClaudeDirectStream(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	streamReq := start.Request
-	h.handleClaudeStreamRealtimeWithRetry(w, r, a, start.Response, start.Payload, start.Pow, streamReq, streamReq.ResponseModel, streamReq.Messages, streamReq.Thinking, streamReq.Search, streamReq.ToolNames, streamReq.ToolsRaw, streamReq.PromptTokenText, historySession)
+	accountID := ""
+	if a != nil {
+		accountID = a.AccountID
+	}
+	h.handleClaudeStreamRealtimeWithRetry(w, r, a, start.Response, start.Payload, start.Pow, streamReq, streamReq.ResponseModel, streamReq.Messages, streamReq.Thinking, streamReq.Search, streamReq.ToolNames, streamReq.ToolsRaw, streamReq.PromptTokenText, historySession, accountID, start.SessionID, len(streamReq.Messages))
 }
 
 func (h *Handler) proxyViaOpenAI(w http.ResponseWriter, r *http.Request, store ConfigReader) bool {
@@ -337,6 +358,7 @@ func (h *Handler) handleClaudeStreamRealtime(w http.ResponseWriter, r *http.Requ
 		toolsRaw,
 		buildClaudePromptTokenText(messages, thinkingEnabled),
 		historySession,
+		nil, "", "", 0,
 	)
 	streamRuntime.sendMessageStart()
 
@@ -361,7 +383,7 @@ func (h *Handler) handleClaudeStreamRealtime(w http.ResponseWriter, r *http.Requ
 	})
 }
 
-func (h *Handler) handleClaudeStreamRealtimeWithRetry(w http.ResponseWriter, r *http.Request, a *auth.RequestAuth, resp *http.Response, payload map[string]any, pow string, stdReq promptcompat.StandardRequest, model string, messages []any, thinkingEnabled, searchEnabled bool, toolNames []string, toolsRaw any, promptTokenText string, historySession *responsehistory.Session) {
+func (h *Handler) handleClaudeStreamRealtimeWithRetry(w http.ResponseWriter, r *http.Request, a *auth.RequestAuth, resp *http.Response, payload map[string]any, pow string, stdReq promptcompat.StandardRequest, model string, messages []any, thinkingEnabled, searchEnabled bool, toolNames []string, toolsRaw any, promptTokenText string, historySession *responsehistory.Session, accountID, sessionID string, messagesCount int) {
 	if resp.StatusCode != http.StatusOK {
 		defer func() { _ = resp.Body.Close() }()
 		body, _ := io.ReadAll(resp.Body)
@@ -395,6 +417,10 @@ func (h *Handler) handleClaudeStreamRealtimeWithRetry(w http.ResponseWriter, r *
 		toolsRaw,
 		promptTokenText,
 		historySession,
+		h.Session,
+		accountID,
+		sessionID,
+		messagesCount,
 	)
 	streamRuntime.sendMessageStart()
 

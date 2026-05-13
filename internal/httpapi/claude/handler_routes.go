@@ -9,6 +9,7 @@ import (
 	"ds2api/internal/chathistory"
 	"ds2api/internal/config"
 	dsprotocol "ds2api/internal/deepseek/protocol"
+	"ds2api/internal/httpapi/openai/history"
 	"ds2api/internal/textclean"
 	"ds2api/internal/util"
 )
@@ -22,6 +23,7 @@ type Handler struct {
 	DS          DeepSeekCaller
 	OpenAI      OpenAIChatRunner
 	ChatHistory *chathistory.Store
+	Session     *history.SessionStore
 }
 
 func stripReferenceMarkersEnabled() bool {

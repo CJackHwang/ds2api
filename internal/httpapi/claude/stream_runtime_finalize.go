@@ -199,6 +199,9 @@ func (s *claudeStreamRuntime) finalize(stopReason string, deferEmptyOutput bool)
 			responsehistory.GenericUsage(turn),
 		)
 	}
+	if s.sessionStore != nil && s.responseMessageID > 0 {
+		s.sessionStore.StoreResponse(s.sessionAccountID, s.sessionMessagesCount, s.sessionID, s.responseMessageID)
+	}
 
 	s.send("message_delta", map[string]any{
 		"type": "message_delta",

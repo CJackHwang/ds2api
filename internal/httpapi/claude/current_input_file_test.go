@@ -23,6 +23,7 @@ type claudeHistoryConfig struct {
 func (m claudeHistoryConfig) ModelAliases() map[string]string { return m.aliases }
 func (claudeHistoryConfig) CurrentInputFileEnabled() bool     { return false }
 func (claudeHistoryConfig) CurrentInputFileMinChars() int     { return 0 }
+func (claudeHistoryConfig) ContextMode() string               { return "" }
 
 func (claudeCurrentInputAuth) Determine(*http.Request) (*auth.RequestAuth, error) {
 	return &auth.RequestAuth{

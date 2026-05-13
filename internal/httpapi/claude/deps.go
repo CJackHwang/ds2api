@@ -25,6 +25,7 @@ type ConfigReader interface {
 	ModelAliases() map[string]string
 	CurrentInputFileEnabled() bool
 	CurrentInputFileMinChars() int
+	ContextMode() string
 }
 
 type OpenAIChatRunner interface {
