@@ -80,8 +80,12 @@ func chromeTLSDialer(dialContext DialContextFunc) func(ctx context.Context, netw
 			return nil, err
 		}
 		host, _, _ := net.SplitHostPort(addr)
-		uCfg := &utls.Config{ServerName: host}
+		uCfg := &utls.Config{
+			ServerName:   host,
+			NextProtos:   []string{"http/1.1"},
+		}
 		uConn := utls.UClient(plainConn, uCfg, utls.HelloChrome_Auto)
+		uConn.SetALPNProtocols([]string{"http/1.1"})
 		err = uConn.HandshakeContext(ctx)
 		if err != nil {
 			_ = plainConn.Close()
