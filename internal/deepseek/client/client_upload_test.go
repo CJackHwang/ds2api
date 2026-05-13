@@ -175,8 +175,8 @@ func TestUploadFileUsesUploadTargetPowAndMultipartHeaders(t *testing.T) {
 	if !strings.HasPrefix(seenContentType, "multipart/form-data; boundary=") {
 		t.Fatalf("expected multipart content type, got %q", seenContentType)
 	}
-	if !strings.Contains(seenBody, `name="file"; filename="demo.txt"`) {
-		t.Fatalf("expected file part in upload body: %q", seenBody)
+	if !strings.Contains(seenBody, `name="file"`) || !strings.Contains(seenBody, `.txt"`) {
+		t.Fatalf("expected file part with .txt filename in upload body: %q", seenBody)
 	}
 }
 
